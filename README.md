@@ -1,7 +1,7 @@
-<table>
+<table width="100%">
     <tr>
-        <td><img src="cQuizy.png" alt="cQuizy Logo" width="100"></td>
-        <td>
+        <td width="20%"><img src="cQuizy.png" alt="cQuizy Logo"></td>
+        <td width="80%">
             <h1>cQuizy | 13_S1_3_vizsgaremek</h1>
             <h3>Kele Márton Róbert és Molnár Károly</h3>
         </td>
