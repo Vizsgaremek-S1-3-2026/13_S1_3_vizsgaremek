@@ -1,9 +1,87 @@
-body{
-    background-color: #151515;
+/*! IMPORTS/ROOT/BODY ====================================================================================================*/
+@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300..700&display=swap');
+
+:root{
+    --primary-color: #ed2f5b;
+    --primary-color-hover: #f0587b;
+    --primary-background: #151515;
+    --secondary-background: #1e1e1e;
+    --tertiary-background: #282828;
+    --text-color: #fff;
 }
+
+body{
+    background-color: var(--primary-background);
+    font-family: "Comfortaa", sans-serif !important;
+}
+
+
+
+
+
+/*! BASE ELEMENTS ====================================================================================================*/
 h1{
-    color: #ed2f5b;
+    color: var(--primary-color);
 }
 p{
-    color: #fff;
+    color: var(--text-color);
+}
+
+
+
+
+
+/*! NAVBAR ====================================================================================================*/
+.navbar{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--secondary-background);
+    padding: 10px 20px;
+    border-radius: 25px;
+    height: 30px;
+}
+.nav-left{
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.nav-right{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.nav-logo{
+    height: 50px;
+    transition: filter 0.2s ease-in-out;
+}
+.nav-logo:hover{
+    filter: brightness(1.2);
+}
+.nav-item{
+    color: var(--text-color);
+    font-size: 18px;
+
+    text-align: center;
+    text-decoration: none;
+    transition: color 0.2s ease-in-out;
+}
+.nav-item:hover{
+    color: var(--primary-color-hover);
+}
+.nav-button{
+    color: var(--text-color);
+    font-size: 18px;
+
+    text-align: center;
+    text-decoration: none;
+
+    background-color: var(--primary-color);
+    padding: 10px 20px;
+    border-radius: 25px;
+    transition: background-color 0.2s ease-in-out;
+}
+.nav-button:hover{
+    background-color: var(--primary-color-hover);
 }

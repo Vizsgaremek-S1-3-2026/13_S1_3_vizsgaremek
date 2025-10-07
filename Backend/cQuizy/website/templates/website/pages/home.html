@@ -2,12 +2,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{% static 'css/global.css' %}">
-    <title>cQuizy | Home</title>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Home</title>
 </head>
 <body>
+    {% include "website/components/header.html" %}
     <h1>cQuizy</h1>
     <p>Itten készül ez a csoda :D</p>
 </body>
