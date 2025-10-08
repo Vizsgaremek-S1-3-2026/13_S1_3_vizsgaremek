@@ -20,8 +20,11 @@ body{
 
 
 /*! BASE ELEMENTS ====================================================================================================*/
-h1{
+h1, h2, h3 {
     color: var(--primary-color);
+}
+h4, h5, h6 {
+    color: var(--text-color);
 }
 p{
     color: var(--text-color);
