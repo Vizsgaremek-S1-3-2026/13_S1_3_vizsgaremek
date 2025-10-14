@@ -9,6 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_form_builder: ^10.2.0
+  form_builder_validators: ^11.2.0
+  wave: ^0.2.2
+  
+
 
 dev_dependencies:
   flutter_test:
