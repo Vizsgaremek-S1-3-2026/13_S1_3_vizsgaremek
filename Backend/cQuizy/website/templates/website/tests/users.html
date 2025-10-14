@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>List of All Users</title>
+</head>
+<body>
+    <h1>Registered Users</h1>
+
+    <ul>
+        {% for user in users %}
+            <li style="display: flex; align-items: center; margin-bottom: 10px;">
+                
+                {# Start of the new part for the profile picture #}
+                
+                {# First, check if the user's profile has a pfp_url #}
+                {% if user.profile.pfp_url %}
+                    <img src="{{ user.profile.pfp_url }}" 
+                         alt="{{ user.username }}'s profile picture"
+                         style="width: 50px; height: 50px; border-radius: 50%; margin-right: 15px; object-fit: cover;">
+                {% else %}
+                    {# Optional: Show a default image if they don't have one #}
+                    <img src="https://example.com/path/to/default/avatar.png" 
+                         alt="Default profile picture"
+                         style="width: 50px; height: 50px; border-radius: 50%; margin-right: 15px;">
+                {% endif %}
+                
+                {# End of the new part #}
+
+                <div>
+                    <strong>Username:</strong> {{ user.username }} <br>
+                    <strong>Email:</strong> {{ user.email }} <br>
+                    <strong>Joined:</strong> {{ user.date_joined|date:"F j, Y" }}
+                </div>
+            </li>
+        {% empty %}
+            <li>No users have registered yet.</li>
+        {% endfor %}
+    </ul>
+
+</body>
+</html>

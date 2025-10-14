@@ -2,9 +2,13 @@
 
 from ninja import NinjaAPI
 from users.api import router as users_router #? Import the router from the 'users' app
+from ninja_jwt.controller import NinjaJWTDefaultController
 
 api = NinjaAPI(title="cQuizy | API Docs", version="1.0.0", description="Auto generated API docs by Django Ninja using OpenAPI")
 
+# Add authentication endpoints (token generation, refresh, verify)
+api.add_router("/auth/", NinjaJWTDefaultController())
+# Add the router from the 'users' app
 api.add_router("/users/", users_router) #? Register the router from the 'users' app under the "/users" prefix
 
 #TODO You can add more routers here later

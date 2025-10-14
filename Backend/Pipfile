@@ -8,7 +8,8 @@ django = "*"
 dotenv = "*"
 psycopg = "*"
 django-ninja = "*"
-pydantic = "*"
+django-ninja-jwt = "*"
+pydantic = "<2"
 
 [dev-packages]
 

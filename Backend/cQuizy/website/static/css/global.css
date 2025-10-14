@@ -4,9 +4,13 @@
 :root{
     --primary-color: #ed2f5b;
     --primary-color-hover: #f0587b;
+    --secondary-color: #2fedc1;
+    --secondary-color-hover: #8df5dd;
+
     --primary-background: #151515;
     --secondary-background: #1e1e1e;
     --tertiary-background: #282828;
+    
     --text-color: #fff;
 }
 
