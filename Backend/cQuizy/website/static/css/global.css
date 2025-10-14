@@ -73,6 +73,15 @@ p{
     text-align: center;
     text-decoration: none;
     transition: color 0.2s ease-in-out;
+    
+    .nav-pfp{
+        height: 30px;
+        border-radius: 50%;
+        transition: filter 0.2s ease-in-out;
+    }
+    .nav-pfp:hover{
+        filter: brightness(1.2);
+    }
 }
 .nav-item:hover{
     color: var(--primary-color-hover);

@@ -8,8 +8,9 @@ django = "*"
 dotenv = "*"
 psycopg = "*"
 django-ninja = "*"
-pydantic = "*"
 pyjwt = "*"
+psycopg2-binary = "*"
+pydantic = {extras = ["email"], version = "*"}
 
 [dev-packages]
 

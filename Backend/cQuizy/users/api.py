@@ -1,6 +1,7 @@
 from ninja import Router
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
+from django.contrib.auth import login as django_session_login
 from django.db.models import Q
 
 from .models import Profile
@@ -55,32 +56,33 @@ def register(request, payload: RegisterSchema):
     return {"success": f"User '{user.username}' created."}
 
 #? Login --------------------------------------------------
-@router.post("/login", response=TokenSchema, summary="Login a user and get a token")
+@router.post("/login", response=TokenSchema, summary="Login for API and create Django session")
 def login(request, payload: LoginSchema):
     # The input from the user (could be username or email)
     login_identifier = payload.username 
 
-    # 1. Find the user by either username or email
+    # Try to find the user by username or email
     try:
-        # Build a query that checks both fields
         user_query = User.objects.get(
             Q(username=login_identifier) | Q(email=login_identifier)
         )
     except User.DoesNotExist:
-        # User not found with either identifier
         return router.api.create_response(request, {"error": "Invalid credentials"}, status=401)
 
-    # 2. Authenticate the found user with the provided password
-    # We use the *actual* username from the user object we found
+    # Verify the password
     user = authenticate(username=user_query.username, password=payload.password)
     
-    if user is None:
-        # This means the password was incorrect
-        return router.api.create_response(request, {"error": "Invalid credentials"}, status=401)
+    if user is not None:
+        # ** THE UNIFIED LOGIN LOGIC **
+        # 1. Create the session cookie for the Django Admin
+        django_session_login(request, user)
+        
+        # 2. Generate the JWT for API clients (JS, Flutter)
+        token = generate_token(user)
+        return {"token": token}
     
-    # 3. If authentication is successful, generate the token
-    token = generate_token(user)
-    return {"token": token}
+    else:
+        return router.api.create_response(request, {"error": "Invalid credentials"}, status=401)
 
 #? Logout --------------------------------------------------
 @router.post("/logout", auth=JWTAuth(), summary="Log out the current user")
