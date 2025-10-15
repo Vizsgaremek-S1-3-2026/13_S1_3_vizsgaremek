@@ -6,6 +6,7 @@ class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE) # Creates a one-to-one relationship with the User model and deletes the profile if the user is deleted
     nickname = models.CharField(
         max_length=20,
+        null=True,
         blank=True
     )
     pfp_url = models.URLField(

@@ -1,5 +1,6 @@
 from ninja import Schema
 from pydantic import Field, EmailStr
+from typing import Optional
 
 #! Profile ==================================================
 #? Schema for displaying profile information (Output)
@@ -15,12 +16,12 @@ class ProfileUpdate(Schema):
 #? Schema for User Registration (Input)
 class RegisterSchema(Schema):
     username: str
-    nickname: str
+    nickname: Optional[str] = None
     first_name: str
     last_name: str
     email: EmailStr  # Ensures the input is a valid email format
     password: str
-    pfp_url: str
+    pfp_url: Optional[str] = None
 
 #? Schema for User Login (Input)
 class LoginSchema(Schema):

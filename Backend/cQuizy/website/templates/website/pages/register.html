@@ -1,0 +1,29 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Register</title>
+</head>
+<body>
+    {% include "website/components/header.html" %}
+
+    <div class="register-container">
+        <h2>Login</h2>
+        <form id="registerForm">
+            <input type="text" id="register-lastname" placeholder="Last name" required> <!--Vezetéknév-->
+            <input type="text" id="register-firstname" placeholder="First name" required> <!--Keresztnév-->
+            <input type="text" id="register-username" placeholder="Username" required>
+            <input type="text" id="register-nickname" placeholder="Nickname">
+            <input type="email" id="register-email" placeholder="E-mail" required>
+            <input type="password" id="register-password" placeholder="Password" required>
+            <input type="password" id="register-password-repeat" placeholder="Repeat Password" required>
+            <input type="url" id="register-pfp-url" placeholder="Profile picture URL">
+            <button type="submit">Register</button>
+        </form>
+        <div class="message" id="message"></div>
+    </div>
+    
+    <script src="{% static 'js/register.js' %}"></script>
+</body>
+</html>

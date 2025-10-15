@@ -2,6 +2,7 @@ from ninja import Router
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as django_session_login
+from django.db import transaction
 from django.db.models import Q
 
 from .models import Profile
@@ -23,6 +24,7 @@ def hello(request):
 #! Register & Login Endpoints ==================================================
 #? Registration --------------------------------------------------
 @router.post("/register", summary="Register a new user")
+@transaction.atomic
 def register(request, payload: RegisterSchema):
     # 1. Basic Validation
     if User.objects.filter(username=payload.username).exists():
@@ -46,6 +48,10 @@ def register(request, payload: RegisterSchema):
         'nickname': payload.nickname,
         'pfp_url': payload.pfp_url
     }
+    if payload.nickname:
+        profile_data['nickname'] = payload.nickname
+    if payload.pfp_url:
+        profile_data['pfp_url'] = payload.pfp_url
 
     # 3. Create the User object
     user = User.objects.create_user(**user_data)

@@ -14,6 +14,8 @@ def home(request):
     return render(request, 'website/pages/home.html')
 def login(request):
     return render(request, 'website/pages/login.html')
+def register(request):
+    return render(request, 'website/pages/register.html')
 
 
 
