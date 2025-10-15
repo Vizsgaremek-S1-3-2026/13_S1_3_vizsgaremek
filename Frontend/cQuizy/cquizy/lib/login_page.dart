@@ -263,7 +263,7 @@ class _LoginPageState extends State<LoginPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Image.asset('assets/logo/logo.png', height: 100),
+              Image.asset('assets/logo/logo_2.png', height: 100),
               const SizedBox(height: 16),
               Text("Üdvözlünk újra!", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: textColor), textAlign: TextAlign.center),
               const SizedBox(height: 8),
