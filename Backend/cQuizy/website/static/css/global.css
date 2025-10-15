@@ -4,9 +4,13 @@
 :root{
     --primary-color: #ed2f5b;
     --primary-color-hover: #f0587b;
+    --secondary-color: #2fedc1;
+    --secondary-color-hover: #8df5dd;
+
     --primary-background: #151515;
     --secondary-background: #1e1e1e;
     --tertiary-background: #282828;
+    
     --text-color: #fff;
 }
 
@@ -20,8 +24,11 @@ body{
 
 
 /*! BASE ELEMENTS ====================================================================================================*/
-h1{
+h1, h2, h3 {
     color: var(--primary-color);
+}
+h4, h5, h6 {
+    color: var(--text-color);
 }
 p{
     color: var(--text-color);
@@ -66,6 +73,15 @@ p{
     text-align: center;
     text-decoration: none;
     transition: color 0.2s ease-in-out;
+    
+    .nav-pfp{
+        height: 40px;
+        border-radius: 50%;
+        transition: filter 0.2s ease-in-out;
+    }
+    .nav-pfp:hover{
+        filter: brightness(1.2);
+    }
 }
 .nav-item:hover{
     color: var(--primary-color-hover);
