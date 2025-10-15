@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'ninja',
     'website',
     'users',
 ]
@@ -137,11 +138,18 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
+# 1. The URL where the browser will find the files.
 STATIC_URL = 'static/'
 
+# 2. The place to put YOUR project-level static files (e.g., brand images, global styles).
+#    Even if this folder is empty, it's best practice to have this setting.
 STATICFILES_DIRS = [
-    BASE_DIR / 'static',
+BASE_DIR / 'website' / 'static',
 ]
+
+# 3. The single folder where ALL static files will be collected for production.
+#    This folder should NOT be a source for your files. 'collectstatic' puts files HERE.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
