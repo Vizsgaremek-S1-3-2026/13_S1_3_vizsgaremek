@@ -16,8 +16,13 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from .api import api # Global API
+from users import views as user_views
+from users.views import session_logout_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/', api.urls),
     path('', include('website.urls')),
+    path('session-logout/', session_logout_view, name='session-logout'),
 ]
