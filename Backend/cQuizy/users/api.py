@@ -26,14 +26,17 @@ def hello(request):
 @router.post("/register", summary="Register a new user")
 @transaction.atomic
 def register(request, payload: RegisterSchema):
-    # 1. Basic Validation
+    """
+    Handles user registration in a single, atomic database transaction.
+    It now correctly handles profiles auto-created by signals.
+    """
+    # 1. --- VALIDATION ---
     if User.objects.filter(username=payload.username).exists():
         return router.api.create_response(request, {"error": "Username already taken"}, status=400)
     if User.objects.filter(email=payload.email).exists():
         return router.api.create_response(request, {"error": "Email already registered"}, status=400)
 
-    # 2. Separate the data for each model
-    # Data for the built-in User model
+    # 2. --- PREPARE USER DATA ---
     user_data = {
         'username': payload.username,
         'email': payload.email,
@@ -41,25 +44,27 @@ def register(request, payload: RegisterSchema):
         'first_name': payload.first_name,
         'last_name': payload.last_name
     }
-    
-    # Data for our custom Profile model
-    # (We will create the profile *after* the user is created)
-    profile_data = {
-        'nickname': payload.nickname,
-        'pfp_url': payload.pfp_url
-    }
-    if payload.nickname:
-        profile_data['nickname'] = payload.nickname
-    if payload.pfp_url:
-        profile_data['pfp_url'] = payload.pfp_url
 
-    # 3. Create the User object
+    # 3. --- CREATE THE USER ---
+    # When this line runs, your signal fires and creates a default Profile instance.
     user = User.objects.create_user(**user_data)
     
-    # 4. Create the Profile object and link it to the new user
-    Profile.objects.create(user=user, **profile_data)
+    # 4. --- GET AND UPDATE THE AUTO-CREATED PROFILE ---
+    # The post_save signal on the User model already created a default Profile.
+    # Instead of creating another one (which caused the IntegrityError), we now
+    # get the existing one and update it with the data from the form.
+    profile = Profile.objects.get(user=user)
+
+    # Update the profile fields from the payload.
+    profile.nickname = payload.nickname
+    if payload.pfp_url and payload.pfp_url.strip() != '':
+        profile.pfp_url = payload.pfp_url
     
-    return {"success": f"User '{user.username}' created."}
+    # Save the changes to the existing profile in the database.
+    profile.save()
+    
+    # 5. --- RETURN SUCCESS RESPONSE ---
+    return {"success": f"User '{user.username}' created successfully."}
 
 #? Login --------------------------------------------------
 @router.post("/login", response=TokenSchema, summary="Login for API and create Django session")
