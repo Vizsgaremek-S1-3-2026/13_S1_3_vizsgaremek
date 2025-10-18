@@ -16,6 +16,8 @@ def login(request):
     return render(request, 'website/pages/login.html')
 def register(request):
     return render(request, 'website/pages/register.html')
+def profile(request):
+    return render(request, 'website/pages/profile.html')
 
 
 

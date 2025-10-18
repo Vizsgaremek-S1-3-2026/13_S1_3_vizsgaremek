@@ -24,6 +24,7 @@ body{
 
 
 /*! BASE ELEMENTS ====================================================================================================*/
+/*? TEXT ------------------------------ */
 h1, h2, h3 {
     color: var(--primary-color);
 }
@@ -32,6 +33,54 @@ h4, h5, h6 {
 }
 p{
     color: var(--text-color);
+}
+
+/*? FORMS ------------------------------ */
+.formTitle{
+    color: var(--primary-color);
+    margin: 5px;
+    font-size: 20px;
+}
+.currentData{
+    color: var(--text-color);
+    margin: 5px;
+    font-size: 10px;
+}
+form{
+    padding: 20px;
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    width: fit-content;
+    label{
+        color: var(--text-color);
+        margin: 5px;
+    }
+    input{
+        margin: 5px;
+        background-color: var(--tertiary-background);
+        color: var(--text-color);
+        border: none;
+        border-radius: 25px;
+        padding: 10px 20px;
+        font-family: "Comfortaa", sans-serif !important;
+    }
+    button{
+        margin: 5px;
+        background-color: var(--primary-color);
+        color: var(--text-color);
+        border: none;
+        border-radius: 25px;
+        padding: 10px 20px;
+        cursor: pointer;
+        font-family: "Comfortaa", sans-serif !important;
+        transition: background-color 0.2s ease-in-out;
+    }
+    button:hover{
+        background-color: var(--primary-color-hover);
+    }
+}
+.formDanger{
+    background-color: #44252c !important;
 }
 
 
@@ -100,4 +149,28 @@ p{
 }
 .nav-button:hover{
     background-color: var(--primary-color-hover);
+}
+
+
+
+
+
+/*! PROFILE ====================================================================================================*/
+#profileContainer{
+    display: flex;
+    gap: 10px;
+    margin: 20px;
+}
+#profilePfp{
+    height: 100px;
+    border-radius: 50%;
+    transition: filter 0.2s ease-in-out;
+}
+#profileSettings{
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    @media (max-width: 768px) {
+        flex-direction: column;
+    }
 }

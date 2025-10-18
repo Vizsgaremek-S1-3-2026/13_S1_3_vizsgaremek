@@ -1,0 +1,80 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Profile</title>
+</head>
+<body>
+    {% include "website/components/header.html" %}
+    <div id="profileContainer">
+        <img id="profilePfp" src="" alt="Profile Picture">
+        <h1 id="welcomeName">Welcome, User!</h1>
+    </div>
+    <div id="profileSettings">
+        <div class="item">
+            <p id="profileSettingNickname" class="formTitle">Set Nickname</p>
+            <form id="formSetNickname">
+                <p id="currentNickname" class="currentData">Current Nickname:</p>
+                <label>New Nickname</label><br>
+                <input type="text"><br>
+                <button>Update</button>
+            </form>
+        </div>
+        <div class="item">
+            <p id="profileSettingName" class="formTitle">Set Name</p>
+            <form id="formSetName">
+                <p id="currentName" class="currentData">Current Name:</p>
+                <label>New First Name</label><br>
+                <input type="text"><br>
+                <label>New Last Name</label><br>
+                <input type="text"><br>
+                <button>Update</button>
+            </form>
+        </div>
+        <div class="item">
+            <p id="profileSettingPfp" class="formTitle">Change Profile picture</p>
+            <form id="formSetPfp">
+                <label>Image URL</label><br>
+                <input type="text"><br>
+                <button>Update</button>
+            </form>
+        </div>
+        <div class="item">
+            <p id="profileSettingEmail" class="formTitle">Change Email</p>
+            <form id="formSetEmail">
+                <p id="currentEmail" class="currentData">Current Email:</p>
+                <label>New Email</label><br>
+                <input type="text"><br>
+                <label>Password</label><br>
+                <input type="password"><br>
+                <button>Update</button>
+            </form>
+        </div>
+        <div class="item">
+            <p id="profileSettingPassword" class="formTitle">Change Password</p>
+            <form id="formSetPassword">
+                <label>Original Password</label><br>
+                <input type="password"><br>
+                <label>New Password</label><br>
+                <input type="password"><br>
+                <label>Repeat Password</label><br>
+                <input type="password"><br>
+                <button>Update</button>
+            </form>
+        </div>
+        <div class="item">
+            <p id="profileSettingDelete" class="formTitle">Delete Account</p>
+            <form id="formSetDelete" class="formDanger">
+                <p id="currentUsername" class="currentData">Your Username:</p>
+                <label>Your Username</label><br>
+                <input type="text"><br>
+                <label>Password</label><br>
+                <input type="password"><br>
+                <button>Delete</button>
+            </form>
+        </div>
+
+        <script src="{% static 'js/profile.js' %}"></script>
+</body>
+</html>

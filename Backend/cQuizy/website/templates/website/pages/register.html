@@ -11,14 +11,22 @@
     <div class="register-container">
         <h2>Login</h2>
         <form id="registerForm">
-            <input type="text" id="register-lastname" placeholder="Last name" required> <!--Vezetéknév-->
-            <input type="text" id="register-firstname" placeholder="First name" required> <!--Keresztnév-->
-            <input type="text" id="register-username" placeholder="Username" required>
-            <input type="text" id="register-nickname" placeholder="Nickname">
-            <input type="email" id="register-email" placeholder="E-mail" required>
-            <input type="password" id="register-password" placeholder="Password" required>
-            <input type="password" id="register-password-repeat" placeholder="Repeat Password" required>
-            <input type="url" id="register-pfp-url" placeholder="Profile picture URL">
+            <label for="register-lastname">Last Name*</label><br>
+            <input type="text" id="register-lastname" placeholder="Last name" required><br> <!--Vezetéknév-->
+            <label for="register-firstname">First Name*</label><br>
+            <input type="text" id="register-firstname" placeholder="First name" required><br> <!--Keresztnév-->
+            <label for="register-username">Username*</label><br>
+            <input type="text" id="register-username" placeholder="Username" required><br>
+            <label for="register-nickname">Nickname</label><br>
+            <input type="text" id="register-nickname" placeholder="Nickname"><br>
+            <label for="register-email">E-mail*</label><br>
+            <input type="email" id="register-email" placeholder="E-mail" required><br>
+            <label for="register-password">Password*</label><br>
+            <input type="password" id="register-password" placeholder="Password" required><br>
+            <label for="register-password-repeat">Repeat Password*</label><br>
+            <input type="password" id="register-password-repeat" placeholder="Repeat Password" required><br>
+            <label for="register-pfp-url">Profile picture URL</label><br>
+            <input type="url" id="register-pfp-url" placeholder="Profile picture URL"><br>
             <button type="submit">Register</button>
         </form>
         <div class="message" id="message"></div>
