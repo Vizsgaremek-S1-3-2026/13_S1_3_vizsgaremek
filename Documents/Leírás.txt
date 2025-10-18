@@ -1,0 +1,8 @@
+# Szoftverspecifikáció_KeleMártonRóbert_MolnárKároly.pdf
+Hivatalosan leadott specifikáció
+
+# cQuizy Specifikáció v2.pdf
+Specifikáció kicserélt logoval és átírt fejléccel
+
+# cQuizy Adatbázis Tervdokumentáció v1.pdf
+Még nem leadott adatbázis ismertető
