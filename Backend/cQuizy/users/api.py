@@ -95,9 +95,11 @@ def login(request, payload: LoginSchema):
     user = authenticate(username=user_query.username, password=payload.password)
     
     if user is not None:
-        # ** THE UNIFIED LOGIN LOGIC **
         # 1. Create the session cookie for the Django Admin
-        django_session_login(request, user)
+        ''' This will break the login for admin users
+        if user.is_staff:
+            django_session_login(request, user)
+        '''
         
         # 2. Generate the JWT for API clients (JS, Flutter)
         token = generate_token(user)
