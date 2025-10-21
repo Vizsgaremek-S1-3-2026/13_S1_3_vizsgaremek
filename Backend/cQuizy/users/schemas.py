@@ -32,7 +32,6 @@ class UpdateEmailSchema(Schema):
 class UpdatePasswordSchema(Schema):
     old_password: str
     new_password: str
-    repeat_password: str
 
 #? Schema for deleting the account (Input)
 class DeleteAccountSchema(Schema):

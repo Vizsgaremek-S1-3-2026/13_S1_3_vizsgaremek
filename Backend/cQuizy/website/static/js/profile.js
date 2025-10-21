@@ -22,12 +22,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const profile = await response.json();
 
+            // --- CORRECTED LOGIC FOR 'welcomeName' ID ---
+            // Determine the name to display. If nickname is null or an empty string, fall back to the username.
+            const displayName = profile.nickname || profile.username;
+            document.getElementById('welcomeName').textContent = `Welcome, ${displayName}!`;
+            
             // Populate main profile elements
             document.getElementById('profilePfp').src = profile.pfp_url;
-            document.getElementById('welcomeName').textContent = `Welcome, ${profile.nickname}!`;
 
             // Populate "current" data fields in forms
-            document.getElementById('currentNickname').textContent = `Current Nickname: ${profile.nickname}`;
+            // Also adjust the "Current Nickname" display based on whether it's set
+            document.getElementById('currentNickname').textContent = `Current Nickname: ${profile.nickname || 'Not set'}`;
             document.getElementById('currentName').textContent = `Current Name: ${profile.first_name} ${profile.last_name}`;
             document.getElementById('currentEmail').textContent = `Current Email: ${profile.email}`;
             document.getElementById('currentUsername').textContent = `Your Username: ${profile.username}`;
@@ -43,22 +48,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 2. HELPER FUNCTION FOR API CALLS ---
     const apiCall = async (endpoint, method, body) => {
-        const response = await fetch(endpoint, {
-            method: method,
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify(body)
-        });
-        if (response.ok) {
-            alert('Update successful!');
-            loadProfileData(); // Refresh data on success
-        } else {
-            const errorData = await response.json();
-            // Pydantic validation errors are in errorData.detail
-            const errorMessage = errorData.detail || 'An unknown error occurred.';
-            alert(`Error: ${JSON.stringify(errorMessage)}`);
+        try {
+            const response = await fetch(endpoint, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify(body)
+            });
+            if (response.ok) {
+                alert('Update successful!');
+                loadProfileData(); // Refresh data on success
+            } else {
+                const errorData = await response.json();
+                const errorMessage = errorData.detail || 'An unknown error occurred.';
+                alert(`Error: ${JSON.stringify(errorMessage)}`);
+            }
+        } catch (error) {
+            console.error('API call failed:', error);
+            alert('An error occurred while communicating with the server. Please check your connection.');
         }
     };
 
@@ -77,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputs = e.target.querySelectorAll('input[type="text"]');
         const firstName = inputs[0].value;
         const lastName = inputs[1].value;
-        apiCall('/api/users/profile/name', 'PATCH', { first_name: firstName, last_name: lastName });
+        apiCall('/api/users/profile/change-name', 'PATCH', { first_name: firstName, last_name: lastName });
     });
     
     // Profile Picture
@@ -102,14 +111,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const old_password = inputs[0].value;
         const new_password = inputs[1].value;
         const repeat_password = inputs[2].value;
-        apiCall('/api/users/profile/change-password', 'POST', { old_password, new_password, repeat_password });
+
+        if (new_password !== repeat_password) {
+            alert('The new passwords do not match. Please try again.');
+            return;
+        }
+        apiCall('/api/users/profile/change-password', 'POST', { old_password, new_password });
     });
 
     // Delete Account
     document.getElementById('formSetDelete').addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = e.target.querySelector('input[type="text"]').value;
-        const password = e.target.querySelector('input[type="password"]').value;
         const currentUsername = document.getElementById('currentUsername').textContent.replace('Your Username: ', '');
 
         if (username !== currentUsername) {
@@ -118,11 +131,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (confirm('Are you absolutely sure you want to delete your account? This cannot be undone.')) {
-            const response = await fetch('/api/users/profile/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ username, password })
+            const response = await fetch('/api/users/profile/me', {
+                method: 'DELETE',
+                headers: { 
+                    'Authorization': `Bearer ${token}` 
+                },
             });
+
             if (response.ok) {
                 localStorage.removeItem('authToken');
                 alert('Account deleted successfully.');
