@@ -1,4 +1,5 @@
 from ninja import Router
+from ninja.errors import HttpError
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as django_session_login
@@ -6,7 +7,17 @@ from django.db import transaction
 from django.db.models import Q
 
 from .models import Profile
-from .schemas import RegisterSchema, LoginSchema, TokenSchema, ProfileOut
+from .schemas import (
+    ProfileOut,
+    UpdateProfileSchema,
+    UpdateNameSchema,
+    UpdateEmailSchema,
+    UpdatePasswordSchema,
+    DeleteAccountSchema,
+    RegisterSchema,
+    LoginSchema,
+    TokenSchema,
+)
 from .auth import generate_token, JWTAuth
 
 #? Instead of NinjaAPI, we use Router
@@ -114,6 +125,64 @@ def get_my_profile(request):
     # by our JWTAuth class. We can access it with `request.auth`.
     user = request.auth
     return user.profile # Assumes a one-to-one 'profile' relation on the User model
+
+#? Update Profile (Nickname & Pfp) --------------------------------------------------
+@router.patch("/profile/me", response=ProfileOut, auth=JWTAuth(), summary="Update the logged-in user's profile")
+def update_my_profile(request, payload: UpdateProfileSchema):
+    user = request.auth
+    profile = user.profile
+    
+    # The payload is a Pydantic model, .dict() converts it to a dictionary
+    # exclude_unset=True means we only get the fields the user actually sent
+    update_data = payload.dict(exclude_unset=True)
+    
+    for key, value in update_data.items():
+        setattr(profile, key, value)
+        
+    profile.save()
+    return profile
+
+#? Update Full Name --------------------------------------------------
+@router.patch("/profile/change-name", response=ProfileOut, auth=JWTAuth(), summary="Update the logged-in user's name")
+def update_name(request, payload: UpdateNameSchema):
+    user = request.auth
+    user.first_name = payload.first_name
+    user.last_name = payload.last_name
+    user.save()
+    # Return the full profile data so the frontend can refresh
+    return user.profile
+
+#? Change Email --------------------------------------------------
+@router.post("/profile/change-email", auth=JWTAuth(), summary="Change the user's email address")
+def change_email(request, payload: UpdateEmailSchema):
+    user = request.auth
+    
+    # 1. Verify the user's current password
+    if not user.check_password(payload.password):
+        raise HttpError(401, "Invalid password")
+        
+    # 2. Check if the new email is already in use
+    if User.objects.filter(email=payload.email).exclude(id=user.id).exists():
+        raise HttpError(400, "This email address is already registered.")
+        
+    # 3. Update and save
+    user.email = payload.email
+    user.save()
+    return {"success": "Email updated successfully."}
+
+#? Change Password --------------------------------------------------
+@router.post("/profile/change-password", auth=JWTAuth(), summary="Change the user's password")
+def change_password(request, payload: UpdatePasswordSchema):
+    user = request.auth
+
+    # 1. Verify the old password
+    if not user.check_password(payload.old_password):
+        raise HttpError(401, "Invalid old password")
+    
+    # 2. Set the new password (set_password handles the hashing)
+    user.set_password(payload.new_password)
+    user.save()
+    return {"success": "Password updated successfully."}
 
 #? Delete Profile --------------------------------------------------
 @router.delete("/profile/me", auth=JWTAuth(), summary="Delete the current user's account")
