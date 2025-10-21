@@ -1,6 +1,9 @@
 # Szoftverspecifikáció_KeleMártonRóbert_MolnárKároly.pdf
 Hivatalosan leadott specifikáció
 
+# Adatszerkezet_KeleMártonRóbert_MolnárKároly
+Hivatalosan leadott adatbázis ismertető
+
 # cQuizy Specifikáció v2.pdf
 Specifikáció kicserélt logoval és átírt fejléccel
 
