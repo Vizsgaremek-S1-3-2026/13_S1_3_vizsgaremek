@@ -5,5 +5,6 @@
         "cQuizy": "app",
         "migrations": "database",
         "users": "admin",
-    }
+        "groups": "ui",
+    },
 ```

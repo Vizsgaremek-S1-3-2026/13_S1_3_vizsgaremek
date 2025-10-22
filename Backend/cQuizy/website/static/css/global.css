@@ -174,3 +174,42 @@ form{
         flex-direction: column;
     }
 }
+
+
+
+
+/*! GROUPS ====================================================================================================*/
+#groupsForms{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    @media (max-width: 768px) {
+        flex-direction: column;
+    }
+}
+.groupItem{
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    padding: 10px 20px;
+    margin: 10px;
+    max-width: 500px;
+    transition: background-color 0.2s ease-in-out;
+
+    button{
+        margin: 5px;
+        background-color: var(--primary-color);
+        color: var(--text-color);
+        border: none;
+        border-radius: 25px;
+        padding: 10px 20px;
+        cursor: pointer;
+        font-family: "Comfortaa", sans-serif !important;
+        transition: background-color 0.2s ease-in-out;
+    }
+    button:hover{
+        background-color: var(--primary-color-hover);
+    }
+}
+.groupItem:hover{
+    background-color: var(--tertiary-background);
+}

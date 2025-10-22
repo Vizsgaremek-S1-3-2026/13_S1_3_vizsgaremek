@@ -21,7 +21,7 @@ from .schemas import (
 from .auth import generate_token, JWTAuth
 
 #? Instead of NinjaAPI, we use Router
-router = Router(tags=['users'])  # The 'tags' are great for organizing docs
+router = Router(tags=['Users'])  # The 'tags' are great for organizing docs
 
 
 

@@ -18,6 +18,8 @@ def register(request):
     return render(request, 'website/pages/register.html')
 def profile(request):
     return render(request, 'website/pages/profile.html')
+def groups(request):
+    return render(request, 'website/pages/groups.html')
 
 
 

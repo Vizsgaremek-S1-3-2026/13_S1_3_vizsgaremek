@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'ninja',
     'website',
     'users',
+    'groups',
 ]
 
 MIDDLEWARE = [
