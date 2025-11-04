@@ -11,6 +11,14 @@ class GroupOutSchema(Schema):
 class GroupWithRankOutSchema(GroupOutSchema):
     rank: str
 
+#? Updating group name (Input)
+class GroupRenameSchema(Schema):
+    name: str
+
+#? Transferring group ownership (Input)
+class GroupTransferSchema(Schema):
+    user_id: int
+
 #? Creating a group (Input)
 class GroupCreateSchema(Schema):
     name: str

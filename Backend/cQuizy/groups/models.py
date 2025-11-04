@@ -33,6 +33,7 @@ class GroupMember(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="group_memberships")
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="members")
     rank = models.CharField(max_length=10, choices=RANK_CHOICES, default='MEMBER', verbose_name="Rank")
+    date_joined = models.DateTimeField(auto_now_add=True, verbose_name="Date Joined")
 
     class Meta:
         # Ensures a user can only be a member of a group once

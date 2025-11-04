@@ -13,12 +13,22 @@ function formatDateTime(isoString) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Get all necessary elements from the HTML
+    // --- Elements for existing forms ---
     const createGroupForm = document.getElementById('formCreateGroup');
     const groupNameInput = document.getElementById('groupNameInput');
     const joinGroupForm = document.getElementById('formJoinGroup');
     const groupInviteInput = document.getElementById('groupInviteInput');
     const groupsContainer = document.getElementById('groupsContainer');
+
+    // --- UPDATED: Get elements for Rename and Transfer forms based on new HTML ---
+    const renameGroupForm = document.getElementById('formRenameGroup'); // Using corrected ID
+    const groupRenameIdInput = document.getElementById('groupRenameId');
+    const groupRenameNameInput = document.getElementById('groupRenameName');
+    
+    const transferGroupForm = document.getElementById('formTransferGroup');
+    const groupTransferIdInput = document.getElementById('groupTransferId');
+    const groupTransferUserInput = document.getElementById('groupTransferUser');
+
 
     // Fetches all groups for the user and displays them on the page
     const fetchAndDisplayGroups = async () => {
@@ -44,20 +54,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     const groupElement = document.createElement('div');
                     groupElement.className = 'groupItem';
 
-                    // --- UPDATED LOGIC FOR CONDITIONAL BUTTONS ---
                     let actionButtonHTML = '';
-                    // A "Delete" button appears for actual Admins OR for Superusers
                     if (group.rank === 'ADMIN' || group.rank === 'SUPERUSER') {
                         actionButtonHTML = `<button class="delete-btn" data-group-id="${group.id}">Delete Group</button>`;
-                    } 
-                    // A "Leave" button ONLY appears for actual Members
-                    else if (group.rank === 'MEMBER') {
+                    } else if (group.rank === 'MEMBER') {
                         actionButtonHTML = `<button class="leave-btn" data-group-id="${group.id}">Leave Group</button>`;
                     }
 
                     const formattedDate = formatDateTime(group.date_created);
 
-                    // Build the complete HTML for the group item
                     groupElement.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <h3>${group.name} | ID: ${group.id}</h3>
@@ -75,12 +80,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Single event listener on the container to handle clicks for both Delete and Leave buttons
+    // Event listener for Delete and Leave buttons
     groupsContainer.addEventListener('click', async (event) => {
         const token = localStorage.getItem('authToken');
         if (!token) return alert('Please log in.');
 
-        // Handle Delete Button Click
         if (event.target.matches('.delete-btn')) {
             const groupId = event.target.dataset.groupId;
             if (confirm(`Are you sure you want to DELETE group ID ${groupId}? This cannot be undone.`)) {
@@ -90,14 +94,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
                     if (!response.ok) throw new Error((await response.json()).detail || 'Failed to delete group.');
-                    fetchAndDisplayGroups(); // Refresh the list
+                    fetchAndDisplayGroups();
                 } catch (error) {
                     alert(`Error: ${error.message}`);
                 }
             }
         }
 
-        // Handle Leave Button Click
         if (event.target.matches('.leave-btn')) {
             const groupId = event.target.dataset.groupId;
             if (confirm(`Are you sure you want to LEAVE group ID ${groupId}?`)) {
@@ -107,7 +110,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
                     if (!response.ok) throw new Error((await response.json()).detail || 'Failed to leave group.');
-                    fetchAndDisplayGroups(); // Refresh the list
+                    fetchAndDisplayGroups();
                 } catch (error) {
                     alert(`Error: ${error.message}`);
                 }
@@ -115,9 +118,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Handles the submission of the "Create Group" form
+    // Handles "Create Group" form
     createGroupForm.addEventListener('submit', async (event) => {
-        event.preventDefault(); // Prevents the page from reloading
+        event.preventDefault();
         const token = localStorage.getItem('authToken');
         if (!token) return alert('You must be logged in to create a group.');
         const groupName = groupNameInput.value.trim();
@@ -129,16 +132,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ name: groupName })
             });
             if (!response.ok) throw new Error((await response.json()).detail || 'Failed to create group.');
-            groupNameInput.value = '';
+            createGroupForm.reset();
             fetchAndDisplayGroups();
         } catch (error) {
             alert(`Error: ${error.message}`);
         }
     });
 
-    // Handles the submission of the "Join Group" form
+    // Handles "Join Group" form
     joinGroupForm.addEventListener('submit', async (event) => {
-        event.preventDefault(); // Prevents the page from reloading
+        event.preventDefault();
         const token = localStorage.getItem('authToken');
         if (!token) return alert('You must be logged in to join a group.');
         const inviteCode = groupInviteInput.value.trim();
@@ -150,13 +153,67 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ invite_code: inviteCode })
             });
             if (!response.ok) throw new Error((await response.json()).detail || 'Failed to join group.');
-            groupInviteInput.value = '';
+            joinGroupForm.reset();
             fetchAndDisplayGroups();
         } catch (error) {
             alert(`Error: ${error.message}`);
         }
     });
 
-    // Initial action: Fetch and display the groups as soon as the page loads.
+    // --- UPDATED: Handles submission for the "Rename Group" form ---
+    renameGroupForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const token = localStorage.getItem('authToken');
+        if (!token) return alert('You must be logged in.');
+
+        const groupId = groupRenameIdInput.value.trim();
+        const newName = groupRenameNameInput.value.trim();
+
+        if (!groupId || !newName) return alert('Please provide both a Group ID and a new name.');
+
+        try {
+            const response = await fetch(`/api/groups/${groupId}/rename`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ name: newName })
+            });
+            if (!response.ok) throw new Error((await response.json()).detail || 'Failed to rename group.');
+            
+            alert('Group renamed successfully!');
+            renameGroupForm.reset();
+            fetchAndDisplayGroups();
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+        }
+    });
+
+    // --- UPDATED: Handles submission for the "Transfer Ownership" form ---
+    transferGroupForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const token = localStorage.getItem('authToken');
+        if (!token) return alert('You must be logged in.');
+
+        const groupId = groupTransferIdInput.value.trim();
+        const newOwnerId = groupTransferUserInput.value.trim();
+
+        if (!groupId || !newOwnerId) return alert("Please provide both a Group ID and the new owner's User ID.");
+
+        try {
+            const response = await fetch(`/api/groups/${groupId}/transfer_ownership`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ user_id: parseInt(newOwnerId) })
+            });
+            if (!response.ok) throw new Error((await response.json()).detail || 'Failed to transfer ownership.');
+            
+            alert('Ownership transferred successfully!');
+            transferGroupForm.reset();
+            fetchAndDisplayGroups();
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+        }
+    });
+
+    // Initial load
     fetchAndDisplayGroups();
 });

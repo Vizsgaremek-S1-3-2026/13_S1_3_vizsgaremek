@@ -7,6 +7,8 @@ from .models import Group, GroupMember, GradePercentage
 from .schemas import (
     GroupOutSchema,
     GroupWithRankOutSchema,
+    GroupRenameSchema,
+    GroupTransferSchema,
     GroupCreateSchema,
     GroupJoinSchema,
 )
@@ -47,6 +49,67 @@ def create_group(request, data: GroupCreateSchema):
     )
 
     return new_group
+
+#? Rename
+@router.put("/{group_id}/rename", response=GroupOutSchema, auth=JWTAuth(), summary="Rename a group")
+def rename_group(request, group_id: int, data: GroupRenameSchema):
+    """
+    Renames a group.
+
+    Requires the user to be an 'ADMIN' of the group.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # Authorization Check
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+
+    if not is_admin and not current_user.is_superuser:
+        return 403, {"detail": "You do not have permission to rename this group."}
+
+    # Rename the group and save
+    group.name = data.name
+    group.save()
+
+    return group
+
+#? Transfer Ownership
+@router.post("/{group_id}/transfer", auth=JWTAuth(), summary="Transfer ownership of a group")
+def transfer(request, group_id: int, data: GroupTransferSchema):
+    """
+    Transfers the ownership of a group to another member.
+
+    - The user making the request must be an 'ADMIN'.
+    - The target user must be a member of the group.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+    new_owner_id = data.user_id
+
+    # 1. Authorization Check: Ensure the current user is an admin
+    try:
+        current_admin_membership = GroupMember.objects.get(group=group, user=current_user, rank='ADMIN')
+    except GroupMember.DoesNotExist:
+        return 403, {"detail": "You do not have permission to transfer ownership of this group."}
+
+    # 2. Find the target user and ensure they are a member of the group
+    try:
+        new_owner_membership = GroupMember.objects.get(group=group, user_id=new_owner_id)
+    except GroupMember.DoesNotExist:
+        return 404, {"detail": "The specified user is not a member of this group."}
+
+    # 3. Prevent transferring ownership to oneself
+    if current_user.id == new_owner_id:
+        return 400, {"detail": "You are already the owner of this group."}
+
+    # 4. Perform the transfer
+    current_admin_membership.rank = 'MEMBER'
+    current_admin_membership.save()
+
+    new_owner_membership.rank = 'ADMIN'
+    new_owner_membership.save()
+
+    return 200, {"success": f"Ownership of '{group.name}' has been transferred."}
 
 #? Joining
 @router.post("/join", response=GroupOutSchema, auth=JWTAuth(), summary="Join a group using an invite code")
@@ -146,7 +209,7 @@ def list_groups(request):
         return response_data
 
     # This part for regular users remains the same and is correct.
-    memberships = GroupMember.objects.filter(user=current_user).select_related('group')
+    memberships = GroupMember.objects.filter(user=current_user).select_related('group').order_by('date_joined')
     for membership in memberships:
         group = membership.group
         response_data.append({
