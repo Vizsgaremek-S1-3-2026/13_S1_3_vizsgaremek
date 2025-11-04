@@ -43,18 +43,14 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   // Ezt a metódust hívjuk meg, amikor a felhasználó kijelentkezik.
-  void _handleLogout() {
-    setState(() {
-      _isLoggedIn = false;
-    });
-  }
+ 
 
   @override
   Widget build(BuildContext context) {
     // Ha a felhasználó be van jelentkezve, a HomePage-t mutatjuk.
     // Ha nincs, akkor a LoginPage-t.
     if (_isLoggedIn) {
-      return HomePage(onLogout: _handleLogout);
+      return HomePage();
     } else {
       return LoginPage(onLoginSuccess: _handleLogin);
     }

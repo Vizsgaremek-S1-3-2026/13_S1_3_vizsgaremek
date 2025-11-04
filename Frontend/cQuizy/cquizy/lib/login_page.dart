@@ -313,7 +313,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Image.asset('assets/logo/logo_2.png', height: 100), // Ha van logód, vedd ki a kommentből
+              Image.asset('assets/logo/logo_2.png', height: 100),
               const SizedBox(height: 16),
               Text("Üdvözlünk újra!", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: colors['text']), textAlign: TextAlign.center),
               const SizedBox(height: 8),
