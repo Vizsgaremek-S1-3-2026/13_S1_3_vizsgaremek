@@ -33,7 +33,7 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  bool _isLoggedIn = true;
+  bool _isLoggedIn = false;
 
   // Ezt a metódust hívjuk meg, amikor a bejelentkezés sikeres.
   void _handleLogin() {

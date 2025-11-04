@@ -111,6 +111,8 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 ...otherGroups.map((group) => GroupCard(group: group)).toList(),
+
+                const SizedBox(height: 50), //plusbottomplace
               ],
             ),
           ),
@@ -127,6 +129,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
+  // *** MÓDOSÍTÁS: Ikonok hozzáadva a menüpontokhoz ***
   Widget _buildSideNav(List<Group> activeTests) {
     return Container(
       width: 280,
@@ -136,11 +139,11 @@ class HomePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 20),
-          SideNavItem(label: 'Csoportok', isSelected: true),
+          SideNavItem(label: 'Csoportok', icon: Icons.group, isSelected: true),
           const SizedBox(height: 8),
-          SideNavItem(label: 'Tesztek'),
+          SideNavItem(label: 'Tesztek', icon: Icons.quiz),
           const SizedBox(height: 8),
-          SideNavItem(label: 'Statisztika'),
+          SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
           const Spacer(),
           const Padding(
             padding: EdgeInsets.only(left: 12.0, bottom: 8.0),
@@ -166,6 +169,7 @@ class HomePage extends StatelessWidget {
           if (activeTests.isNotEmpty)
             ActiveTestCarousel(activeTests: activeTests),
           const SizedBox(height: 24),
+          // Ennek a menüpontnak nincs ikonja, a kérésnek megfelelően
           SideNavItem(label: 'Profil & Beállítások'),
           const SizedBox(height: 10),
         ],
@@ -174,7 +178,7 @@ class HomePage extends StatelessWidget {
   }
 }
 
-// ActiveTestCarousel widget (MÓDOSULT A MÉRET)
+// ActiveTestCarousel widget (VÁLTOZATLAN)
 class ActiveTestCarousel extends StatefulWidget {
   final List<Group> activeTests;
   const ActiveTestCarousel({super.key, required this.activeTests});
@@ -226,7 +230,6 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // *** MÓDOSÍTÁS: A magasság növelve lett, hogy kényelmesen elférjen az új elrendezés ***
         SizedBox(
           height: 185, 
           child: PageView.builder(
@@ -299,7 +302,7 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
   }
 }
 
-// ActiveTestCard widget (MÓDOSULT AZ ELRENDEZÉS)
+// ActiveTestCard widget (VÁLTOZATLAN)
 class ActiveTestCard extends StatefulWidget {
   final Group group;
   final VoidCallback? onNext;
@@ -381,8 +384,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
 
   Widget _buildExpiryInfo() {
     if (widget.group.testExpiryDate == null) {
-      // Üres helyet adunk vissza, hogy a gomb ne ugorjon feljebb
-      return const SizedBox(height: 34); // Kb. megegyezik a buborék magasságával
+      return const SizedBox(height: 34);
     }
 
     Widget content;
@@ -439,13 +441,11 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
               gradient: widget.group.gradient,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(10),
             ),
-            // *** MÓDOSÍTÁS: Az elrendezés megváltozott a fix távolság miatt ***
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Felső rész (fixen fent)
                 Text(
                   widget.group.title,
                   style: const TextStyle(
@@ -459,17 +459,9 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                   style: TextStyle(
                       color: Colors.white.withOpacity(0.8), fontSize: 12),
                 ),
-
-                // Ez a Spacer letolja az alatta lévő elemeket a kártya aljára
                 const Spacer(),
-                
-                // Középre igazított buborék
                 Center(child: _buildExpiryInfo()),
-
-                // Fix távolság a buborék és a gomb között
                 const SizedBox(height: 12),
-                
-                // Alsó rész (fixen lent)
                 ElevatedButton(
                   onPressed: () {},
                   style: ElevatedButton.styleFrom(
@@ -538,8 +530,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
   }
 }
 
-// A többi widget (HeaderWithDivider, GroupCard, SideNavItem) VÁLTOZATLAN.
-
+// HeaderWithDivider (VÁLTOZATLAN)
 class HeaderWithDivider extends StatelessWidget {
   final String title;
   const HeaderWithDivider({super.key, required this.title});
@@ -565,6 +556,7 @@ class HeaderWithDivider extends StatelessWidget {
   }
 }
 
+// GroupCard (VÁLTOZATLAN)
 class GroupCard extends StatelessWidget {
   final Group group;
   const GroupCard({super.key, required this.group});
@@ -579,7 +571,7 @@ class GroupCard extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
           decoration: BoxDecoration(
             gradient: group.gradient,
-            borderRadius: BorderRadius.circular(5),
+            borderRadius: BorderRadius.circular(10), // Lekerekített sarkok
           ),
           child: Material(
             color: Colors.transparent,
@@ -631,10 +623,19 @@ class GroupCard extends StatelessWidget {
   }
 }
 
+// SideNavItem (MÓDOSULT: IKON HOZZÁADVA)
 class SideNavItem extends StatelessWidget {
   final String label;
+  final IconData? icon; // ÚJ: Opcionális ikon
   final bool isSelected;
-  const SideNavItem({super.key, required this.label, this.isSelected = false});
+  
+  const SideNavItem({
+    super.key, 
+    required this.label, 
+    this.icon, // ÚJ
+    this.isSelected = false,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -647,9 +648,13 @@ class SideNavItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              const CircleAvatar(
-                backgroundColor: Color(0xFF4f4f4f),
+              CircleAvatar(
+                backgroundColor: const Color(0xFF4f4f4f),
                 radius: 18,
+                // ÚJ: Megjeleníti az ikont, ha van
+                child: icon != null 
+                  ? Icon(icon, color: Colors.white, size: 20)
+                  : null,
               ),
               const SizedBox(width: 16),
               Text(
