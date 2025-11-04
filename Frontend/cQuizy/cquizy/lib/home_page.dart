@@ -1,19 +1,23 @@
 // lib/home_page.dart
 
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:intl/intl.dart'; // Futtasd a 'flutter pub add intl' parancsot a terminálban
 
-// Adatmodell a csoportok dinamikus kezeléséhez.
+// Adatmodell a csoportok dinamikus kezeléséhez. (VÁLTOZATLAN)
 class Group {
   final String title;
   final String subtitle;
   final Gradient gradient;
   final bool hasNotification;
+  final DateTime? testExpiryDate;
 
   Group({
     required this.title,
     required this.subtitle,
     required this.gradient,
     this.hasNotification = false,
+    this.testExpiryDate,
   });
 }
 
@@ -22,7 +26,7 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Dinamikusan állítható csoportlisták a kép alapján
+    // Demo adatok
     final List<Group> myGroups = [
       Group(
         title: 'Matematika 8.A',
@@ -44,7 +48,7 @@ class HomePage extends StatelessWidget {
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
-        hasNotification: true,
+        hasNotification: false,
       ),
       Group(
         title: 'Hálózati Alapismeretek 9.D',
@@ -54,54 +58,66 @@ class HomePage extends StatelessWidget {
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
+        hasNotification: true,
+        testExpiryDate: DateTime.now().add(const Duration(hours: 24)),
+      ),
+       Group(
+        title: 'Angol Haladó 11.B',
+        subtitle: 'Fordító Ágnes',
+        gradient: const LinearGradient(
+          colors: [Color(0xff1a7a6a), Color(0xff2cb39a)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        hasNotification: true,
+        testExpiryDate: DateTime.now().add(const Duration(hours: 8, minutes: 30)),
+      ),
+      Group(
+        title: 'Programozás alapjai 10.A',
+        subtitle: 'Kód Elek',
+        gradient: const LinearGradient(
+          colors: [Color(0xff6d2c77), Color(0xffa142ad)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        hasNotification: true,
+        testExpiryDate: DateTime.now().add(const Duration(minutes: 15, seconds: 30)),
       ),
     ];
+
+    final List<Group> activeTests = [...myGroups, ...otherGroups]
+        .where((group) => group.hasNotification)
+        .toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF1c1c1c),
       body: Row(
         children: [
-          // Bal oldali navigációs sáv
-          _buildSideNav(),
-
-          // Fő tartalom
+          _buildSideNav(activeTests),
           Expanded(
-            // A Column helyett ListView-t használunk, hogy a tartalom
-            // görgethető legyen, ha nem fér ki.
             child: ListView(
-              // A korábbi horizontális paddingot kivettük innen,
-              // így a gyerekelemek (a kártyák) kitölthetik a teljes szélességet.
-              // Csak a vertikális padding marad.
               padding: const EdgeInsets.symmetric(vertical: 20.0),
               children: [
-                // A fejléceknek külön adunk horizontális paddingot.
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40.0),
-                  child: const HeaderWithDivider(title: 'Saját Csoportok'),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 40.0),
+                  child: HeaderWithDivider(title: 'Saját Csoportok'),
                 ),
                 const SizedBox(height: 20),
-                // A GroupCard-ok most már teljes szélességűek.
                 ...myGroups.map((group) => GroupCard(group: group)).toList(),
                 const SizedBox(height: 30),
-
-                // A fejléceknek külön adunk horizontális paddingot.
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40.0),
-                  child: const HeaderWithDivider(title: 'További Csoportok'),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 40.0),
+                  child: HeaderWithDivider(title: 'További Csoportok'),
                 ),
                 const SizedBox(height: 20),
-                // A GroupCard-ok most már teljes szélességűek.
                 ...otherGroups.map((group) => GroupCard(group: group)).toList(),
               ],
             ),
           ),
         ],
       ),
-      // Lebegő akciógomb
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: Új csoport hozzáadása
-        },
+        onPressed: () {},
         backgroundColor: const Color(0xFFff3b5f),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16.0),
@@ -111,10 +127,9 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  // A bal oldali navigációs sávot felépítő widget
-  Widget _buildSideNav() {
+  Widget _buildSideNav(List<Group> activeTests) {
     return Container(
-      width: 280, // Pontosabb szélesség
+      width: 280,
       color: const Color(0xFF252525),
       padding: const EdgeInsets.all(20.0),
       child: Column(
@@ -126,13 +141,18 @@ class HomePage extends StatelessWidget {
           SideNavItem(label: 'Tesztek'),
           const SizedBox(height: 8),
           SideNavItem(label: 'Statisztika'),
-          const Spacer(), // A fennmaradó helyet kitölti
+          const Spacer(),
           const Padding(
             padding: EdgeInsets.only(left: 12.0, bottom: 8.0),
             child: Row(
               children: [
-                Icon(Icons.local_fire_department, color: Color(0xffe53935), size: 22),
-                SizedBox(width: 6),
+                Padding(
+                  padding: EdgeInsets.only(left: 60),
+                  child: Image(
+                    image: AssetImage('assets/logo/logo_2.png'),
+                    width: 22,
+                  ),
+                ),
                 Text(
                   'cQuizy',
                   style: TextStyle(
@@ -143,7 +163,8 @@ class HomePage extends StatelessWidget {
               ],
             ),
           ),
-          const TestCard(),
+          if (activeTests.isNotEmpty)
+            ActiveTestCarousel(activeTests: activeTests),
           const SizedBox(height: 24),
           SideNavItem(label: 'Profil & Beállítások'),
           const SizedBox(height: 10),
@@ -153,11 +174,375 @@ class HomePage extends StatelessWidget {
   }
 }
 
-// Fejléc widget a vékony elválasztó vonallal
+// ActiveTestCarousel widget (MÓDOSULT A MÉRET)
+class ActiveTestCarousel extends StatefulWidget {
+  final List<Group> activeTests;
+  const ActiveTestCarousel({super.key, required this.activeTests});
+
+  @override
+  State<ActiveTestCarousel> createState() => _ActiveTestCarouselState();
+}
+
+class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+    if (widget.activeTests.length > 1) {
+      _startTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
+      int nextPage = _currentPage < widget.activeTests.length - 1 ? _currentPage + 1 : 0;
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _resetTimer() {
+    _timer?.cancel();
+    if (widget.activeTests.length > 1) {
+      _startTimer();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // *** MÓDOSÍTÁS: A magasság növelve lett, hogy kényelmesen elférjen az új elrendezés ***
+        SizedBox(
+          height: 185, 
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.activeTests.length,
+            onPageChanged: (int page) {
+              setState(() {
+                _currentPage = page;
+              });
+              _resetTimer();
+            },
+            itemBuilder: (context, index) {
+              return ActiveTestCard(
+                group: widget.activeTests[index],
+                onNext: index < widget.activeTests.length - 1
+                    ? () {
+                        _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                        _resetTimer();
+                      }
+                    : null,
+                onPrevious: index > 0
+                    ? () {
+                        _pageController.previousPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                        _resetTimer();
+                      }
+                    : null,
+              );
+            },
+          ),
+        ),
+        if (widget.activeTests.length > 1) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(
+                widget.activeTests.length,
+                (index) => buildDot(index: index),
+              ),
+            ),
+          ),
+        ]
+      ],
+    );
+  }
+
+  Widget buildDot({required int index}) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      height: 6,
+      width: _currentPage == index ? 20 : 6,
+      decoration: BoxDecoration(
+        color: _currentPage == index ? Colors.white : Colors.white54,
+        borderRadius: BorderRadius.circular(5),
+      ),
+    );
+  }
+}
+
+// ActiveTestCard widget (MÓDOSULT AZ ELRENDEZÉS)
+class ActiveTestCard extends StatefulWidget {
+  final Group group;
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
+
+  const ActiveTestCard({
+    super.key,
+    required this.group,
+    this.onNext,
+    this.onPrevious,
+  });
+
+  @override
+  State<ActiveTestCard> createState() => _ActiveTestCardState();
+}
+
+class _ActiveTestCardState extends State<ActiveTestCard> {
+  bool _isHovered = false;
+  Timer? _countdownTimer;
+  Timer? _blinkingTimer;
+  late Duration _remainingTime;
+  bool _isBlinkingVisible = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.group.testExpiryDate != null) {
+      _remainingTime = widget.group.testExpiryDate!.difference(DateTime.now());
+
+      if (_remainingTime.isNegative) {
+        // A teszt már lejárt
+      } else if (_remainingTime.inHours < 12) {
+        _startCountdownTimer();
+        if (_remainingTime.inMinutes < 45) {
+          _startBlinkingTimer();
+        }
+      }
+    }
+  }
+
+  void _startCountdownTimer() {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final now = DateTime.now();
+      final newRemainingTime = widget.group.testExpiryDate!.difference(now);
+
+      if (newRemainingTime.isNegative) {
+        _countdownTimer?.cancel();
+        _blinkingTimer?.cancel();
+        if (mounted) setState(() => _remainingTime = Duration.zero);
+      } else {
+        if (mounted) setState(() => _remainingTime = newRemainingTime);
+        if (_remainingTime.inMinutes < 45 && _blinkingTimer == null) {
+          _startBlinkingTimer();
+        }
+      }
+    });
+  }
+
+  void _startBlinkingTimer() {
+    _blinkingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() => _isBlinkingVisible = !_isBlinkingVisible);
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    _blinkingTimer?.cancel();
+    super.dispose();
+  }
+  
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    String hours = twoDigits(duration.inHours);
+    String minutes = twoDigits(duration.inMinutes.remainder(60));
+    String seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$hours:$minutes:$seconds";
+  }
+
+  Widget _buildExpiryInfo() {
+    if (widget.group.testExpiryDate == null) {
+      // Üres helyet adunk vissza, hogy a gomb ne ugorjon feljebb
+      return const SizedBox(height: 34); // Kb. megegyezik a buborék magasságával
+    }
+
+    Widget content;
+    bool isExpired = _remainingTime.isNegative || _remainingTime == Duration.zero;
+
+    if (isExpired) {
+      content = const Text('LEJÁRT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold));
+    } else if (_remainingTime.inHours >= 12) {
+      final formattedDate = DateFormat('yyyy. MMM d. HH:mm').format(widget.group.testExpiryDate!);
+      content = Text('Lejárat: $formattedDate', style: const TextStyle(color: Colors.white, fontSize: 12));
+    } else {
+      bool isBlinking = _remainingTime.inMinutes < 45;
+      content = Text(
+        _formatDuration(_remainingTime),
+        style: TextStyle(
+          color: isBlinking 
+            ? (_isBlinkingVisible ? Colors.red.shade300 : Colors.white.withOpacity(0.9)) 
+            : Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.hourglass_bottom, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          content,
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String subject = widget.group.title.split(' ')[0];
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              gradient: widget.group.gradient,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            // *** MÓDOSÍTÁS: Az elrendezés megváltozott a fix távolság miatt ***
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Felső rész (fixen fent)
+                Text(
+                  widget.group.title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$subject Témazáró',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.8), fontSize: 12),
+                ),
+
+                // Ez a Spacer letolja az alatta lévő elemeket a kártya aljára
+                const Spacer(),
+                
+                // Középre igazított buborék
+                Center(child: _buildExpiryInfo()),
+
+                // Fix távolság a buborék és a gomb között
+                const SizedBox(height: 12),
+                
+                // Alsó rész (fixen lent)
+                ElevatedButton(
+                  onPressed: () {},
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black.withOpacity(0.2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    elevation: 0,
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Teszt Indítása',
+                          style: TextStyle(color: Colors.white)),
+                      SizedBox(width: 8),
+                      Icon(Icons.play_arrow, size: 20, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedOpacity(
+            opacity: _isHovered && widget.onPrevious != null ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _buildNavArrow(
+                icon: Icons.arrow_back_ios_new,
+                onTap: widget.onPrevious,
+              ),
+            ),
+          ),
+          AnimatedOpacity(
+            opacity: _isHovered && widget.onNext != null ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _buildNavArrow(
+                icon: Icons.arrow_forward_ios,
+                onTap: widget.onNext,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavArrow({required IconData icon, VoidCallback? onTap}) {
+    if (onTap == null) return const SizedBox.shrink();
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        padding: const EdgeInsets.all(8.0),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.4),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white.withOpacity(0.9), size: 16),
+      ),
+    );
+  }
+}
+
+// A többi widget (HeaderWithDivider, GroupCard, SideNavItem) VÁLTOZATLAN.
+
 class HeaderWithDivider extends StatelessWidget {
   final String title;
   const HeaderWithDivider({super.key, required this.title});
-
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -180,36 +565,30 @@ class HeaderWithDivider extends StatelessWidget {
   }
 }
 
-// Csoport kártya widget
 class GroupCard extends StatelessWidget {
   final Group group;
   const GroupCard({super.key, required this.group});
-
   @override
   Widget build(BuildContext context) {
     return Stack(
-      alignment: Alignment.centerRight,
+      alignment: Alignment.centerLeft,
       children: [
         Container(
-          height: 100, // Meghatározott magasság
-           // A horizontális margót eltávolítottuk, csak az alsó marad.
-          margin: const EdgeInsets.only(bottom: 16.0),
+          width: MediaQuery.of(context).size.width,
+          constraints: const BoxConstraints(maxHeight: double.infinity),
+          margin: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
           decoration: BoxDecoration(
             gradient: group.gradient,
-            // A borderRadius-t nullára állítjuk, hogy a kártya szögletes legyen
-            // és kitöltse a teljes szélességet a széleken.
-            borderRadius: BorderRadius.circular(0),
+            borderRadius: BorderRadius.circular(5),
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () {
-                // TODO: Csoportra kattintás logikája
-              },
-              borderRadius: BorderRadius.circular(0),
+              onTap: () {},
+              borderRadius: BorderRadius.circular(5),
               child: Padding(
-                // A belső paddingot növelhetjük, hogy a szöveg ne legyen a szélén.
-                padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 20.0),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40.0, vertical: 20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -235,7 +614,8 @@ class GroupCard extends StatelessWidget {
         ),
         if (group.hasNotification)
           Positioned(
-            right: 10, // Kicsit beljebb hozva
+            right: 25,
+            bottom: 25,
             child: Container(
               width: 18,
               height: 18,
@@ -251,22 +631,17 @@ class GroupCard extends StatelessWidget {
   }
 }
 
-
-// Oldalsó navigációs elem widgetje
 class SideNavItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   const SideNavItem({super.key, required this.label, this.isSelected = false});
-
   @override
   Widget build(BuildContext context) {
     return Material(
       color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: () {
-          // TODO: Navigációs elemre kattintás logikája
-        },
+        onTap: () {},
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -284,59 +659,6 @@ class SideNavItem extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// A bal alsó teszt kártya widgetje
-class TestCard extends StatelessWidget {
-  const TestCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF4e3a15),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Földrajz 7.C',
-            style: TextStyle(
-                color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Afrika Országai Témazáró',
-            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              // TODO: Teszt indítása logika
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF333333).withOpacity(0.8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              elevation: 0,
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Teszt Indítása', style: TextStyle(color: Colors.white)),
-                SizedBox(width: 8),
-                Icon(Icons.play_arrow, size: 20, color: Colors.white),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
