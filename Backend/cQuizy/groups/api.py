@@ -7,7 +7,10 @@ from .models import Group, GroupMember, GradePercentage
 from .schemas import (
     GroupOutSchema,
     GroupWithRankOutSchema,
-    GroupRenameSchema,
+
+    MemberOutSchema,
+
+    GroupUpdateSchema,
     GroupTransferSchema,
     GroupCreateSchema,
     GroupJoinSchema,
@@ -50,27 +53,60 @@ def create_group(request, data: GroupCreateSchema):
 
     return new_group
 
-#? Rename
-@router.put("/{group_id}/rename", response=GroupOutSchema, auth=JWTAuth(), summary="Rename a group")
-def rename_group(request, group_id: int, data: GroupRenameSchema):
+#? List Group Members
+@router.get("/{group_id}/members", response=List[MemberOutSchema], auth=JWTAuth(), summary="List all members of a group")
+def list_members(request, group_id: int):
     """
-    Renames a group.
-
-    Requires the user to be an 'ADMIN' of the group.
+    Retrieves a list of all members in a specific group.
+    
+    Requires the user to be a member of the group to view the list.
     """
     current_user = request.auth
     group = get_object_or_404(Group, id=group_id)
 
-    # Authorization Check
+    # 1. Authorization Check: Is the user a member of this group?
+    # Superusers should also be allowed access.
+    is_member = GroupMember.objects.filter(group=group, user=current_user).exists()
+    if not is_member and not current_user.is_superuser:
+        return 403, {"detail": "You do not have permission to view this group's members."}
+
+    # 2. Fetch all members
+    # Use select_related to efficiently grab user and profile data in one query
+    members = GroupMember.objects.filter(group=group).select_related('user', 'user__profile')
+    
+    # Ninja will automatically serialize this list of objects using MemberOutSchema
+    return members
+
+#? Change Group Data (Including Renaming)
+@router.patch("/{group_id}", response=GroupOutSchema, auth=JWTAuth(), summary="Update a group's settings")
+def update_group_settings(request, group_id: int, payload: GroupUpdateSchema):
+    """
+    Updates a group's settings (name, anticheat, kiosk).
+    
+    Requires the user to be an ADMIN of the group. This is a partial update;
+    only the fields provided in the request will be changed.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Authorization Check
     is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
-
     if not is_admin and not current_user.is_superuser:
-        return 403, {"detail": "You do not have permission to rename this group."}
+        return 403, {"detail": "You do not have permission to modify this group."}
 
-    # Rename the group and save
-    group.name = data.name
+    # 2. Get the data the client actually sent
+    update_data = payload.dict(exclude_none=True)
+
+    # 3. Update the group object and save
+    if not update_data:
+        # If the payload was empty after excluding None, do nothing.
+        return 200, group
+
+    for key, value in update_data.items():
+        setattr(group, key, value)
+    
     group.save()
-
+    
     return group
 
 #? Transfer Ownership
@@ -250,6 +286,66 @@ def leave_group(request, group_id: int):
     membership.delete()
 
     return 200, {"success": f"You have successfully left the group '{group.name}'."}
+
+#? Kicking a Member
+@router.delete("/{group_id}/members/{user_id}", auth=JWTAuth(), summary="Remove (kick) a member from a group")
+def kick_member(request, group_id: int, user_id: int):
+    """
+    Removes a member from a group.
+    
+    - Requires the requesting user to be an ADMIN of the group.
+    - An admin cannot kick themselves.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Authorization: Is the current user an admin of this group (or superuser) ?
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        return 403, {"detail": "You do not have permission to perform this action."}
+        
+    # 2. Edge Case: Prevent kicking yourself. They should use the "leave" endpoint.
+    if current_user.id == user_id:
+        return 400, {"detail": "You cannot kick yourself. Please use the 'leave group' endpoint."}
+
+    # 3. Find and delete the target member's record.
+    # get_object_or_404 will handle the "user not in group" case automatically.
+    member_to_kick = get_object_or_404(GroupMember, group=group, user_id=user_id)
+    
+    # Because you have only one admin, you don't need to check if the target is also an admin.
+    # If you ever change that rule, you'd add that check here.
+    
+    member_to_kick.delete()
+
+    return 200, {"success": "Member has been removed from the group."}
+
+#? Regenerate Invite Code
+@router.post("/{group_id}/regenerate-invite", response=GroupOutSchema, auth=JWTAuth(), summary="Regenerate the group's invite code")
+def regenerate_invite_code(request, group_id: int):
+    """
+    Generates a new, unique invite code for the group, invalidating the old one.
+    
+    Requires the user to be an ADMIN of the group.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Authorization Check
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        return 403, {"detail": "You do not have permission to perform this action."}
+    
+    # 2. Generate a new unique code (same logic as create_group)
+    while True:
+        new_code = secrets.token_urlsafe(8)
+        if not Group.objects.filter(invite_code=new_code).exists():
+            break
+            
+    group.invite_code = new_code
+    group.save()
+
+    # Return the updated group object so the frontend can display the new code
+    return group
 
 #? Deletion
 @router.delete("/{group_id}", auth=JWTAuth(), summary="Delete a group")

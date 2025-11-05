@@ -10,10 +10,11 @@
 
     <br><br>
 
-    <!-- FORM SECTION -->
+    <!-- FORM SECTION - UPDATED FOR NEW APIS -->
     <div id="groupsForms">
+        <!-- Create and Join forms remain the same -->
         <div class="item">
-            <p id="groupsCreate" class="formTitle">Create a New Group</p>
+            <p class="formTitle">Create a New Group</p>
             <form id="formCreateGroup">
                 <label>Group Name*</label><br>
                 <input id="groupNameInput" type="text" placeholder="Name" required><br>
@@ -21,25 +22,47 @@
             </form>
         </div>
         <div class="item">
-            <p id="groupsJoin" class="formTitle">Join a Group</p>
+            <p class="formTitle">Join a Group</p>
             <form id="formJoinGroup">
                 <label>Group Code*</label><br>
                 <input id="groupInviteInput" type="text" placeholder="Invite Code" required><br>
                 <button>Join</button>
             </form>
         </div>
+
+        <!-- NEW: Update Group Settings Form (replaces old Rename form) -->
         <div class="item">
-            <p id="groupsRename" class="formTitle">Rename a Group</p>
-            <form id="formRenameGroup">
+            <p class="formTitle">Update Group Settings</p>
+            <form id="formUpdateGroup">
                 <label>Group ID*</label><br>
-                <input id="groupRenameId" type="text" placeholder="ID" required><br>
-                <label>New Name*</label><br>
-                <input id="groupRenameName" type="text" placeholder="Name" required><br>
-                <button>Update</button>
+                <input id="groupUpdateId" type="text" placeholder="ID of group to update" required><br>
+                <label>New Name (optional)</label><br>
+                <input id="groupUpdateName" type="text" placeholder="New group name"><br>
+                <div class="checkbox-container">
+                    <input id="groupUpdateAnticheat" type="checkbox">
+                    <label for="groupUpdateAnticheat">Enable Anti-Cheat</label>
+                </div>
+                <div class="checkbox-container">
+                    <input id="groupUpdateKiosk" type="checkbox">
+                    <label for="groupUpdateKiosk">Enable Kiosk Mode</label>
+                </div>
+                <button>Update Settings</button>
             </form>
         </div>
+
+        <!-- NEW: Regenerate Invite Code Form -->
         <div class="item">
-            <p id="groupsTransfer" class="formTitle">Transfer Ownership</p>
+            <p class="formTitle">Regenerate Invite Code</p>
+            <form id="formRegenerateCode">
+                <label>Group ID*</label><br>
+                <input id="groupRegenerateId" type="text" placeholder="ID of group" required><br>
+                <button>Regenerate</button>
+            </form>
+        </div>
+
+        <!-- Transfer Ownership form remains the same -->
+        <div class="item">
+            <p class="formTitle">Transfer Ownership</p>
             <form id="formTransferGroup">
                 <label>Group ID*</label><br>
                 <input id="groupTransferId" type="text" placeholder="ID" required><br>

@@ -192,7 +192,7 @@ form{
     border-radius: 25px;
     padding: 10px 20px;
     margin: 10px;
-    max-width: 500px;
+    max-width: 800px;
     transition: background-color 0.2s ease-in-out;
 
     button{
