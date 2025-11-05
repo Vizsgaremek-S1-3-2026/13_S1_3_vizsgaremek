@@ -26,7 +26,6 @@ async function handleApiError(response) {
 document.addEventListener('DOMContentLoaded', async function() {
     const groupsContainer = document.getElementById('groupsContainer');
     const token = localStorage.getItem('authToken');
-    let currentUser = null; // Variable to store the logged-in user's data
 
     // --- Form Elements ---
     const createGroupForm = document.getElementById('formCreateGroup');
@@ -45,21 +44,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     const groupUpdateAnticheatInput = document.getElementById('groupUpdateAnticheat');
     const groupUpdateKioskInput = document.getElementById('groupUpdateKiosk');
     const groupRegenerateIdInput = document.getElementById('groupRegenerateId');
-
-    // --- Fetch current user's data on page load ---
-    const fetchCurrentUser = async () => {
-        if (!token) return;
-        try {
-            const response = await fetch('/api/users/profile/me', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) return;
-            const profileData = await response.json();
-            currentUser = profileData.user;
-        } catch (error) {
-            console.error("Could not fetch current user details:", error);
-        }
-    };
 
 
     // Fetches all groups for the user and displays them on the page
@@ -85,16 +69,15 @@ document.addEventListener('DOMContentLoaded', async function() {
                     const groupElement = document.createElement('div');
                     groupElement.className = 'groupItem';
 
-                    // --- REVISED: Button logic for all roles ---
                     let primaryAction = '';
                     if (group.rank === 'ADMIN' || group.rank === 'SUPERUSER') {
                         primaryAction = `<button class="delete-btn" data-group-id="${group.id}">Delete Group</button>`;
-                    } else if (group.rank === 'MEMBER') {
+                    } else {
                         primaryAction = `<button class="leave-btn" data-group-id="${group.id}">Leave Group</button>`;
                     }
 
-                    const memberButtonText = (group.rank === 'ADMIN' || group.rank === 'SUPERUSER') ? 'Manage Members' : 'View Members';
-                    const memberButton = `<button class="view-members-btn" data-group-id="${group.id}" data-rank="${group.rank}">${memberButtonText}</button>`;
+                    // Add the user's rank to the view-members-btn for later use
+                    const memberButton = `<button class="view-members-btn" data-group-id="${group.id}" data-user-rank="${group.rank}">View Members</button>`;
                     
                     const formattedDate = formatDateTime(group.date_created);
 
@@ -120,8 +103,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     };
     
-    // --- UPDATED: Function now accepts the user's rank in the group ---
-    const fetchAndDisplayMembers = async (groupId, container, currentUserRank) => {
+    // Displays members and includes kick buttons if the user is an admin/superuser
+    const displayMembers = async (groupId, container, currentUserRank) => {
         container.innerHTML = '<p>Loading members...</p>';
         try {
             const response = await fetch(`/api/groups/${groupId}/members`, {
@@ -131,19 +114,22 @@ document.addEventListener('DOMContentLoaded', async function() {
             const members = await response.json();
             
             let membersHTML = '<h4>Group Members:</h4><ul>';
+            const canKick = currentUserRank === 'ADMIN' || currentUserRank === 'SUPERUSER';
+            
             members.forEach(member => {
+                const displayName = member.user.profile.nickname || member.user.username;
+                
+                // Determine if a kick button should be shown
                 let kickButtonHTML = '';
-                // --- REVISED: Show kick button ONLY if the viewer is an admin ---
-                if ((currentUserRank === 'ADMIN' || currentUserRank === 'SUPERUSER') && currentUser && currentUser.id !== member.user.id) {
-                    kickButtonHTML = `<button class="kick-member-btn" data-group-id="${groupId}" data-user-id="${member.user.id}">Kick</button>`;
+                // Show kick button if user can kick AND the target member is not an ADMIN
+                // (prevents kicking the group owner)
+                if (canKick && member.rank !== 'ADMIN') {
+                    kickButtonHTML = `<button class="kick-btn" data-group-id="${groupId}" data-user-id="${member.user.id}">Kick</button>`;
                 }
 
-                const displayName = member.user.profile.nickname || member.user.username;
-
-                // --- ADDED: style="color: white;" to the list item ---
                 membersHTML += `
                     <li style="color: white; display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
-                        <span>${displayName} (${member.rank})</span>
+                        <span>${displayName} (${member.rank}) | User ID: ${member.user.id}</span>
                         ${kickButtonHTML}
                     </li>
                 `;
@@ -161,6 +147,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     groupsContainer.addEventListener('click', async (event) => {
         if (!token) return alert('Please log in.');
 
+        const deleteBtn = event.target.closest('.delete-btn');
+        const leaveBtn = event.target.closest('.leave-btn');
+        const viewMembersBtn = event.target.closest('.view-members-btn');
+        const kickBtn = event.target.closest('.kick-btn'); // Listener for the new kick button
+
         const processAction = async (url, method, confirmMsg) => {
             if (confirm(confirmMsg)) {
                 try {
@@ -171,57 +162,64 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         };
 
-        if (event.target.matches('.delete-btn')) {
-            const groupId = event.target.dataset.groupId;
+        if (deleteBtn) {
+            const groupId = deleteBtn.dataset.groupId;
             processAction(`/api/groups/${groupId}`, 'DELETE', `Are you sure you want to DELETE group ID ${groupId}? This cannot be undone.`);
+            return;
         }
-        if (event.target.matches('.leave-btn')) {
-            const groupId = event.target.dataset.groupId;
+
+        if (leaveBtn) {
+            const groupId = leaveBtn.dataset.groupId;
             processAction(`/api/groups/${groupId}/leave`, 'DELETE', `Are you sure you want to LEAVE group ID ${groupId}?`);
+            return;
         }
         
-        // --- UPDATED: Now handles the generic ".view-members-btn" ---
-        if (event.target.matches('.view-members-btn')) {
-            const button = event.target;
-            const groupId = button.dataset.groupId;
-            const currentUserRank = button.dataset.rank; // Get the rank from the button
+        if (viewMembersBtn) {
+            const groupId = viewMembersBtn.dataset.groupId;
+            const userRank = viewMembersBtn.dataset.userRank; // Get the user's rank
             const container = document.getElementById(`members-${groupId}`);
 
             if (container.style.display === 'none') {
                 container.style.display = 'block';
-                button.textContent = 'Hide Members';
-                fetchAndDisplayMembers(groupId, container, currentUserRank); // Pass the rank
+                viewMembersBtn.textContent = 'Hide Members';
+                // Pass the rank to the display function
+                displayMembers(groupId, container, userRank);
             } else {
                 container.style.display = 'none';
-                button.textContent = (currentUserRank === 'ADMIN' || currentUserRank === 'SUPERUSER') ? 'Manage Members' : 'View Members';
+                viewMembersBtn.textContent = 'View Members';
                 container.innerHTML = '';
             }
+            return;
         }
-        
-        if (event.target.matches('.kick-member-btn')) {
-            const groupId = event.target.dataset.groupId;
-            const userIdToKick = event.target.dataset.userId;
-            const adminRank = document.querySelector(`.view-members-btn[data-group-id="${groupId}"]`).dataset.rank;
-            
-            if (confirm(`Are you sure you want to kick user ID ${userIdToKick} from the group?`)) {
+
+        // --- NEW: Handle Kick Button Click ---
+        if (kickBtn) {
+            const groupId = kickBtn.dataset.groupId;
+            const userId = kickBtn.dataset.userId;
+
+            if (confirm(`Are you sure you want to remove user ID ${userId} from the group?`)) {
                 try {
-                    const response = await fetch(`/api/groups/${groupId}/members/${userIdToKick}`, {
+                    const response = await fetch(`/api/groups/${groupId}/members/${userId}`, {
                         method: 'DELETE',
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
                     if (!response.ok) throw new Error(await handleApiError(response));
                     
-                    const container = document.getElementById(`members-${groupId}`);
-                    fetchAndDisplayMembers(groupId, container, adminRank);
+                    // Refresh just the member list for this group
+                    const container = kickBtn.closest('.member-list-container');
+                    const viewButton = container.parentElement.querySelector('.view-members-btn');
+                    const currentUserRank = viewButton.dataset.userRank;
+                    displayMembers(groupId, container, currentUserRank);
 
                 } catch (error) {
                     alert(`Error: ${error.message}`);
                 }
             }
+            return;
         }
     });
 
-    // --- FORM SUBMISSION HANDLERS (No changes below this line) ---
+    // --- FORM SUBMISSION HANDLERS (No changes) ---
 
     createGroupForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -321,6 +319,5 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     // --- Initial Load ---
-    await fetchCurrentUser();
     fetchAndDisplayGroups();
 });

@@ -1,3 +1,5 @@
+# cQuizy/groups/api.py
+
 import secrets
 from ninja import Router
 from django.shortcuts import get_object_or_404
@@ -57,7 +59,8 @@ def create_group(request, data: GroupCreateSchema):
 @router.get("/{group_id}/members", response=List[MemberOutSchema], auth=JWTAuth(), summary="List all members of a group")
 def list_members(request, group_id: int):
     """
-    Retrieves a list of all members in a specific group.
+    Retrieves a list of all members in a specific group, ensuring
+    admins are always listed first.
     
     Requires the user to be a member of the group to view the list.
     """
@@ -71,8 +74,11 @@ def list_members(request, group_id: int):
         return 403, {"detail": "You do not have permission to view this group's members."}
 
     # 2. Fetch all members
-    # Use select_related to efficiently grab user and profile data in one query
-    members = GroupMember.objects.filter(group=group).select_related('user', 'user__profile')
+    # Use select_related to efficiently grab user and profile data in one query.
+    # *** CHANGE: Added .order_by() to sort by rank ('ADMIN' first) and then by join date.
+    members = GroupMember.objects.filter(group=group) \
+        .select_related('user', 'user__profile') \
+        .order_by('rank', 'date_joined')
     
     # Ninja will automatically serialize this list of objects using MemberOutSchema
     return members
