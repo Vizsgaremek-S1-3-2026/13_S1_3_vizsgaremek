@@ -1,20 +1,18 @@
-
 // lib/group_page.dart
 
 import 'package:flutter/material.dart';
-import 'home_page.dart'; // Szükségünk van a Group és CountdownTimerWidget modellekre
+import 'package:flutter/services.dart'; // A vágólaphoz szükséges
+import 'home_page.dart';
 
 class GroupPage extends StatefulWidget {
   final Group group;
   final VoidCallback onBack;
-  // *** MÓDOSÍTÁS: Callback a teszt lejáratának jelzésére ***
   final Function(Group) onTestExpired;
 
   const GroupPage({
     super.key,
     required this.group,
     required this.onBack,
-    // *** MÓDOSÍTÁS: A callback kötelezővé tétele ***
     required this.onTestExpired,
   });
 
@@ -24,13 +22,11 @@ class GroupPage extends StatefulWidget {
 
 class _GroupPageState extends State<GroupPage> {
   bool _isMembersPanelVisible = false;
-  // *** MÓDOSÍTÁS: Lista a múltbeli tesztek dinamikus tárolására ***
   late List<Map<String, String>> _pastTests;
 
   @override
   void initState() {
     super.initState();
-    // A múltbeli tesztek listájának inicializálása a kezdeti, keménykódolt adatokkal
     _pastTests = [
       {'title': 'Algebra Témazáró I.', 'detail': '5'},
       {'title': 'Számelmélet Dolgozat', 'detail': '4'},
@@ -38,20 +34,16 @@ class _GroupPageState extends State<GroupPage> {
     ];
   }
 
-  // *** MÓDOSÍTÁS: Figyeljük, amikor a widgetet frissítik (pl. a csoport állapota megváltozik) ***
   @override
   void didUpdateWidget(GroupPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Ellenőrizzük, hogy az aktív teszt "épp most" járt-e le.
-    // Ezt onnan tudjuk, hogy korábban volt értesítés (aktív teszt), de most már nincs.
     if (oldWidget.group.hasNotification &&
         !widget.group.hasNotification &&
         oldWidget.group.activeTestTitle != null) {
-      // Hozzáadjuk a lejárt tesztet a múltbeli tesztek listájához.
       setState(() {
         _pastTests.insert(0, {
           'title': oldWidget.group.activeTestTitle!,
-          'detail': '-', // Alapértelmezett érték a még nem értékelt tesztekhez
+          'detail': '-',
         });
       });
     }
@@ -59,18 +51,40 @@ class _GroupPageState extends State<GroupPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildHeader(),
-        Expanded(
-          child: Stack(
-            children: [
-              _buildTestContent(),
-              _buildMembersPanel(),
-            ],
+    return Scaffold(
+      backgroundColor: const Color(0xFF1c1c1c),
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: Stack(
+              children: [
+                _buildTestContent(),
+                if (_isMembersPanelVisible)
+                  GestureDetector(
+                    onTap: () => setState(() => _isMembersPanelVisible = false),
+                    child: Container(
+                      color: Colors.black.withOpacity(0.5),
+                    ),
+                  ),
+                _buildMembersPanel(),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+      floatingActionButton: !_isMembersPanelVisible
+          ? FloatingActionButton(
+              onPressed: () {
+                // Ide jöhet a tag hozzáadása logika
+              },
+              backgroundColor: const Color(0xFFff3b5f),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 32),
+            )
+          : null,
     );
   }
 
@@ -96,7 +110,10 @@ class _GroupPageState extends State<GroupPage> {
                 SizedBox(width: 8),
                 Text(
                   'Vissza a csoportokhoz',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -116,24 +133,32 @@ class _GroupPageState extends State<GroupPage> {
                         color: Colors.white,
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        shadows: [Shadow(blurRadius: 2, color: Colors.black38, offset: Offset(1, 1))],
+                        shadows: [
+                          Shadow(
+                              blurRadius: 2,
+                              color: Colors.black38,
+                              offset: Offset(1, 1))
+                        ],
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Oktató: ${widget.group.subtitle}',
-                      style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 18),
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.9), fontSize: 18),
                     ),
                   ],
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: () => setState(() => _isMembersPanelVisible = !_isMembersPanelVisible),
+                onPressed: () =>
+                    setState(() => _isMembersPanelVisible = !_isMembersPanelVisible),
                 icon: const Icon(Icons.people_outline, color: Colors.white),
                 label: const Text('Tagok', style: TextStyle(color: Colors.white)),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: Colors.white.withOpacity(0.7)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
               ),
             ],
@@ -143,28 +168,27 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  // *** MÓDOSÍTOTT TARTALOM ***
   Widget _buildTestContent() {
     return ListView(
       padding: const EdgeInsets.all(24.0),
       children: [
-        // A kártya automatikusan eltűnik, amint a `hasNotification` false lesz.
         if (widget.group.hasNotification && widget.group.testExpiryDate != null) ...[
           _buildActiveTestCard(),
           const SizedBox(height: 24),
         ],
-        
         const HeaderWithDivider(title: 'Jövőbeli tesztek'),
         const SizedBox(height: 16),
         _buildTestCard(
-            title: 'Algebra Témazáró II.', detail: '2025. nov. 28.', isGrade: false),
+            title: 'Algebra Témazáró II.',
+            detail: '2025. nov. 28.',
+            isGrade: false),
         _buildTestCard(
-            title: 'Geometria Röpdolgozat', detail: '2025. dec. 05.', isGrade: false),
+            title: 'Geometria Röpdolgozat',
+            detail: '2025. dec. 05.',
+            isGrade: false),
         const SizedBox(height: 24),
-
         const HeaderWithDivider(title: 'Múltbeli tesztek'),
         const SizedBox(height: 16),
-        // A múltbeli tesztek dinamikus generálása a `_pastTests` lista alapján
         ..._pastTests.map((test) {
           final isNumeric = int.tryParse(test['detail']!) != null;
           return _buildTestCard(
@@ -173,14 +197,13 @@ class _GroupPageState extends State<GroupPage> {
             isGrade: isNumeric,
           );
         }).toList(),
-        
-        // Extra hely a lebegő gomb számára
         const SizedBox(height: 80),
       ],
     );
   }
-  
-  Widget _buildTestCard({required String title, required String detail, required bool isGrade}) {
+
+  Widget _buildTestCard(
+      {required String title, required String detail, required bool isGrade}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12.0),
       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
@@ -193,7 +216,8 @@ class _GroupPageState extends State<GroupPage> {
         children: [
           Text(
             title,
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
           ),
           Text(
             detail,
@@ -208,7 +232,6 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  // *** MÓDOSÍTOTT AKTÍV TESZT KÁRTYA ***
   Widget _buildActiveTestCard() {
     final isExpired = widget.group.testExpiryDate!.isBefore(DateTime.now());
 
@@ -226,11 +249,15 @@ class _GroupPageState extends State<GroupPage> {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.hourglass_bottom, color: Colors.yellow, size: 28),
+                    Icon(Icons.hourglass_bottom,
+                        color: Colors.yellow, size: 28),
                     SizedBox(width: 12),
                     Text(
                       'Jelenleg aktív teszt',
-                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -244,17 +271,26 @@ class _GroupPageState extends State<GroupPage> {
                         children: [
                           Text(
                             widget.group.activeTestTitle ?? 'Nincs cím',
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            widget.group.activeTestDescription ?? 'Nincs leírása a tesztnek.',
-                            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14, height: 1.4),
+                            widget.group.activeTestDescription ??
+                                'Nincs leírása a tesztnek.',
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 14,
+                                height: 1.4),
                           ),
                           const SizedBox(height: 12),
                           Text(
                             'Készítő: ${widget.group.subtitle}',
-                            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.6),
+                                fontSize: 12),
                           ),
                         ],
                       ),
@@ -263,7 +299,6 @@ class _GroupPageState extends State<GroupPage> {
                     if (widget.group.testExpiryDate != null)
                       CountdownTimerWidget(
                         expiryDate: widget.group.testExpiryDate!,
-                        // A callback meghívása, ami értesíti a HomePage-et
                         onExpired: () => widget.onTestExpired(widget.group),
                       ),
                   ],
@@ -274,8 +309,8 @@ class _GroupPageState extends State<GroupPage> {
           ElevatedButton(
             onPressed: isExpired ? null : () {},
             style: ElevatedButton.styleFrom(
-              backgroundColor: isExpired 
-                  ? const Color(0xFF4a2e34) 
+              backgroundColor: isExpired
+                  ? const Color(0xFF4a2e34)
                   : const Color(0xFFff3b5f).withOpacity(0.2),
               foregroundColor: isExpired
                   ? Colors.white.withOpacity(0.5)
@@ -288,7 +323,8 @@ class _GroupPageState extends State<GroupPage> {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Teszt indítása', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Teszt indítása',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 SizedBox(width: 8),
                 Icon(Icons.play_arrow, size: 20),
               ],
@@ -303,12 +339,20 @@ class _GroupPageState extends State<GroupPage> {
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      top: 0,
+      top: -10,
       bottom: 0,
       right: _isMembersPanelVisible ? 0 : -300,
       width: 300,
       child: Container(
-        color: const Color(0xFF1a1a1a),
+        decoration: BoxDecoration(
+            color: const Color(0xFF1a1a1a),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 15,
+                offset: const Offset(-5, 0),
+              )
+            ]),
         child: Column(
           children: [
             Padding(
@@ -316,19 +360,25 @@ class _GroupPageState extends State<GroupPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  const Icon(Icons.group, color: Colors.white, size: 24),
                   const Text('Csoport Tagjai (24)',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white70),
-                    onPressed: () => setState(() => _isMembersPanelVisible = false),
+                    onPressed: () =>
+                        setState(() => _isMembersPanelVisible = false),
                   ),
                 ],
               ),
             ),
             const Divider(color: Colors.white12, height: 1),
+            _buildInviteCodeCard(),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
                 itemCount: 24,
                 itemBuilder: (context, index) {
                   return ListTile(
@@ -336,15 +386,104 @@ class _GroupPageState extends State<GroupPage> {
                       backgroundColor: Colors.deepPurple,
                       child: Icon(Icons.person, color: Colors.white),
                     ),
-                    title: Text('Tag Neve ${index + 1}', style: const TextStyle(color: Colors.white)),
+                    title: Text('Tag Neve ${index + 1}',
+                        style: const TextStyle(color: Colors.white)),
                     subtitle: Text('Felhasználónév${index + 1}',
                         style: TextStyle(color: Colors.white.withOpacity(0.6))),
+                    trailing: IconButton(
+                      icon: Icon(Icons.delete_outline,
+                          color: Colors.red.shade300),
+                      tooltip: 'Tag eltávolítása',
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Tag ${index + 1} eltávolítása...'),
+                            backgroundColor: Colors.red.shade400,
+                          ),
+                        );
+                      },
+                    ),
                   );
                 },
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // *** MÓDOSÍTOTT MEGHÍVÓKÓD KÁRTYA ***
+  Widget _buildInviteCodeCard() {
+    const inviteCode = 'X7B2-K9P5';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'MEGHÍVÓKÓD',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                inviteCode,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
+          // *** MÓDOSÍTÁS: A gombok mostantól egy Row-ban vannak ***
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.white70),
+                tooltip: 'Új kód generálása',
+                onPressed: () {
+                  // Ide jöhet az új kód generálásának logikája
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Új meghívókód generálása...'),
+                      backgroundColor: Colors.blue,
+                    ),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy_outlined, color: Colors.white70),
+                tooltip: 'Kód másolása',
+                onPressed: () {
+                  Clipboard.setData(const ClipboardData(text: inviteCode));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Meghívókód a vágólapra másolva!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

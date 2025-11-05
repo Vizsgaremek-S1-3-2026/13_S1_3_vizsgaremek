@@ -41,7 +41,8 @@ class Group {
       hasNotification: hasNotification ?? this.hasNotification,
       testExpiryDate: testExpiryDate ?? this.testExpiryDate,
       activeTestTitle: activeTestTitle ?? this.activeTestTitle,
-      activeTestDescription: activeTestDescription ?? this.activeTestDescription,
+      activeTestDescription:
+          activeTestDescription ?? this.activeTestDescription,
     );
   }
 }
@@ -65,10 +66,12 @@ class _HomePageState extends State<HomePage> {
     _initializeGroups();
   }
 
-  // Az aktív tesztek listáját visszaadó segédfüggvény
   List<Group> _getActiveTests() {
     return [..._myGroups, ..._otherGroups]
-        .where((group) => group.hasNotification && group.testExpiryDate != null && group.testExpiryDate!.isAfter(DateTime.now()))
+        .where((group) =>
+            group.hasNotification &&
+            group.testExpiryDate != null &&
+            group.testExpiryDate!.isAfter(DateTime.now()))
         .toList();
   }
 
@@ -104,23 +107,23 @@ class _HomePageState extends State<HomePage> {
           end: Alignment.centerRight,
         ),
         hasNotification: true,
-        testExpiryDate: DateTime.now().add(const Duration(seconds: 15)), // Teszteléshez rövid idő
+        testExpiryDate:
+            DateTime.now().add(const Duration(seconds: 15)), // Teszteléshez rövid idő
         activeTestTitle: 'Algoritmusok I. Témazáró',
-        activeTestDescription: 'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
+        activeTestDescription:
+            'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
       ),
-       Group(
-        title: 'Angol Haladó 11.B',
-        subtitle: 'Fordító Ágnes',
-        gradient: const LinearGradient(
-          colors: [Color(0xff1a7a6a), Color(0xff2cb39a)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        hasNotification: true,
-        testExpiryDate: DateTime.now().add(const Duration(hours: 8, minutes: 30)),
-        activeTestTitle: 'Present Perfect Szódolgozat',
-        activeTestDescription: 'Rövid, 10 perces szódolgozat a legutóbbi órán vett szavakból.'
-      ),
+      Group(
+          title: 'Angol Haladó 11.B',
+          subtitle: 'Fordító Ágnes',
+          gradient: const LinearGradient(
+              colors: [Color(0xff1a7a6a), Color(0xff2cb39a)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight),
+          hasNotification: true,
+          testExpiryDate: DateTime.now().add(const Duration(hours: 8, minutes: 30)),
+          activeTestTitle: 'Present Perfect Szódolgozat',
+          activeTestDescription: 'Rövid, 10 perces szódolgozat a legutóbbi órán vett szavakból.'),
     ];
 
     _cleanupExpiredNotifications();
@@ -143,24 +146,27 @@ class _HomePageState extends State<HomePage> {
     }).toList();
   }
 
-  // Ez a funkció felelős a lejárt teszt eltávolításáért az aktívak közül
   void _handleTestExpired(Group expiredGroup) {
     setState(() {
-      int otherIndex = _otherGroups.indexWhere((g) => g.title == expiredGroup.title);
+      int otherIndex =
+          _otherGroups.indexWhere((g) => g.title == expiredGroup.title);
       if (otherIndex != -1) {
-        _otherGroups[otherIndex] = _otherGroups[otherIndex].copyWith(hasNotification: false);
+        _otherGroups[otherIndex] =
+            _otherGroups[otherIndex].copyWith(hasNotification: false);
       } else {
-        int myIndex = _myGroups.indexWhere((g) => g.title == expiredGroup.title);
+        int myIndex =
+            _myGroups.indexWhere((g) => g.title == expiredGroup.title);
         if (myIndex != -1) {
-          _myGroups[myIndex] = _myGroups[myIndex].copyWith(hasNotification: false);
+          _myGroups[myIndex] =
+              _myGroups[myIndex].copyWith(hasNotification: false);
         }
       }
 
-      if (_selectedGroup != null && _selectedGroup!.title == expiredGroup.title) {
+      if (_selectedGroup != null &&
+          _selectedGroup!.title == expiredGroup.title) {
         _selectedGroup = _selectedGroup!.copyWith(hasNotification: false);
       }
 
-      // Az aktív tesztek listájának újragenerálásával a lejárt teszt kikerül belőle
       _activeTests = _getActiveTests();
     });
   }
@@ -199,14 +205,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: const Color(0xFFff3b5f),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16.0),
-        ),
-        child: const Icon(Icons.add, color: Colors.white, size: 32),
-      ),
     );
   }
 
@@ -220,19 +218,26 @@ class _HomePageState extends State<HomePage> {
           child: HeaderWithDivider(title: 'Saját Csoportok'),
         ),
         const SizedBox(height: 20),
-        ..._myGroups.map((group) => GroupCard(group: group, onGroupSelected: _selectGroup)).toList(),
+        ..._myGroups
+            .map((group) =>
+                GroupCard(group: group, onGroupSelected: _selectGroup))
+            .toList(),
         const SizedBox(height: 30),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 40.0),
           child: HeaderWithDivider(title: 'További Csoportok'),
         ),
         const SizedBox(height: 20),
-        ..._otherGroups.map((group) => GroupCard(group: group, onGroupSelected: _selectGroup)).toList(),
+        ..._otherGroups
+            .map((group) =>
+                GroupCard(group: group, onGroupSelected: _selectGroup))
+            .toList(),
         const SizedBox(height: 80),
       ],
     );
   }
 
+  // *** MÓDOSÍTOTT SIDE NAV ***
   Widget _buildSideNav(List<Group> activeTests) {
     return Container(
       width: 280,
@@ -245,7 +250,7 @@ class _HomePageState extends State<HomePage> {
           SideNavItem(
             label: 'Csoportok',
             icon: Icons.group,
-            isSelected: true,
+            isSelected: _selectedGroup == null,
             onTap: _selectedGroup != null ? _unselectGroup : null,
           ),
           const SizedBox(height: 8),
@@ -253,7 +258,30 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 8),
           SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
           const Spacer(),
-          // A karusszel csak akkor jelenik meg, ha van aktív teszt
+
+ Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/logo/logo_2.png',
+                height: 16, // Kisebb méret
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'cQuizy',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          const Divider(color: Color.fromARGB(61, 255, 255, 255)),         
+          const SizedBox(height: 10),
+
           if (activeTests.isNotEmpty)
             ActiveTestCarousel(
               key: ValueKey(activeTests.map((g) => g.title).join()),
@@ -261,6 +289,8 @@ class _HomePageState extends State<HomePage> {
               onExpired: _handleTestExpired,
             ),
           const SizedBox(height: 24),
+          //const Divider(color: Colors.white24),         
+          const SizedBox(height: 16),
           SideNavItem(label: 'Profil & Beállítások'),
           const SizedBox(height: 10),
         ],
@@ -269,7 +299,60 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// *** EZ A WIDGET BIZTOSÍTJA AZ "ELTŰNÉST" ***
+// ... CountdownTimerWidget, ActiveTestCard, ActiveTestCarousel, GroupCard változatlan ...
+
+// *** MÓDOSÍTOTT/JAVÍTOTT SIDE NAV ITEM WIDGET ***
+class SideNavItem extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool isSelected;
+  final VoidCallback? onTap;
+
+  const SideNavItem({
+    super.key,
+    required this.label,
+    this.icon,
+    this.isSelected = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            // Ha nincs ikon, a tartalom középre kerül
+            mainAxisAlignment: icon == null ? MainAxisAlignment.center : MainAxisAlignment.start,
+            children: [
+              // Az ikon és a távtartó csak akkor jelenik meg, ha van ikon megadva
+              if (icon != null) ...[
+                CircleAvatar(
+                  backgroundColor: const Color(0xFF4f4f4f),
+                  radius: 18,
+                  child: Icon(icon, color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 16),
+              ],
+              Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// A többi widget változatlanul következik...
+
 class CountdownTimerWidget extends StatefulWidget {
   final DateTime expiryDate;
   final VoidCallback? onExpired;
@@ -317,13 +400,13 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
       }
     });
   }
-  
+
   @override
   void dispose() {
     _countdownTimer?.cancel();
     super.dispose();
   }
-  
+
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     String hours = twoDigits(duration.inHours);
@@ -336,17 +419,21 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
   Widget build(BuildContext context) {
     final bool isExpired = _remainingTime.isNegative;
 
-    // Ha lejárt az idő, a widget egy láthatatlan dobozt ad vissza, így eltűnik.
     if (isExpired) {
       return const SizedBox.shrink();
     }
 
     if (_remainingTime.inHours >= 12) {
-      final formattedDate = DateFormat('yyyy. MMM d. HH:mm').format(widget.expiryDate);
-      return Text(formattedDate, style: TextStyle(color: Colors.white, fontSize: widget.isBig ? 16 : 14, fontWeight: FontWeight.w500));
+      final formattedDate =
+          DateFormat('yyyy. MMM d. HH:mm').format(widget.expiryDate);
+      return Text(formattedDate,
+          style: TextStyle(
+              color: Colors.white,
+              fontSize: widget.isBig ? 16 : 14,
+              fontWeight: FontWeight.w500));
     } else {
       return Container(
-         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.black.withOpacity(0.25),
           borderRadius: BorderRadius.circular(20),
@@ -354,7 +441,8 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.timer_outlined, color: Colors.white, size: widget.isBig ? 20 : 16),
+            Icon(Icons.timer_outlined,
+                color: Colors.white, size: widget.isBig ? 20 : 16),
             const SizedBox(width: 8),
             Text(
               _formatDuration(_remainingTime),
@@ -371,11 +459,6 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
     }
   }
 }
-
-
-// A többi widget (ActiveTestCard, ActiveTestCarousel, GroupCard, SideNavItem, HeaderWithDivider) változatlan
-// és a korábbi válaszokban szereplő formában használható.
-// ... (a többi widget kódja itt következne, de a helytakarékosság miatt nem másolom be újra) ...
 
 class ActiveTestCard extends StatefulWidget {
   final Group group;
@@ -401,7 +484,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
   @override
   Widget build(BuildContext context) {
     String subject = widget.group.title.split(' ')[0];
-    
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -454,7 +537,8 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text('Teszt Indítása',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          style: TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold)),
                       SizedBox(width: 8),
                       Icon(Icons.play_arrow, size: 20, color: Colors.white),
                     ],
@@ -513,7 +597,7 @@ class ActiveTestCarousel extends StatefulWidget {
   final Function(Group) onExpired;
 
   const ActiveTestCarousel({
-    super.key, 
+    super.key,
     required this.activeTests,
     required this.onExpired,
   });
@@ -549,7 +633,8 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
         timer.cancel();
         return;
       }
-      int nextPage = _currentPage < widget.activeTests.length - 1 ? _currentPage + 1 : 0;
+      int nextPage =
+          _currentPage < widget.activeTests.length - 1 ? _currentPage + 1 : 0;
       if (_pageController.hasClients) {
         _pageController.animateToPage(
           nextPage,
@@ -572,7 +657,7 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
     return Column(
       children: [
         SizedBox(
-          height: 185, 
+          height: 185,
           child: PageView.builder(
             controller: _pageController,
             itemCount: widget.activeTests.length,
@@ -675,8 +760,8 @@ class GroupCard extends StatelessWidget {
               onTap: () => onGroupSelected(group),
               borderRadius: BorderRadius.circular(5),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40.0, vertical: 20.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 40.0, vertical: 20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,52 +800,6 @@ class GroupCard extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class SideNavItem extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final bool isSelected;
-  final VoidCallback? onTap;
-
-  const SideNavItem({
-    super.key,
-    required this.label,
-    this.icon,
-    this.isSelected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: const Color(0xFF4f4f4f),
-                radius: 18,
-                child: icon != null
-                    ? Icon(icon, color: Colors.white, size: 20)
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              Text(
-                label,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
