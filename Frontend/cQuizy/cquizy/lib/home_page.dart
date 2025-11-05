@@ -3,14 +3,17 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
+import 'group_page.dart';
 
-// Adatmodell a csoportok dinamikus kezeléséhez. (MÓDOSULT: másolhatóvá tettük)
+// A Group modell változatlan
 class Group {
   final String title;
   final String subtitle;
   final Gradient gradient;
   final bool hasNotification;
   final DateTime? testExpiryDate;
+  final String? activeTestTitle;
+  final String? activeTestDescription;
 
   Group({
     required this.title,
@@ -18,23 +21,31 @@ class Group {
     required this.gradient,
     this.hasNotification = false,
     this.testExpiryDate,
+    this.activeTestTitle,
+    this.activeTestDescription,
   });
 
-  // Másoló konstruktor, ami segít az állapot megváltoztatásában
   Group copyWith({
+    String? title,
+    String? subtitle,
+    Gradient? gradient,
     bool? hasNotification,
+    DateTime? testExpiryDate,
+    String? activeTestTitle,
+    String? activeTestDescription,
   }) {
     return Group(
-      title: title,
-      subtitle: subtitle,
-      gradient: gradient,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      gradient: gradient ?? this.gradient,
       hasNotification: hasNotification ?? this.hasNotification,
-      testExpiryDate: testExpiryDate,
+      testExpiryDate: testExpiryDate ?? this.testExpiryDate,
+      activeTestTitle: activeTestTitle ?? this.activeTestTitle,
+      activeTestDescription: activeTestDescription ?? this.activeTestDescription,
     );
   }
 }
 
-// *** MÓDOSÍTÁS: A HomePage most már StatefulWidget ***
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -43,10 +54,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // A listák most már az állapot részét képezik
   late List<Group> _myGroups;
   late List<Group> _otherGroups;
   late List<Group> _activeTests;
+  Group? _selectedGroup;
 
   @override
   void initState() {
@@ -54,8 +65,14 @@ class _HomePageState extends State<HomePage> {
     _initializeGroups();
   }
 
+  // Az aktív tesztek listáját visszaadó segédfüggvény
+  List<Group> _getActiveTests() {
+    return [..._myGroups, ..._otherGroups]
+        .where((group) => group.hasNotification && group.testExpiryDate != null && group.testExpiryDate!.isAfter(DateTime.now()))
+        .toList();
+  }
+
   void _initializeGroups() {
-    // Demo adatok inicializálása
     _myGroups = [
       Group(
         title: 'Matematika 8.A',
@@ -67,7 +84,6 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     ];
-
     _otherGroups = [
       Group(
         title: 'Földrajz 7.C',
@@ -80,17 +96,19 @@ class _HomePageState extends State<HomePage> {
         hasNotification: false,
       ),
       Group(
-        title: 'Hálózati Alapismeretek 9.D',
-        subtitle: 'Pók Kevin',
+        title: 'Programozás alapjai 10.A',
+        subtitle: 'Kód Elek',
         gradient: const LinearGradient(
-          colors: [Color(0xff222a79), Color(0xff3f4aaf)],
+          colors: [Color(0xff6d2c77), Color(0xffa142ad)],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
         hasNotification: true,
-        testExpiryDate: DateTime.now().add(const Duration(hours: 24)),
+        testExpiryDate: DateTime.now().add(const Duration(seconds: 15)), // Teszteléshez rövid idő
+        activeTestTitle: 'Algoritmusok I. Témazáró',
+        activeTestDescription: 'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
       ),
-      Group(
+       Group(
         title: 'Angol Haladó 11.B',
         subtitle: 'Fordító Ágnes',
         gradient: const LinearGradient(
@@ -100,64 +118,62 @@ class _HomePageState extends State<HomePage> {
         ),
         hasNotification: true,
         testExpiryDate: DateTime.now().add(const Duration(hours: 8, minutes: 30)),
-      ),
-      Group(
-        title: 'Programozás alapjai 10.A',
-        subtitle: 'Kód Elek',
-        gradient: const LinearGradient(
-          colors: [Color(0xff6d2c77), Color(0xffa142ad)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        hasNotification: true,
-        // *** MÓDOSÍTÁS: Az időt lecsökkentettük 20 másodpercre a könnyebb teszteléshez ***
-        testExpiryDate: DateTime.now().add(const Duration(seconds: 20)),
+        activeTestTitle: 'Present Perfect Szódolgozat',
+        activeTestDescription: 'Rövid, 10 perces szódolgozat a legutóbbi órán vett szavakból.'
       ),
     ];
 
-    // Induláskor eltávolítjuk a már lejárt tesztek értesítését
     _cleanupExpiredNotifications();
-    _updateActiveTestsList();
+    _activeTests = _getActiveTests();
   }
 
   void _cleanupExpiredNotifications() {
+    final now = DateTime.now();
     _myGroups = _myGroups.map((group) {
-      if (group.testExpiryDate?.isBefore(DateTime.now()) ?? false) {
+      if (group.testExpiryDate?.isBefore(now) ?? false) {
         return group.copyWith(hasNotification: false);
       }
       return group;
     }).toList();
     _otherGroups = _otherGroups.map((group) {
-      if (group.testExpiryDate?.isBefore(DateTime.now()) ?? false) {
+      if (group.testExpiryDate?.isBefore(now) ?? false) {
         return group.copyWith(hasNotification: false);
       }
       return group;
     }).toList();
   }
-  
-  // Frissíti az aktív tesztek listáját
-  void _updateActiveTestsList() {
-    _activeTests = [..._myGroups, ..._otherGroups]
-        .where((group) => group.hasNotification)
-        .toList();
-  }
 
-  // Ezt a funkciót hívja meg a kártya, amikor lejár a teszt
+  // Ez a funkció felelős a lejárt teszt eltávolításáért az aktívak közül
   void _handleTestExpired(Group expiredGroup) {
     setState(() {
-      // Megkeressük a csoportot az `_otherGroups` listában és frissítjük
       int otherIndex = _otherGroups.indexWhere((g) => g.title == expiredGroup.title);
       if (otherIndex != -1) {
         _otherGroups[otherIndex] = _otherGroups[otherIndex].copyWith(hasNotification: false);
       } else {
-        // Megkeressük a csoportot a `_myGroups` listában és frissítjük
         int myIndex = _myGroups.indexWhere((g) => g.title == expiredGroup.title);
         if (myIndex != -1) {
           _myGroups[myIndex] = _myGroups[myIndex].copyWith(hasNotification: false);
         }
       }
-      // Újrageneráljuk az aktív tesztek listáját, a lejárt már nem kerül bele
-      _updateActiveTestsList();
+
+      if (_selectedGroup != null && _selectedGroup!.title == expiredGroup.title) {
+        _selectedGroup = _selectedGroup!.copyWith(hasNotification: false);
+      }
+
+      // Az aktív tesztek listájának újragenerálásával a lejárt teszt kikerül belőle
+      _activeTests = _getActiveTests();
+    });
+  }
+
+  void _selectGroup(Group group) {
+    setState(() {
+      _selectedGroup = group;
+    });
+  }
+
+  void _unselectGroup() {
+    setState(() {
+      _selectedGroup = null;
     });
   }
 
@@ -169,24 +185,16 @@ class _HomePageState extends State<HomePage> {
         children: [
           _buildSideNav(_activeTests),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 20.0),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 40.0),
-                  child: HeaderWithDivider(title: 'Saját Csoportok'),
-                ),
-                const SizedBox(height: 20),
-                ..._myGroups.map((group) => GroupCard(group: group)).toList(),
-                const SizedBox(height: 30),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 40.0),
-                  child: HeaderWithDivider(title: 'További Csoportok'),
-                ),
-                const SizedBox(height: 20),
-                ..._otherGroups.map((group) => GroupCard(group: group)).toList(),
-                const SizedBox(height: 50), //plusbottomplace
-              ],
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _selectedGroup == null
+                  ? _buildGroupList()
+                  : GroupPage(
+                      key: ValueKey(_selectedGroup!.title),
+                      group: _selectedGroup!,
+                      onBack: _unselectGroup,
+                      onTestExpired: _handleTestExpired,
+                    ),
             ),
           ),
         ],
@@ -202,6 +210,29 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildGroupList() {
+    return ListView(
+      key: const ValueKey('group_list'),
+      padding: const EdgeInsets.symmetric(vertical: 20.0),
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 40.0),
+          child: HeaderWithDivider(title: 'Saját Csoportok'),
+        ),
+        const SizedBox(height: 20),
+        ..._myGroups.map((group) => GroupCard(group: group, onGroupSelected: _selectGroup)).toList(),
+        const SizedBox(height: 30),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 40.0),
+          child: HeaderWithDivider(title: 'További Csoportok'),
+        ),
+        const SizedBox(height: 20),
+        ..._otherGroups.map((group) => GroupCard(group: group, onGroupSelected: _selectGroup)).toList(),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
   Widget _buildSideNav(List<Group> activeTests) {
     return Container(
       width: 280,
@@ -211,37 +242,21 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 20),
-          SideNavItem(label: 'Csoportok', icon: Icons.group, isSelected: true),
+          SideNavItem(
+            label: 'Csoportok',
+            icon: Icons.group,
+            isSelected: true,
+            onTap: _selectedGroup != null ? _unselectGroup : null,
+          ),
           const SizedBox(height: 8),
           SideNavItem(label: 'Tesztek', icon: Icons.quiz),
           const SizedBox(height: 8),
           SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
           const Spacer(),
-          const Padding(
-            padding: EdgeInsets.only(left: 12.0, bottom: 8.0),
-            child: Row(
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(left: 60),
-                  child: Image(
-                    image: AssetImage('assets/logo/logo_2.png'),
-                    width: 22,
-                  ),
-                ),
-                Text(
-                  'cQuizy',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18),
-                ),
-              ],
-            ),
-          ),
+          // A karusszel csak akkor jelenik meg, ha van aktív teszt
           if (activeTests.isNotEmpty)
             ActiveTestCarousel(
-              // *** MÓDOSÍTÁS: Egyedi key-t és a callback funkciót adunk át ***
-              key: ValueKey(activeTests.length), // Segít a Flutternek, hogy újraépítse
+              key: ValueKey(activeTests.map((g) => g.title).join()),
               activeTests: activeTests,
               onExpired: _handleTestExpired,
             ),
@@ -254,147 +269,117 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ActiveTestCarousel widget (MÓDOSULT)
-class ActiveTestCarousel extends StatefulWidget {
-  final List<Group> activeTests;
-  final Function(Group) onExpired; // ÚJ: Callback funkció
+// *** EZ A WIDGET BIZTOSÍTJA AZ "ELTŰNÉST" ***
+class CountdownTimerWidget extends StatefulWidget {
+  final DateTime expiryDate;
+  final VoidCallback? onExpired;
+  final bool isBig;
 
-  const ActiveTestCarousel({
-    super.key, 
-    required this.activeTests,
-    required this.onExpired,
+  const CountdownTimerWidget({
+    super.key,
+    required this.expiryDate,
+    this.onExpired,
+    this.isBig = false,
   });
 
   @override
-  State<ActiveTestCarousel> createState() => _ActiveTestCarouselState();
+  State<CountdownTimerWidget> createState() => _CountdownTimerWidgetState();
 }
 
-class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
-  late final PageController _pageController;
-  int _currentPage = 0;
-  Timer? _timer;
+class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
+  Timer? _countdownTimer;
+  late Duration _remainingTime;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: 0);
-    if (widget.activeTests.length > 1) {
-      _startTimer();
+    _updateRemainingTime();
+    if (!_remainingTime.isNegative) {
+      _startCountdownTimer();
     }
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    _timer?.cancel();
-    super.dispose();
+  void _updateRemainingTime() {
+    if (mounted) {
+      setState(() {
+        _remainingTime = widget.expiryDate.difference(DateTime.now());
+      });
+    }
   }
 
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
-      if (!mounted || widget.activeTests.length < 2) {
-        timer.cancel();
-        return;
+  void _startCountdownTimer() {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _updateRemainingTime();
+
+      if (_remainingTime.isNegative) {
+        _countdownTimer?.cancel();
+        widget.onExpired?.call();
       }
-      int nextPage = _currentPage < widget.activeTests.length - 1 ? _currentPage + 1 : 0;
-      _pageController.animateToPage(
-        nextPage,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
     });
   }
-
-  void _resetTimer() {
-    _timer?.cancel();
-    if (widget.activeTests.length > 1) {
-      _startTimer();
-    }
+  
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+  
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    String hours = twoDigits(duration.inHours);
+    String minutes = twoDigits(duration.inMinutes.remainder(60));
+    String seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$hours:$minutes:$seconds";
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SizedBox(
-          height: 185, 
-          child: PageView.builder(
-            controller: _pageController,
-            itemCount: widget.activeTests.length,
-            onPageChanged: (int page) {
-              setState(() {
-                _currentPage = page;
-              });
-              _resetTimer();
-            },
-            itemBuilder: (context, index) {
-              final group = widget.activeTests[index];
-              return ActiveTestCard(
-                group: group,
-                // *** MÓDOSÍTÁS: A callback továbbítása a kártyának ***
-                onExpired: () => widget.onExpired(group),
-                onNext: index < widget.activeTests.length - 1
-                    ? () {
-                        _pageController.nextPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                        _resetTimer();
-                      }
-                    : null,
-                onPrevious: index > 0
-                    ? () {
-                        _pageController.previousPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                        _resetTimer();
-                      }
-                    : null,
-              );
-            },
-          ),
+    final bool isExpired = _remainingTime.isNegative;
+
+    // Ha lejárt az idő, a widget egy láthatatlan dobozt ad vissza, így eltűnik.
+    if (isExpired) {
+      return const SizedBox.shrink();
+    }
+
+    if (_remainingTime.inHours >= 12) {
+      final formattedDate = DateFormat('yyyy. MMM d. HH:mm').format(widget.expiryDate);
+      return Text(formattedDate, style: TextStyle(color: Colors.white, fontSize: widget.isBig ? 16 : 14, fontWeight: FontWeight.w500));
+    } else {
+      return Container(
+         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.25),
+          borderRadius: BorderRadius.circular(20),
         ),
-        if (widget.activeTests.length > 1) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(
-                widget.activeTests.length,
-                (index) => buildDot(index: index),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.timer_outlined, color: Colors.white, size: widget.isBig ? 20 : 16),
+            const SizedBox(width: 8),
+            Text(
+              _formatDuration(_remainingTime),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+                fontSize: widget.isBig ? 18 : 14,
+                fontFamily: 'monospace',
               ),
             ),
-          ),
-        ]
-      ],
-    );
-  }
-
-  Widget buildDot({required int index}) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      height: 6,
-      width: _currentPage == index ? 20 : 6,
-      decoration: BoxDecoration(
-        color: _currentPage == index ? Colors.white : Colors.white54,
-        borderRadius: BorderRadius.circular(5),
-      ),
-    );
+          ],
+        ),
+      );
+    }
   }
 }
 
-// ActiveTestCard widget (MÓDOSULT)
+
+// A többi widget (ActiveTestCard, ActiveTestCarousel, GroupCard, SideNavItem, HeaderWithDivider) változatlan
+// és a korábbi válaszokban szereplő formában használható.
+// ... (a többi widget kódja itt következne, de a helytakarékosság miatt nem másolom be újra) ...
+
 class ActiveTestCard extends StatefulWidget {
   final Group group;
-  final VoidCallback onExpired; // ÚJ: Callback
+  final VoidCallback onExpired;
   final VoidCallback? onNext;
   final VoidCallback? onPrevious;
 
@@ -412,118 +397,6 @@ class ActiveTestCard extends StatefulWidget {
 
 class _ActiveTestCardState extends State<ActiveTestCard> {
   bool _isHovered = false;
-  Timer? _countdownTimer;
-  Timer? _blinkingTimer;
-  late Duration _remainingTime;
-  bool _isBlinkingVisible = true;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.group.testExpiryDate != null) {
-      _remainingTime = widget.group.testExpiryDate!.difference(DateTime.now());
-
-      if (_remainingTime.isNegative) {
-        // Ha már a kártya létrehozásakor lejárt, azonnal jelezzük.
-        WidgetsBinding.instance.addPostFrameCallback((_) => widget.onExpired());
-      } else if (_remainingTime.inHours < 12) {
-        _startCountdownTimer();
-        if (_remainingTime.inMinutes < 45) {
-          _startBlinkingTimer();
-        }
-      }
-    }
-  }
-
-  void _startCountdownTimer() {
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) {
-        _countdownTimer?.cancel();
-        return;
-      }
-      final now = DateTime.now();
-      final newRemainingTime = widget.group.testExpiryDate!.difference(now);
-
-      if (newRemainingTime.isNegative) {
-        // *** MÓDOSÍTÁS: A callback meghívása, amikor lejár az idő ***
-        widget.onExpired();
-        _countdownTimer?.cancel();
-        _blinkingTimer?.cancel();
-        if (mounted) setState(() => _remainingTime = Duration.zero);
-      } else {
-        if (mounted) setState(() => _remainingTime = newRemainingTime);
-        if (_remainingTime.inMinutes < 45 && _blinkingTimer == null) {
-          _startBlinkingTimer();
-        }
-      }
-    });
-  }
-  
-  // A többi metódus (startBlinkingTimer, dispose, stb.) változatlan...
-  void _startBlinkingTimer() {
-    _blinkingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (mounted) setState(() => _isBlinkingVisible = !_isBlinkingVisible);
-    });
-  }
-
-  @override
-  void dispose() {
-    _countdownTimer?.cancel();
-    _blinkingTimer?.cancel();
-    super.dispose();
-  }
-  
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String hours = twoDigits(duration.inHours);
-    String minutes = twoDigits(duration.inMinutes.remainder(60));
-    String seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$hours:$minutes:$seconds";
-  }
-
-  Widget _buildExpiryInfo() {
-    if (widget.group.testExpiryDate == null) {
-      return const SizedBox(height: 34);
-    }
-
-    Widget content;
-    bool isExpired = _remainingTime.isNegative || _remainingTime == Duration.zero;
-
-    if (isExpired) {
-      content = const Text('LEJÁRT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold));
-    } else if (_remainingTime.inHours >= 12) {
-      final formattedDate = DateFormat('yyyy. MMM d. HH:mm').format(widget.group.testExpiryDate!);
-      content = Text(' $formattedDate', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500));
-    } else {
-      bool isBlinking = _remainingTime.inMinutes < 45;
-      content = Text(
-        _formatDuration(_remainingTime),
-        style: TextStyle(
-          color: isBlinking 
-            ? (_isBlinkingVisible ? Colors.red.shade300 : Colors.white.withOpacity(0.9)) 
-            : Colors.white,
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.25),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.hourglass_bottom, color: Colors.white, size: 16),
-          const SizedBox(width: 8),
-          content,
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -559,7 +432,13 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                       color: Colors.white.withOpacity(0.8), fontSize: 12),
                 ),
                 const Spacer(),
-                Center(child: _buildExpiryInfo()),
+                if (widget.group.testExpiryDate != null)
+                  Center(
+                    child: CountdownTimerWidget(
+                      expiryDate: widget.group.testExpiryDate!,
+                      onExpired: widget.onExpired,
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 ElevatedButton(
                   onPressed: () {},
@@ -629,35 +508,154 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
   }
 }
 
-// A többi widget (HeaderWithDivider, GroupCard, SideNavItem) VÁLTOZATLAN...
-class HeaderWithDivider extends StatelessWidget {
-  final String title;
-  const HeaderWithDivider({super.key, required this.title});
+class ActiveTestCarousel extends StatefulWidget {
+  final List<Group> activeTests;
+  final Function(Group) onExpired;
+
+  const ActiveTestCarousel({
+    super.key, 
+    required this.activeTests,
+    required this.onExpired,
+  });
+
+  @override
+  State<ActiveTestCarousel> createState() => _ActiveTestCarouselState();
+}
+
+class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+    if (widget.activeTests.length > 1) {
+      _startTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
+      if (!mounted || widget.activeTests.length < 2) {
+        timer.cancel();
+        return;
+      }
+      int nextPage = _currentPage < widget.activeTests.length - 1 ? _currentPage + 1 : 0;
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
+  void _resetTimer() {
+    _timer?.cancel();
+    if (widget.activeTests.length > 1) {
+      _startTimer();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: 15,
-              fontWeight: FontWeight.w600),
+        SizedBox(
+          height: 185, 
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.activeTests.length,
+            onPageChanged: (int page) {
+              setState(() {
+                _currentPage = page;
+              });
+              _resetTimer();
+            },
+            itemBuilder: (context, index) {
+              final group = widget.activeTests[index];
+              return ActiveTestCard(
+                key: ValueKey(group.title),
+                group: group,
+                onExpired: () => widget.onExpired(group),
+                onNext: index < widget.activeTests.length - 1
+                    ? () {
+                        _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                        _resetTimer();
+                      }
+                    : null,
+                onPrevious: index > 0
+                    ? () {
+                        _pageController.previousPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                        _resetTimer();
+                      }
+                    : null,
+              );
+            },
+          ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          height: 1,
-          color: Colors.white.withOpacity(0.1),
-        ),
+        if (widget.activeTests.length > 1) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(
+                widget.activeTests.length,
+                (index) => buildDot(index: index),
+              ),
+            ),
+          ),
+        ]
       ],
+    );
+  }
+
+  Widget buildDot({required int index}) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      height: 6,
+      width: _currentPage == index ? 20 : 6,
+      decoration: BoxDecoration(
+        color: _currentPage == index ? Colors.white : Colors.white54,
+        borderRadius: BorderRadius.circular(5),
+      ),
     );
   }
 }
 
 class GroupCard extends StatelessWidget {
   final Group group;
-  const GroupCard({super.key, required this.group});
+  final Function(Group) onGroupSelected;
+
+  const GroupCard({
+    super.key,
+    required this.group,
+    required this.onGroupSelected,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -674,7 +672,7 @@ class GroupCard extends StatelessWidget {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () {},
+              onTap: () => onGroupSelected(group),
               borderRadius: BorderRadius.circular(5),
               child: Padding(
                 padding:
@@ -725,12 +723,14 @@ class SideNavItem extends StatelessWidget {
   final String label;
   final IconData? icon;
   final bool isSelected;
-  
+  final VoidCallback? onTap;
+
   const SideNavItem({
-    super.key, 
-    required this.label, 
+    super.key,
+    required this.label,
     this.icon,
     this.isSelected = false,
+    this.onTap,
   });
 
   @override
@@ -739,7 +739,7 @@ class SideNavItem extends StatelessWidget {
       color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: () {},
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -748,9 +748,9 @@ class SideNavItem extends StatelessWidget {
               CircleAvatar(
                 backgroundColor: const Color(0xFF4f4f4f),
                 radius: 18,
-                child: icon != null 
-                  ? Icon(icon, color: Colors.white, size: 20)
-                  : null,
+                child: icon != null
+                    ? Icon(icon, color: Colors.white, size: 20)
+                    : null,
               ),
               const SizedBox(width: 16),
               Text(
@@ -761,6 +761,31 @@ class SideNavItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class HeaderWithDivider extends StatelessWidget {
+  final String title;
+  const HeaderWithDivider({super.key, required this.title});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 15,
+              fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 1,
+          color: Colors.white.withOpacity(0.1),
+        ),
+      ],
     );
   }
 }
