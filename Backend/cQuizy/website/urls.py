@@ -10,7 +10,4 @@ urlpatterns = [
     path('register/', views.register, name='register'),
     path('profile/', views.profile, name='profile'),
     path('groups/', views.groups, name='groups'),
-
-    # Tests
-    path('users/', views.user_list_view, name='user-list'),
 ]
