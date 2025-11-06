@@ -335,6 +335,7 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
+  // *** MÓDOSÍTOTT TAGOK PANEL ***
   Widget _buildMembersPanel() {
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 300),
@@ -377,35 +378,72 @@ class _GroupPageState extends State<GroupPage> {
             const Divider(color: Colors.white12, height: 1),
             _buildInviteCodeCard(),
             Expanded(
-              child: ListView.builder(
+              // *** MÓDOSÍTÁS KEZDETE: ListView-ra cserélve a szekciók miatt ***
+              child: ListView(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
-                itemCount: 24,
-                itemBuilder: (context, index) {
-                  return ListTile(
+                children: [
+                  // --- ADMIN SZEKCIÓ ---
+                  _buildSectionHeader('ADMIN'),
+                  const Divider(color: Colors.white12, height: 1),
+
+                  ListTile(
                     leading: const CircleAvatar(
-                      backgroundColor: Colors.deepPurple,
-                      child: Icon(Icons.person, color: Colors.white),
+                      backgroundColor: const Color(0xFFed2f5b),
+                      child: Icon(Icons.star, color: Colors.white),
                     ),
-                    title: Text('Tag Neve ${index + 1}',
-                        style: const TextStyle(color: Colors.white)),
-                    subtitle: Text('Felhasználónév${index + 1}',
-                        style: TextStyle(color: Colors.white.withOpacity(0.6))),
-                    trailing: IconButton(
-                      icon: Icon(Icons.delete_outline,
-                          color: Colors.red.shade300),
-                      tooltip: 'Tag eltávolítása',
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Tag ${index + 1} eltávolítása...'),
-                            backgroundColor: Colors.red.shade400,
-                          ),
-                        );
-                      },
+                    title: const Text(
+                      'Admin Neve 1',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold),
                     ),
-                  );
-                },
+                    subtitle: Text(
+                      'Admin',
+                      style: TextStyle(color: const Color(0xFFED2F5B)),
+                    ),
+                    trailing: Icon(
+                      Icons.workspace_premium, // Korona ikon
+                      color: const Color(0xFFed2f5b),
+                    ),
+                  ),
+                  // --- TAGOK SZEKCIÓ ---
+                  _buildSectionHeader('TAGOK (23)'),
+                  const Divider(color: Colors.white12, height: 1),
+
+                  // A többi 23 tag generálása
+                  ...List.generate(23, (index) {
+                    final memberIndex = index + 1; // Tag Neve 2-től indul
+                    return ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Colors.deepPurple,
+                        child: Icon(Icons.person, color: Colors.white),
+                      ),
+                      title: Text(
+                        'Tag Neve $memberIndex',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      subtitle: Text(
+                        'Felhasználónév$memberIndex',
+                        style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(Icons.delete_outline,
+                            color: Colors.red.shade300),
+                        tooltip: 'Tag eltávolítása',
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content:
+                                  Text('Tag $memberIndex eltávolítása...'),
+                              backgroundColor: Colors.red.shade400,
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  }),
+                ],
               ),
+              // *** MÓDOSÍTÁS VÉGE ***
             ),
           ],
         ),
@@ -413,7 +451,22 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  // *** MÓDOSÍTOTT MEGHÍVÓKÓD KÁRTYA ***
+  // Segédfüggvény a szekciófejlécekhez
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.6),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
   Widget _buildInviteCodeCard() {
     const inviteCode = 'X7B2-K9P5';
     return Container(
@@ -451,7 +504,6 @@ class _GroupPageState extends State<GroupPage> {
               ),
             ],
           ),
-          // *** MÓDOSÍTÁS: A gombok mostantól egy Row-ban vannak ***
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -459,7 +511,6 @@ class _GroupPageState extends State<GroupPage> {
                 icon: const Icon(Icons.refresh, color: Colors.white70),
                 tooltip: 'Új kód generálása',
                 onPressed: () {
-                  // Ide jöhet az új kód generálásának logikája
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Új meghívókód generálása...'),
