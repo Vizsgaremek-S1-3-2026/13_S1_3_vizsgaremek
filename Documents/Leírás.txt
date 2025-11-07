@@ -2,12 +2,9 @@
 Hivatalosan leadott specifikáció (v1)
 
 # Adatszerkezet_KeleMártonRóbert_MolnárKároly
-Hivatalosan leadott adatbázis ismertető (v1)
+Hivatalosan leadott adatbázis ismertető (v3)
 
 
 
 # cQuizy Specifikáció v2.pdf
 Specifikáció kicserélt logoval és átírt fejléccel
-
-# cQuizy Adatbázis Tervdokumentáció v3.pdf
-Még nem leadott adatbázis ismertető
