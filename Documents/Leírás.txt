@@ -9,5 +9,5 @@ Hivatalosan leadott adatbázis ismertető (v1)
 # cQuizy Specifikáció v2.pdf
 Specifikáció kicserélt logoval és átírt fejléccel
 
-# cQuizy Adatbázis Tervdokumentáció v2.pdf
+# cQuizy Adatbázis Tervdokumentáció v3.pdf
 Még nem leadott adatbázis ismertető
