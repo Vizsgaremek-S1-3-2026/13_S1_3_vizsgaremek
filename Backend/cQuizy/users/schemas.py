@@ -1,59 +1,75 @@
+# cQuizy/users/schemas.py
+
 from ninja import Schema
-from pydantic import Field, EmailStr
+from pydantic import Field, EmailStr, field_validator
 from typing import Optional
+import re
 
-#! Profile ==================================================
-#? Schema for displaying profile information (Output)
-class ProfileOut(Schema):
-    username: str = Field(..., alias="user.username")
-    email: EmailStr = Field(..., alias="user.email")
-    first_name: str = Field(..., alias="user.first_name")
-    last_name: str = Field(..., alias="user.last_name")
-    nickname: str
-    pfp_url: str
-
-#! Profile Settings ==================================================
-#? Schema for updating the profile (Input)
-class UpdateProfileSchema(Schema):
-    nickname: Optional[str] = None
-    pfp_url: Optional[str] = None
-
-#? Schema for updating the name (Input)
-class UpdateNameSchema(Schema):
+#! User Output Schema ==================================================
+# This is now the primary schema for displaying user data.
+class UserOut(Schema):
+    id: int
+    username: str
+    email: EmailStr
     first_name: str
     last_name: str
+    nickname: Optional[str]
+    pfp_url: str
+    date_joined: Optional[str] # Good to have this
 
-#? Schema for updating the email (Input)
+#! User Settings Schemas (Inputs) =======================================
+# Renamed from UpdateProfileSchema for clarity
+class UpdateUserSchema(Schema):
+    nickname: Optional[str] = None
+    pfp_url: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
 class UpdateEmailSchema(Schema):
     email: str
     password: str 
 
-#? Schema for updating the password (Input)
 class UpdatePasswordSchema(Schema):
     old_password: str
     new_password: str
 
-#? Schema for deleting the account (Input)
 class DeleteAccountSchema(Schema):
-    username: str
     password: str
 
-#! Registration and Login ==================================================
-#? Schema for User Registration (Input)
+#! Registration and Login Schemas =======================================
 class RegisterSchema(Schema):
     username: str
     nickname: Optional[str] = None
     first_name: str
     last_name: str
-    email: EmailStr  # Ensures the input is a valid email format
+    email: EmailStr
     password: str
     pfp_url: Optional[str] = None
 
-#? Schema for User Login (Input)
+    @field_validator('username')
+    def validate_username(cls, value):
+        """
+        Validates that the username contains only lowercase letters,
+        numbers, and underscores, and is between 3 and 20 characters long.
+        """
+        # 1. Check for allowed characters using a regular expression.
+        #    ^                - Start of the string
+        #    [a-z0-9_]        - Allowed characters: lowercase a-z, numbers 0-9, underscore
+        #    +                - One or more of the allowed characters
+        #    $                - End of the string
+        if not re.match('^[a-z0-9_]+$', value):
+            raise ValueError('Username can only contain lowercase letters, numbers, and underscores.')
+
+        # 2. Check for length.
+        if not 3 <= len(value) <= 20:
+            raise ValueError('Username must be between 3 and 20 characters long.')
+        
+        # 3. If all checks pass, return the original value.
+        return value
+
 class LoginSchema(Schema):
-    username: str # This might get the username or the email, but both are valid
+    username: str
     password: str
 
-#? Schema for the response after a successful login (Output)
 class TokenSchema(Schema):
     token: str
