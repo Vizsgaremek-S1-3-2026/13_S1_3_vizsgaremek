@@ -2,7 +2,7 @@
 Hivatalosan leadott specifikáció (v1)
 
 # Adatszerkezet_KeleMártonRóbert_MolnárKároly
-Hivatalosan leadott adatbázis ismertető (v3)
+Hivatalosan leadott adatbázis ismertető (v3) + Javítás
 
 
 
