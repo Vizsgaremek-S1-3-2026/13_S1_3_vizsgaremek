@@ -1,3 +1,5 @@
+# cQuizy/users/api.py
+
 from ninja import Router
 from ninja.errors import HttpError
 from django.contrib.auth.models import User
@@ -21,7 +23,7 @@ from .schemas import (
 from .auth import generate_token, JWTAuth
 
 #? Instead of NinjaAPI, we use Router
-router = Router(tags=['users'])  # The 'tags' are great for organizing docs
+router = Router(tags=['Users'])  # The 'tags' are great for organizing docs
 
 
 
@@ -95,9 +97,11 @@ def login(request, payload: LoginSchema):
     user = authenticate(username=user_query.username, password=payload.password)
     
     if user is not None:
-        # ** THE UNIFIED LOGIN LOGIC **
         # 1. Create the session cookie for the Django Admin
-        django_session_login(request, user)
+        ''' This will break the login for admin users
+        if user.is_staff:
+            django_session_login(request, user)
+        '''
         
         # 2. Generate the JWT for API clients (JS, Flutter)
         token = generate_token(user)

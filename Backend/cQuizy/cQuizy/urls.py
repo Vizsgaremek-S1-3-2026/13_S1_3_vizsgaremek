@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from .api import api # Global API
+from cQuizy.api import api # Global API
 from users import views as user_views
 from users.views import session_logout_view
 

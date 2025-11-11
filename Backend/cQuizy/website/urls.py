@@ -1,3 +1,5 @@
+#cQuizy/website/urls.py
+
 from django.urls import path
 from . import views
 
@@ -7,7 +9,5 @@ urlpatterns = [
     path('login/', views.login, name='login'),
     path('register/', views.register, name='register'),
     path('profile/', views.profile, name='profile'),
-
-    # Tests
-    path('users/', views.user_list_view, name='user-list'),
+    path('groups/', views.groups, name='groups'),
 ]
