@@ -4,6 +4,7 @@ import secrets
 from ninja import Router
 from django.shortcuts import get_object_or_404
 from typing import List
+from django.utils import timezone ### CHANGE: Import timezone for setting timestamps
 
 from .models import Group, GroupMember, GradePercentage
 from .schemas import (
@@ -59,25 +60,23 @@ def create_group(request, data: GroupCreateSchema):
 @router.get("/", response=List[GroupWithRankOutSchema], auth=JWTAuth(), summary="List all groups for the current user")
 def list_groups(request):
     """
-    Retrieves a list of groups.
-    - Regular users see only the groups they are members of.
-    - Superusers see ALL groups. Their rank will be their actual rank if they are a member,
-      or 'SUPERUSER' if they are not a member but have access due to their status.
+    Retrieves a list of active groups.
+    - Regular users see only the active groups they are active members of.
+    - Superusers see ALL active groups.
     """
     current_user = request.auth
     response_data = []
 
+    ### CHANGE: The logic is now simpler because the default '.objects' manager
+    ### automatically filters for active groups and active memberships.
     if current_user.is_superuser:
+        # Superusers see all active groups.
         all_groups = Group.objects.all()
-        # Get all of the superuser's actual memberships in one efficient query
         user_memberships = GroupMember.objects.filter(user=current_user)
-        # Create a dictionary for quick lookups: {group_id: rank}
         membership_ranks = {m.group_id: m.rank for m in user_memberships}
 
         for group in all_groups:
-            # Check if the superuser has an actual membership record for this group
             actual_rank = membership_ranks.get(group.id)
-
             response_data.append({
                 "id": group.id,
                 "name": group.name,
@@ -85,53 +84,68 @@ def list_groups(request):
                 "invite_code": group.invite_code,
                 "anticheat": group.anticheat,
                 "kiosk": group.kiosk,
-                # Use their real rank if they have one, otherwise assign 'SUPERUSER'
                 "rank": actual_rank if actual_rank else "SUPERUSER"
             })
         return response_data
 
-    # This part for regular users remains the same and is correct.
+    # Regular users only see groups where they have an active membership.
     memberships = GroupMember.objects.filter(user=current_user).select_related('group').order_by('date_joined')
     for membership in memberships:
         group = membership.group
-        response_data.append({
-            "id": group.id,
-            "name": group.name,
-            "date_created": group.date_created,
-            "invite_code": group.invite_code,
-            "anticheat": group.anticheat,
-            "kiosk": group.kiosk,
-            "rank": membership.rank
-        })
+        # This check is implicitly handled by the manager, but an explicit check is safest
+        if group.date_deleted is None:
+            response_data.append({
+                "id": group.id,
+                "name": group.name,
+                "date_created": group.date_created,
+                "invite_code": group.invite_code,
+                "anticheat": group.anticheat,
+                "kiosk": group.kiosk,
+                "rank": membership.rank
+            })
     return response_data
 
 #? Joining
 @router.post("/join", response=GroupOutSchema, auth=JWTAuth(), summary="Join a group using an invite code")
 def join_group(request, data: GroupJoinSchema):
     """
-    Adds the current user to a group if the provided invite_code is valid.
+    Adds the current user to a group using an invite code.
+
+    - If the user has never been in the group, it creates a new membership record.
+    - If the user was previously in the group and left (i.e., their membership was
+      soft-deleted), this will reactivate their existing membership, preserving
+      their original join date.
+    - If the user is already an active member, it returns an error.
     """
     current_user = request.auth
     invite_code = data.invite_code
 
     # 1. Find the group with the given invite code.
-    # If not found, get_object_or_404 will automatically return a 404 error.
+    # The default manager 'Group.objects' automatically ensures we only find
+    # an active (not deleted) group.
     group = get_object_or_404(Group, invite_code=invite_code)
 
-    # 2. Check if the user is already a member.
-    is_already_member = GroupMember.objects.filter(group=group, user=current_user).exists()
-    if is_already_member:
-        # Return a 400 Bad Request error with a clear message.
-        return 400, {"detail": "You are already a member of this group."}
-
-    # 3. If all checks pass, create the membership with the default 'MEMBER' rank.
-    GroupMember.objects.create(
+    # 2. Look for an existing membership record, including inactive ones.
+    # We use 'GroupMember.all_objects' to search through ALL historical records.
+    membership, created = GroupMember.all_objects.get_or_create(
         group=group,
         user=current_user,
-        rank='MEMBER'
+        defaults={'rank': 'MEMBER'}
     )
 
-    # Return the data of the group the user just joined.
+    # 3. Handle the outcome.
+    if not created:
+        # A membership record for this user and group already existed.
+        if membership.date_left is not None:
+            # The existing record was inactive (soft-deleted). Reactivate it.
+            membership.date_left = None
+            membership.left_reason = None
+            membership.save()
+        else:
+            # The existing record is already active.
+            return 400, {"detail": "You are already an active member of this group."}
+
+    # 4. Return the data of the group the user just joined.
     return group
 
 #! Resource-specific Group Handleing Endpoints ==================================================
@@ -139,7 +153,7 @@ def join_group(request, data: GroupJoinSchema):
 @router.delete("/{group_id}/members/{user_id}", auth=JWTAuth(), summary="Remove (kick) a member from a group")
 def kick_member(request, group_id: int, user_id: int):
     """
-    Removes a member from a group.
+    Soft-deletes a member from a group.
     
     - Requires the requesting user to be an ADMIN of the group.
     - An admin cannot kick themselves.
@@ -147,7 +161,7 @@ def kick_member(request, group_id: int, user_id: int):
     current_user = request.auth
     group = get_object_or_404(Group, id=group_id)
 
-    # 1. Authorization: Is the current user an admin of this group (or superuser) ?
+    # 1. Authorization: The '.objects' manager ensures we check for an *active* membership.
     is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
     if not is_admin and not current_user.is_superuser:
         return 403, {"detail": "You do not have permission to perform this action."}
@@ -156,14 +170,13 @@ def kick_member(request, group_id: int, user_id: int):
     if current_user.id == user_id:
         return 400, {"detail": "You cannot kick yourself. Please use the 'leave group' endpoint."}
 
-    # 3. Find and delete the target member's record.
-    # get_object_or_404 will handle the "user not in group" case automatically.
+    # 3. Find the target member's active record.
     member_to_kick = get_object_or_404(GroupMember, group=group, user_id=user_id)
     
-    # Because you have only one admin, you don't need to check if the target is also an admin.
-    # If you ever change that rule, you'd add that check here.
-    
-    member_to_kick.delete()
+    ### CHANGE: Replace hard delete with soft delete.
+    member_to_kick.date_left = timezone.now()
+    member_to_kick.left_reason = 'KICKED'
+    member_to_kick.save()
 
     return 200, {"success": "Member has been removed from the group."}
 
@@ -171,28 +184,24 @@ def kick_member(request, group_id: int, user_id: int):
 @router.get("/{group_id}/members", response=List[MemberOutSchema], auth=JWTAuth(), summary="List all members of a group")
 def list_members(request, group_id: int):
     """
-    Retrieves a list of all members in a specific group, ensuring
-    admins are always listed first.
+    Retrieves a list of all *active* members in a specific group.
     
     Requires the user to be a member of the group to view the list.
     """
     current_user = request.auth
     group = get_object_or_404(Group, id=group_id)
 
-    # 1. Authorization Check: Is the user a member of this group?
-    # Superusers should also be allowed access.
+    # 1. Authorization Check: Is the user an active member of this group?
     is_member = GroupMember.objects.filter(group=group, user=current_user).exists()
     if not is_member and not current_user.is_superuser:
         return 403, {"detail": "You do not have permission to view this group's members."}
 
-    # 2. Fetch all members
-    # Use select_related to efficiently grab user and profile data in one query.
-    # *** CHANGE: Added .order_by() to sort by rank ('ADMIN' first) and then by join date.
+    # 2. Fetch all members.
+    ### CHANGE: The default '.objects' manager automatically returns only active members.
     members = GroupMember.objects.filter(group=group) \
         .select_related('user', 'user__profile') \
         .order_by('rank', 'date_joined')
     
-    # Ninja will automatically serialize this list of objects using MemberOutSchema
     return members
 
 #? Transfer Ownership
@@ -202,23 +211,17 @@ def transfer(request, group_id: int, data: GroupTransferSchema):
     Transfers the ownership of a group to another member.
 
     - The user making the request must be an 'ADMIN'.
-    - The target user must be a member of the group.
+    - The target user must be an active member of the group.
     """
     current_user = request.auth
     group = get_object_or_404(Group, id=group_id)
     new_owner_id = data.user_id
 
-    # 1. Authorization Check: Ensure the current user is an admin
-    try:
-        current_admin_membership = GroupMember.objects.get(group=group, user=current_user, rank='ADMIN')
-    except GroupMember.DoesNotExist:
-        return 403, {"detail": "You do not have permission to transfer ownership of this group."}
+    # 1. Authorization Check: Get the current admin's active membership.
+    current_admin_membership = get_object_or_404(GroupMember, group=group, user=current_user, rank='ADMIN')
 
-    # 2. Find the target user and ensure they are a member of the group
-    try:
-        new_owner_membership = GroupMember.objects.get(group=group, user_id=new_owner_id)
-    except GroupMember.DoesNotExist:
-        return 404, {"detail": "The specified user is not a member of this group."}
+    # 2. Find the target user's active membership.
+    new_owner_membership = get_object_or_404(GroupMember, group=group, user_id=new_owner_id)
 
     # 3. Prevent transferring ownership to oneself
     if current_user.id == new_owner_id:
@@ -237,27 +240,28 @@ def transfer(request, group_id: int, data: GroupTransferSchema):
 @router.delete("/{group_id}/leave", auth=JWTAuth(), summary="Leave a group")
 def leave_group(request, group_id: int):
     """
-    Removes the current user from a specific group.
+    Soft-deletes the current user's membership in a group.
 
     Prevents the last admin from leaving a group to avoid orphaned groups.
     """
     current_user = request.auth
     group = get_object_or_404(Group, id=group_id)
 
-    # 1. Find the user's specific membership record for this group.
-    # If they are not a member, this will correctly return a 404 Not Found.
+    # 1. Find the user's active membership record for this group.
     membership = get_object_or_404(GroupMember, group=group, user=current_user)
 
     # 2. CRITICAL EDGE CASE: Prevent the last admin from leaving.
     if membership.rank == 'ADMIN':
-        # Count how many other admins are in the group.
+        # Count how many other *active* admins are in the group.
         other_admins_count = GroupMember.objects.filter(group=group, rank='ADMIN').exclude(user=current_user).count()
         if other_admins_count == 0:
-            # If there are no other admins, this user cannot leave.
-            return 400, {"detail": "You cannot leave the group as you are the only admin. Please transfer ownership or delete the group."}
+            return 400, {"detail": "You cannot leave as the only admin. Please transfer ownership or delete the group."}
 
-    # 3. If all checks pass, delete the membership record.
-    membership.delete()
+    # 3. If all checks pass, soft-delete the membership record.
+    ### CHANGE: Replace hard delete with soft delete.
+    membership.date_left = timezone.now()
+    membership.left_reason = 'LEFT'
+    membership.save()
 
     return 200, {"success": f"You have successfully left the group '{group.name}'."}
 
@@ -286,7 +290,6 @@ def regenerate_invite_code(request, group_id: int):
     group.invite_code = new_code
     group.save()
 
-    # Return the updated group object so the frontend can display the new code
     return group
 
 #? Retrieval by ID
@@ -295,31 +298,23 @@ def get_group(request, group_id: int):
     """
     Retrieves the details for a single group.
 
-    Access is granted only if the requesting user is either:
-    1. A superuser.
-    2. A member of the group.
+    Access is granted only if the requesting user is an active member or a superuser.
     """
     current_user = request.auth
     
-    # 1. Get the group object from the database.
-    # If a group with this ID doesn't exist, it will automatically
-    # return a 404 Not Found error.
+    # 1. Get the active group object from the database.
     group = get_object_or_404(Group, id=group_id)
 
     # 2. Check for Authorization.
-    # We check for superuser first, as it's a quick and easy pass.
     if current_user.is_superuser:
-        return group # Superusers can see everything.
+        return group 
 
-    # 3. If not a superuser, check if they are a member of the group.
-    # .exists() is very efficient as it stops at the first match.
+    # 3. If not a superuser, check if they are an active member of the group.
     is_member = GroupMember.objects.filter(group=group, user=current_user).exists()
     
     if is_member:
-        return group # Group members are allowed to view it.
+        return group
     
-    # 4. If neither check passed, the user is not authorized.
-    # We return a 403 Forbidden error with a clear message.
     return 403, {"detail": "You do not have permission to view this group."}
 
 #? Change Group Data (Including Renaming)
@@ -328,8 +323,7 @@ def update_group_settings(request, group_id: int, payload: GroupUpdateSchema):
     """
     Updates a group's settings (name, anticheat, kiosk).
     
-    Requires the user to be an ADMIN of the group. This is a partial update;
-    only the fields provided in the request will be changed.
+    Requires the user to be an ADMIN of the group.
     """
     current_user = request.auth
     group = get_object_or_404(Group, id=group_id)
@@ -344,7 +338,6 @@ def update_group_settings(request, group_id: int, payload: GroupUpdateSchema):
 
     # 3. Update the group object and save
     if not update_data:
-        # If the payload was empty after excluding None, do nothing.
         return 200, group
 
     for key, value in update_data.items():
@@ -358,7 +351,7 @@ def update_group_settings(request, group_id: int, payload: GroupUpdateSchema):
 @router.delete("/{group_id}", auth=JWTAuth(), summary="Delete a group")
 def delete_group(request, group_id: int):
     """
-    Deletes a group.
+    Soft-deletes a group and all of its current memberships.
 
     Requires the user to be a superuser or an 'ADMIN' of the group.
     """
@@ -369,12 +362,18 @@ def delete_group(request, group_id: int):
     is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
 
     if not current_user.is_superuser and not is_admin:
-        # If they are neither a superuser nor an admin of this group, deny access.
         return 403, {"detail": "You do not have permission to delete this group."}
 
-    # If authorized, delete the group.
-    group.delete()
+    # If authorized, soft-delete the group.
+    ### CHANGE: Replace hard delete with soft delete.
+    group.date_deleted = timezone.now()
+    group.save()
     
-    # A successful deletion can return a 204 No Content, but a 200 with a
-    # success message is often easier for the frontend to handle.
+    # Also soft-delete all active memberships in the group.
+    current_memberships = GroupMember.objects.filter(group=group)
+    for member in current_memberships:
+        member.date_left = timezone.now()
+        member.left_reason = 'GROUP_DELETED'
+        member.save()
+    
     return 200, {"success": f"Group '{group.name}' has been deleted."}
