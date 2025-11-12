@@ -1,0 +1,85 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Groups</title>
+</head>
+<body>
+    {% include "website/components/header.html" %}
+
+    <br><br>
+
+    <!-- FORM SECTION - UPDATED FOR NEW APIS -->
+    <div id="groupsForms">
+        <!-- Create and Join forms remain the same -->
+        <div class="item">
+            <p class="formTitle">Create a New Group</p>
+            <form id="formCreateGroup">
+                <label>Group Name*</label><br>
+                <input id="groupNameInput" type="text" placeholder="Name" required><br>
+                <button>Create</button>
+            </form>
+        </div>
+        <div class="item">
+            <p class="formTitle">Join a Group</p>
+            <form id="formJoinGroup">
+                <label>Group Code*</label><br>
+                <input id="groupInviteInput" type="text" placeholder="Invite Code" required><br>
+                <button>Join</button>
+            </form>
+        </div>
+
+        <!-- NEW: Update Group Settings Form (replaces old Rename form) -->
+        <div class="item">
+            <p class="formTitle">Update Group Settings</p>
+            <form id="formUpdateGroup">
+                <label>Group ID*</label><br>
+                <input id="groupUpdateId" type="text" placeholder="ID of group to update" required><br>
+                <label>New Name (optional)</label><br>
+                <input id="groupUpdateName" type="text" placeholder="New group name"><br>
+                <div class="checkbox-container">
+                    <input id="groupUpdateAnticheat" type="checkbox">
+                    <label for="groupUpdateAnticheat">Enable Anti-Cheat</label>
+                </div>
+                <div class="checkbox-container">
+                    <input id="groupUpdateKiosk" type="checkbox">
+                    <label for="groupUpdateKiosk">Enable Kiosk Mode</label>
+                </div>
+                <button>Update Settings</button>
+            </form>
+        </div>
+
+        <!-- NEW: Regenerate Invite Code Form -->
+        <div class="item">
+            <p class="formTitle">Regenerate Invite Code</p>
+            <form id="formRegenerateCode">
+                <label>Group ID*</label><br>
+                <input id="groupRegenerateId" type="text" placeholder="ID of group" required><br>
+                <button>Regenerate</button>
+            </form>
+        </div>
+
+        <!-- Transfer Ownership form remains the same -->
+        <div class="item">
+            <p class="formTitle">Transfer Ownership</p>
+            <form id="formTransferGroup">
+                <label>Group ID*</label><br>
+                <input id="groupTransferId" type="text" placeholder="ID" required><br>
+                <label>New Owner ID*</label><br>
+                <input id="groupTransferUser" type="text" placeholder="ID" required><br>
+                <button>Transfer</button>
+            </form>
+        </div>
+    </div>
+    
+    <br><br>
+
+    <!-- DYNAMIC CONTENT SECTION -->
+    <div id="groupsContainer">
+        <!-- This container will be filled with groups by groups.js -->
+    </div>
+
+    <script src="{% static 'js/groups.js' %}"></script>
+</body>
+</html>
