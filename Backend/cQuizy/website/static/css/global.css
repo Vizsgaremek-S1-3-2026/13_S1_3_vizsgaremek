@@ -7,11 +7,14 @@
     --secondary-color: #2fedc1;
     --secondary-color-hover: #8df5dd;
 
+    --danger-color: #ffd800;
+
     --primary-background: #151515;
     --secondary-background: #1e1e1e;
     --tertiary-background: #282828;
     
     --text-color: #fff;
+    --secondary-text-color: #ffffffc0;
 }
 
 body{
@@ -195,6 +198,13 @@ form{
     max-width: 800px;
     transition: background-color 0.2s ease-in-out;
 
+    h3{
+        color: var(--text-color);
+    }
+    p{
+        color: var(--secondary-text-color);
+    }
+
     button{
         margin: 5px;
         background-color: var(--primary-color);
@@ -212,4 +222,27 @@ form{
 }
 .groupItem:hover{
     background-color: var(--tertiary-background);
+}
+
+input[type="color"] {
+    -webkit-appearance: none; /* For older Safari/Chrome */
+    -moz-appearance: none;    /* For Firefox */
+    appearance: none;         /* Standard property */
+    width: 60px;              /* Give it a reasonable width */
+    height: 30px;             /* And height */
+    padding: 0;               /* Remove padding that can hide the color */
+    border: 1px solid #777;   /* A subtle border */
+    border-radius: 5px;       /* Rounded corners */
+    background-color: transparent; /* Crucial: lets the color show through */
+    cursor: pointer;
+}
+
+/* This targets the tiny color swatch inside the picker for Webkit browsers */
+input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 4px;
 }

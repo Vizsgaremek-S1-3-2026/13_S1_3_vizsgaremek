@@ -3,6 +3,7 @@
 from ninja import Router
 from ninja.errors import HttpError
 from django.contrib.auth import authenticate, get_user_model
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
 
@@ -83,6 +84,10 @@ def login(request, payload: LoginSchema):
     user = authenticate(username=user_query.username, password=payload.password)
     
     if user is not None:
+        # Manually update the last_login timestamp since we are not using Django's default login() method.
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
+
         # 1. Create the session cookie for the Django Admin (This is still commented out as per your original)
         ''' This will break the login for admin users
         if user.is_staff:
