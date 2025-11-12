@@ -3,6 +3,7 @@
 from ninja import Schema
 from pydantic import Field, EmailStr, field_validator
 from typing import Optional
+from datetime import datetime
 import re
 
 #! User Output Schema ==================================================
@@ -15,7 +16,10 @@ class UserOut(Schema):
     last_name: str
     nickname: Optional[str]
     pfp_url: str
-    date_joined: Optional[str] # Good to have this
+    date_joined: Optional[datetime]
+
+    class Config:
+        from_attributes = True
 
 #! User Settings Schemas (Inputs) =======================================
 # Renamed from UpdateProfileSchema for clarity
