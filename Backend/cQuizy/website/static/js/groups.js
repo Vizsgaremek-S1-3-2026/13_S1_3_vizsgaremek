@@ -1,4 +1,30 @@
-// static/js/groups.js
+/**
+ * Creates a darker shade of a given hex color.
+ * @param {string} color - The hex color string (e.g., "#FF5733").
+ * @param {number} amount - The percentage to darken by (e.g., 0.3 for 30% darker).
+ * @returns {string} The new, darker hex color string.
+ */
+function darkenColor(color, amount) {
+    let usePound = false;
+    if (color[0] === "#") {
+        color = color.slice(1);
+        usePound = true;
+    }
+    const num = parseInt(color, 16);
+    let r = (num >> 16);
+    let g = ((num >> 8) & 0x00FF);
+    let b = (num & 0x0000FF);
+
+    r = Math.max(0, Math.floor(r * (1 - amount)));
+    g = Math.max(0, Math.floor(g * (1 - amount)));
+    b = Math.max(0, Math.floor(b * (1 - amount)));
+
+    let newColor = b.toString(16).padStart(2, '0');
+    newColor = g.toString(16).padStart(2, '0') + newColor;
+    newColor = r.toString(16).padStart(2, '0') + newColor;
+
+    return (usePound ? "#" : "") + newColor;
+}
 
 /**
  * Helper function to format ISO 8601 date strings into a more readable format.
@@ -25,10 +51,8 @@ function formatDateTime(isoString) {
 async function handleApiError(response) {
     try {
         const errorData = await response.json();
-        // Ninja often returns errors in a 'detail' key.
         return errorData.detail || JSON.stringify(errorData);
     } catch (e) {
-        // If the response body isn't JSON, fall back to the status text.
         return response.statusText || 'An unexpected error occurred.';
     }
 }
@@ -48,11 +72,14 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // --- References to all input elements for the forms ---
     const groupNameInput = document.getElementById('groupNameInput');
+    const groupColorInput = document.getElementById('groupColorInput');
     const groupInviteInput = document.getElementById('groupInviteInput');
     const groupTransferIdInput = document.getElementById('groupTransferId');
     const groupTransferUserInput = document.getElementById('groupTransferUser');
     const groupUpdateIdInput = document.getElementById('groupUpdateId');
     const groupUpdateNameInput = document.getElementById('groupUpdateName');
+    const groupUpdateColorInput = document.getElementById('groupUpdateColor');
+    const groupUpdateColorCheck = document.getElementById('groupUpdateColorCheck'); // NEW
     const groupUpdateAnticheatInput = document.getElementById('groupUpdateAnticheat');
     const groupUpdateKioskInput = document.getElementById('groupUpdateKiosk');
     const groupRegenerateIdInput = document.getElementById('groupRegenerateId');
@@ -82,22 +109,16 @@ document.addEventListener('DOMContentLoaded', async function() {
                 groups.forEach(group => {
                     const groupElement = document.createElement('div');
                     groupElement.className = 'groupItem';
-
-                    // Determine the primary action button based on the user's rank in the group.
-                    // Admins and Superusers can delete the group; regular members can only leave it.
+                    const darkerColor = darkenColor(group.color, 0.3);
+                    groupElement.style.background = `linear-gradient(to bottom right, ${darkerColor}, ${group.color})`;
                     let primaryAction = '';
                     if (group.rank === 'ADMIN' || group.rank === 'SUPERUSER') {
                         primaryAction = `<button class="delete-btn" data-group-id="${group.id}">Delete Group</button>`;
                     } else {
                         primaryAction = `<button class="leave-btn" data-group-id="${group.id}">Leave Group</button>`;
                     }
-
-                    // We store the user's rank on the "View Members" button so we can access it later
-                    // to decide whether to show "Kick" buttons.
                     const memberButton = `<button class="view-members-btn" data-group-id="${group.id}" data-user-rank="${group.rank}">View Members</button>`;
-                    
                     const formattedDate = formatDateTime(group.date_created);
-
                     groupElement.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <h3>${group.name} | ID: ${group.id}</h3>
@@ -106,7 +127,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                                 ${memberButton}
                             </div>
                         </div>
-                        <p><strong>Invite Code:</strong> ${group.invite_code}</p>
+                        <p><strong>Invite Code:</strong> ${group.invite_code_formatted}</p>
                         <p><strong>Created on:</strong> ${formattedDate}</p>
                         <p><strong>Your Rank:</strong> ${group.rank}</p> 
                         <p><strong>Anti-Cheat:</strong> ${group.anticheat ? 'Enabled' : 'Disabled'} | <strong>Kiosk Mode:</strong> ${group.kiosk ? 'Enabled' : 'Disabled'}</p>
@@ -122,11 +143,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     /**
      * Fetches and displays the member list for a specific group inside its container.
-     * @param {string} groupId - The ID of the group to fetch members for.
-     * @param {HTMLElement} container - The container element to render the list into.
-     * @param {string} currentUserRank - The rank of the user viewing the list ('ADMIN', 'MEMBER', etc.).
      */
     const displayMembers = async (groupId, container, currentUserRank) => {
+        // This function is unchanged
         container.innerHTML = '<p>Loading members...</p>';
         try {
             const response = await fetch(`/api/groups/${groupId}/members`, {
@@ -139,13 +158,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             const canKick = currentUserRank === 'ADMIN' || currentUserRank === 'SUPERUSER';
             
             members.forEach(member => {
-                // --- THIS IS THE CORRECTED LINE ---
-                // The nickname is now directly on the user object, not a nested profile object.
                 const displayName = member.user.nickname || member.user.username;
-                
-                // Determine if a "Kick" button should be shown for this member.
                 let kickButtonHTML = '';
-                // The user can kick if they are an admin AND the target member is not also an admin.
                 if (canKick && member.rank !== 'ADMIN') {
                     kickButtonHTML = `<button class="kick-btn" data-group-id="${groupId}" data-user-id="${member.user.id}">Kick</button>`;
                 }
@@ -166,9 +180,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     };
 
 
-    // We use a single event listener on the main container to handle all button clicks
-    // inside the group items. This is more efficient than adding a listener to every button.
+    // Event listener for all button clicks inside the groups container.
     groupsContainer.addEventListener('click', async (event) => {
+        // This function is unchanged
         if (!token) return alert('Please log in.');
 
         const deleteBtn = event.target.closest('.delete-btn');
@@ -176,13 +190,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         const viewMembersBtn = event.target.closest('.view-members-btn');
         const kickBtn = event.target.closest('.kick-btn');
 
-        // A generic function to handle actions that require confirmation.
         const processAction = async (url, method, confirmMsg) => {
             if (confirm(confirmMsg)) {
                 try {
                     const response = await fetch(url, { method: method, headers: { 'Authorization': `Bearer ${token}` }});
                     if (!response.ok) throw new Error(await handleApiError(response));
-                    // After a successful action, refresh the whole list of groups.
                     fetchAndDisplayGroups();
                 } catch (error) { alert(`Error: ${error.message}`); }
             }
@@ -205,21 +217,18 @@ document.addEventListener('DOMContentLoaded', async function() {
             const userRank = viewMembersBtn.dataset.userRank;
             const container = document.getElementById(`members-${groupId}`);
 
-            // Toggle the visibility of the member list container.
             if (container.style.display === 'none') {
                 container.style.display = 'block';
                 viewMembersBtn.textContent = 'Hide Members';
-                // Fetch and display the members when showing the list.
                 displayMembers(groupId, container, userRank);
             } else {
                 container.style.display = 'none';
                 viewMembersBtn.textContent = 'View Members';
-                container.innerHTML = ''; // Clear the list when hiding.
+                container.innerHTML = '';
             }
             return;
         }
 
-        // Handle the click on a "Kick" button.
         if (kickBtn) {
             const groupId = kickBtn.dataset.groupId;
             const userId = kickBtn.dataset.userId;
@@ -232,8 +241,6 @@ document.addEventListener('DOMContentLoaded', async function() {
                     });
                     if (!response.ok) throw new Error(await handleApiError(response));
                     
-                    // After a successful kick, we just refresh the member list for that specific group
-                    // instead of the whole page, which is a better user experience.
                     const container = kickBtn.closest('.member-list-container');
                     const viewButton = container.parentElement.querySelector('.view-members-btn');
                     const currentUserRank = viewButton.dataset.userRank;
@@ -248,15 +255,19 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     // --- FORM SUBMISSION HANDLERS ---
-    // All of the form handlers below were already correct and did not need changes.
-
+    
     createGroupForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!token) return alert('You must be logged in to create a group.');
         const groupName = groupNameInput.value.trim();
+        const groupColor = groupColorInput.value;
         if (!groupName) return alert('Please enter a name for the group.');
         try {
-            const response = await fetch('/api/groups/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ name: groupName }) });
+            const response = await fetch('/api/groups/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ name: groupName, color: groupColor })
+            });
             if (!response.ok) throw new Error(await handleApiError(response));
             createGroupForm.reset();
             fetchAndDisplayGroups();
@@ -264,12 +275,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     joinGroupForm.addEventListener('submit', async (event) => {
+        // This function is unchanged
         event.preventDefault();
         if (!token) return alert('You must be logged in to join a group.');
         const inviteCode = groupInviteInput.value.trim();
         if (!inviteCode) return alert('Please enter an invite code.');
         try {
-            const response = await fetch('/api/groups/join', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ invite_code: inviteCode }) });
+            const response = await fetch('/api/groups/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ invite_code: inviteCode })
+            });
             if (!response.ok) throw new Error(await handleApiError(response));
             joinGroupForm.reset();
             fetchAndDisplayGroups();
@@ -282,13 +298,25 @@ document.addEventListener('DOMContentLoaded', async function() {
         const groupId = groupUpdateIdInput.value.trim();
         if (!groupId) return alert('Please provide the Group ID to update.');
         const newName = groupUpdateNameInput.value.trim();
+        
+        // --- NEW LOGIC FOR UPDATE PAYLOAD ---
         const payload = {
+            // These are always included
             anticheat: groupUpdateAnticheatInput.checked,
             kiosk: groupUpdateKioskInput.checked
         };
+        
+        // Only include the name if the user actually entered one
         if (newName !== '') {
             payload.name = newName;
         }
+
+        // Only include the color if the "Update Color?" checkbox is checked
+        if (groupUpdateColorCheck.checked) {
+            payload.color = groupUpdateColorInput.value;
+        }
+        // --- END OF NEW LOGIC ---
+
         try {
             const response = await fetch(`/api/groups/${groupId}`, {
                 method: 'PATCH',
@@ -305,6 +333,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     regenerateCodeForm.addEventListener('submit', async (event) => {
+        // This function is unchanged
         event.preventDefault();
         if (!token) return alert('You must be logged in.');
         const groupId = groupRegenerateIdInput.value.trim();
@@ -327,6 +356,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     transferGroupForm.addEventListener('submit', async (event) => {
+        // This function is unchanged
         event.preventDefault();
         if (!token) return alert('You must be logged in.');
         const groupId = groupTransferIdInput.value.trim();
@@ -348,6 +378,5 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     // --- Initial Load ---
-    // This is the first thing that runs after the page is ready and the listeners are set up.
     fetchAndDisplayGroups();
 });

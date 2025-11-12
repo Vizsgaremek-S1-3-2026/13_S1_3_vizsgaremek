@@ -44,6 +44,7 @@ def create_group(request, data: GroupCreateSchema):
     # 2. Create the Group instance
     new_group = Group.objects.create(
         name=data.name,
+        color=data.color,
         invite_code=invite_code
     )
 
@@ -65,8 +66,7 @@ def list_groups(request):
     - Superusers see ALL active groups.
     """
     current_user = request.auth
-    response_data = []
-
+    
     ### CHANGE: The logic is now simpler because the default '.objects' manager
     ### automatically filters for active groups and active memberships.
     if current_user.is_superuser:
@@ -75,34 +75,29 @@ def list_groups(request):
         user_memberships = GroupMember.objects.filter(user=current_user)
         membership_ranks = {m.group_id: m.rank for m in user_memberships}
 
+        # Instead of returning a list of dicts, we can return the queryset directly
+        # and let Ninja handle the serialization with the schema. This is cleaner.
+        response_data = []
         for group in all_groups:
             actual_rank = membership_ranks.get(group.id)
-            response_data.append({
-                "id": group.id,
-                "name": group.name,
-                "date_created": group.date_created,
-                "invite_code": group.invite_code,
-                "anticheat": group.anticheat,
-                "kiosk": group.kiosk,
-                "rank": actual_rank if actual_rank else "SUPERUSER"
-            })
+            # By adding the rank to the group object itself, we can pass the object
+            # to the schema, which will correctly serialize everything.
+            group.rank = actual_rank if actual_rank else "SUPERUSER"
+            response_data.append(group)
         return response_data
 
     # Regular users only see groups where they have an active membership.
     memberships = GroupMember.objects.filter(user=current_user).select_related('group').order_by('date_joined')
+    
+    response_data = []
     for membership in memberships:
         group = membership.group
         # This check is implicitly handled by the manager, but an explicit check is safest
         if group.date_deleted is None:
-            response_data.append({
-                "id": group.id,
-                "name": group.name,
-                "date_created": group.date_created,
-                "invite_code": group.invite_code,
-                "anticheat": group.anticheat,
-                "kiosk": group.kiosk,
-                "rank": membership.rank
-            })
+            # Similar to the superuser case, add the rank to the group object.
+            group.rank = membership.rank
+            response_data.append(group)
+    
     return response_data
 
 #? Joining
@@ -118,7 +113,8 @@ def join_group(request, data: GroupJoinSchema):
     - If the user is already an active member, it returns an error.
     """
     current_user = request.auth
-    invite_code = data.invite_code
+    raw_invite_code = data.invite_code
+    invite_code = raw_invite_code.replace('-', '')
 
     # 1. Find the group with the given invite code.
     # The default manager 'Group.objects' automatically ensures we only find
