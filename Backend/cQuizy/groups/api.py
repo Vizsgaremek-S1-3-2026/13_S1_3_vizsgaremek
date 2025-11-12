@@ -1,12 +1,12 @@
 # cQuizy/groups/api.py
 
-import secrets
 from ninja import Router
 from django.shortcuts import get_object_or_404
 from typing import List
 from django.utils import timezone ### CHANGE: Import timezone for setting timestamps
 
 from .models import Group, GroupMember, GradePercentage
+from .utils import generate_invite_code
 from .schemas import (
     GroupOutSchema,
     GroupWithRankOutSchema,
@@ -37,7 +37,7 @@ def create_group(request, data: GroupCreateSchema):
 
     # 1. Generate a unique invite code
     while True:
-        invite_code = secrets.token_urlsafe(8) # Generates a URL-safe text string
+        invite_code = generate_invite_code()
         if not Group.objects.filter(invite_code=invite_code).exists():
             break
 
@@ -283,7 +283,7 @@ def regenerate_invite_code(request, group_id: int):
     
     # 2. Generate a new unique code (same logic as create_group)
     while True:
-        new_code = secrets.token_urlsafe(8)
+        new_code = generate_invite_code()
         if not Group.objects.filter(invite_code=new_code).exists():
             break
             
