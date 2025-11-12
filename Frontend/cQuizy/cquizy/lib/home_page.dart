@@ -2,50 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:intl/intl.dart';
-import 'group_page.dart';
+import 'group_page.dart'; // Módosított import
 
-// A Group modell változatlan
-class Group {
-  final String title;
-  final String subtitle;
-  final Gradient gradient;
-  final bool hasNotification;
-  final DateTime? testExpiryDate;
-  final String? activeTestTitle;
-  final String? activeTestDescription;
-
-  Group({
-    required this.title,
-    required this.subtitle,
-    required this.gradient,
-    this.hasNotification = false,
-    this.testExpiryDate,
-    this.activeTestTitle,
-    this.activeTestDescription,
-  });
-
-  Group copyWith({
-    String? title,
-    String? subtitle,
-    Gradient? gradient,
-    bool? hasNotification,
-    DateTime? testExpiryDate,
-    String? activeTestTitle,
-    String? activeTestDescription,
-  }) {
-    return Group(
-      title: title ?? this.title,
-      subtitle: subtitle ?? this.subtitle,
-      gradient: gradient ?? this.gradient,
-      hasNotification: hasNotification ?? this.hasNotification,
-      testExpiryDate: testExpiryDate ?? this.testExpiryDate,
-      activeTestTitle: activeTestTitle ?? this.activeTestTitle,
-      activeTestDescription:
-          activeTestDescription ?? this.activeTestDescription,
-    );
-  }
-}
+const double kDesktopBreakpoint = 900.0;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -108,7 +67,7 @@ class _HomePageState extends State<HomePage> {
         ),
         hasNotification: true,
         testExpiryDate:
-            DateTime.now().add(const Duration(seconds: 15)), // Teszteléshez rövid idő
+            DateTime.now().add(const Duration(seconds: 45)), // Teszteléshez rövid idő
         activeTestTitle: 'Algoritmusok I. Témazáró',
         activeTestDescription:
             'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
@@ -185,33 +144,130 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1c1c1c),
-      body: Row(
-        children: [
-          _buildSideNav(_activeTests),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: _selectedGroup == null
-                  ? _buildGroupList()
-                  : GroupPage(
-                      key: ValueKey(_selectedGroup!.title),
-                      group: _selectedGroup!,
-                      onBack: _unselectGroup,
-                      onTestExpired: _handleTestExpired,
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isDesktop = constraints.maxWidth > kDesktopBreakpoint;
+
+        if (isDesktop) {
+          // --- ASZTALI NÉZET ---
+          return Scaffold(
+            backgroundColor: const Color(0xFF1c1c1c),
+            body: Row(
+              children: [
+                _buildSideNav(_activeTests),
+                Expanded(
+                  child: _buildAnimatedContent(),
+                ),
+              ],
             ),
+          );
+        } else {
+          // --- MOBIL NÉZET ---
+          return Scaffold(
+            backgroundColor: const Color(0xFF1c1c1c),
+            drawer: _buildSideNav(_activeTests, isDrawer: true),
+            body: _buildAnimatedContent(),
+            floatingActionButton: _buildFloatingActionButton(),
+            floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
+            bottomNavigationBar: _buildBottomAppBar(context),
+          );
+        }
+      },
+    );
+  }
+
+  // Az animált tartalomváltó
+  Widget _buildAnimatedContent() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: _selectedGroup == null
+          ? _buildGroupList()
+          : GroupPage(
+              key: ValueKey(_selectedGroup!.title),
+              group: _selectedGroup!,
+              onTestExpired: _handleTestExpired,
+            ),
+    );
+  }
+
+  // *** MÓDOSÍTOTT: Alsó navigációs sáv mobilra ***
+  Widget _buildBottomAppBar(BuildContext context) {
+    final bool isGroupView = _selectedGroup != null;
+
+    return BottomAppBar(
+      color: const Color(0xFF252525),
+      shape: const CircularNotchedRectangle(),
+      notchMargin: 8.0,
+      child: Row(
+        children: [
+          // *** ÚJ: Dinamikus menü/vissza gomb ***
+          _buildMenuButton(
+            icon: isGroupView ? Icons.arrow_back : Icons.menu,
+            tooltip: isGroupView ? 'Vissza' : 'Menü',
+            onPressed: () {
+              if (isGroupView) {
+                _unselectGroup();
+              } else {
+                Scaffold.of(context).openDrawer();
+              }
+            },
           ),
+          const Spacer(),
         ],
       ),
     );
   }
 
+  // *** ÚJ: Segédfüggvény a menü/vissza gomb kirajzolásához ***
+  Widget _buildMenuButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    // A gombot egy Padding veszi körül, hogy ne érjen a képernyő széléhez
+    return Padding(
+      padding: const EdgeInsets.only(left: 8.0),
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFFff3b5f),
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            child: Icon(icon, color: Colors.white, size: 28),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Feltételes lebegő akciógomb
+  Widget? _buildFloatingActionButton() {
+    if (_selectedGroup == null) return null;
+    return FloatingActionButton(
+      onPressed: () {
+        // Tag hozzáadása logika
+      },
+      backgroundColor: const Color(0xFFff3b5f),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16.0),
+      ),
+      child: const Icon(Icons.add, color: Colors.white, size: 32),
+    );
+  }
+
+  // A csoportlista
   Widget _buildGroupList() {
     return ListView(
       key: const ValueKey('group_list'),
-      padding: const EdgeInsets.symmetric(vertical: 20.0),
+      padding: const EdgeInsets.symmetric(vertical: 40.0),
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 40.0),
@@ -237,9 +293,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // *** MÓDOSÍTOTT SIDE NAV ***
-  Widget _buildSideNav(List<Group> activeTests) {
-    return Container(
+  // Oldalsó menü / Drawer
+  Widget _buildSideNav(List<Group> activeTests, {bool isDrawer = false}) {
+    final navContent = Container(
       width: 280,
       color: const Color(0xFF252525),
       padding: const EdgeInsets.all(20.0),
@@ -251,21 +307,23 @@ class _HomePageState extends State<HomePage> {
             label: 'Csoportok',
             icon: Icons.group,
             isSelected: _selectedGroup == null,
-            onTap: _selectedGroup != null ? _unselectGroup : null,
+            onTap: () {
+              if (_selectedGroup != null) _unselectGroup();
+              if (isDrawer) Navigator.pop(context);
+            },
           ),
           const SizedBox(height: 8),
           SideNavItem(label: 'Tesztek', icon: Icons.quiz),
           const SizedBox(height: 8),
           SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
           const Spacer(),
-
- Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Image.asset(
                 'assets/logo/logo_2.png',
-                height: 16, // Kisebb méret
+                height: 16,
               ),
               const SizedBox(width: 8),
               Text(
@@ -281,7 +339,6 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 5),
           const Divider(color: Color.fromARGB(61, 255, 255, 255)),         
           const SizedBox(height: 10),
-
           if (activeTests.isNotEmpty)
             ActiveTestCarousel(
               key: ValueKey(activeTests.map((g) => g.title).join()),
@@ -289,19 +346,19 @@ class _HomePageState extends State<HomePage> {
               onExpired: _handleTestExpired,
             ),
           const SizedBox(height: 24),
-          //const Divider(color: Colors.white24),         
           const SizedBox(height: 16),
           SideNavItem(label: 'Profil & Beállítások'),
           const SizedBox(height: 10),
         ],
       ),
     );
+
+    return isDrawer ? Drawer(child: navContent) : navContent;
   }
 }
 
-// ... CountdownTimerWidget, ActiveTestCard, ActiveTestCarousel, GroupCard változatlan ...
+// --- LOKÁLIS WIDGETEK ---
 
-// *** MÓDOSÍTOTT/JAVÍTOTT SIDE NAV ITEM WIDGET ***
 class SideNavItem extends StatelessWidget {
   final String label;
   final IconData? icon;
@@ -327,10 +384,8 @@ class SideNavItem extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
-            // Ha nincs ikon, a tartalom középre kerül
             mainAxisAlignment: icon == null ? MainAxisAlignment.center : MainAxisAlignment.start,
             children: [
-              // Az ikon és a távtartó csak akkor jelenik meg, ha van ikon megadva
               if (icon != null) ...[
                 CircleAvatar(
                   backgroundColor: const Color(0xFF4f4f4f),
@@ -348,115 +403,6 @@ class SideNavItem extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// A többi widget változatlanul következik...
-
-class CountdownTimerWidget extends StatefulWidget {
-  final DateTime expiryDate;
-  final VoidCallback? onExpired;
-  final bool isBig;
-
-  const CountdownTimerWidget({
-    super.key,
-    required this.expiryDate,
-    this.onExpired,
-    this.isBig = false,
-  });
-
-  @override
-  State<CountdownTimerWidget> createState() => _CountdownTimerWidgetState();
-}
-
-class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
-  Timer? _countdownTimer;
-  late Duration _remainingTime;
-
-  @override
-  void initState() {
-    super.initState();
-    _updateRemainingTime();
-    if (!_remainingTime.isNegative) {
-      _startCountdownTimer();
-    }
-  }
-
-  void _updateRemainingTime() {
-    if (mounted) {
-      setState(() {
-        _remainingTime = widget.expiryDate.difference(DateTime.now());
-      });
-    }
-  }
-
-  void _startCountdownTimer() {
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _updateRemainingTime();
-
-      if (_remainingTime.isNegative) {
-        _countdownTimer?.cancel();
-        widget.onExpired?.call();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _countdownTimer?.cancel();
-    super.dispose();
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String hours = twoDigits(duration.inHours);
-    String minutes = twoDigits(duration.inMinutes.remainder(60));
-    String seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$hours:$minutes:$seconds";
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isExpired = _remainingTime.isNegative;
-
-    if (isExpired) {
-      return const SizedBox.shrink();
-    }
-
-    if (_remainingTime.inHours >= 12) {
-      final formattedDate =
-          DateFormat('yyyy. MMM d. HH:mm').format(widget.expiryDate);
-      return Text(formattedDate,
-          style: TextStyle(
-              color: Colors.white,
-              fontSize: widget.isBig ? 16 : 14,
-              fontWeight: FontWeight.w500));
-    } else {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.25),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.timer_outlined,
-                color: Colors.white, size: widget.isBig ? 20 : 16),
-            const SizedBox(width: 8),
-            Text(
-              _formatDuration(_remainingTime),
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-                fontSize: widget.isBig ? 18 : 14,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-        ),
-      );
-    }
   }
 }
 
@@ -507,6 +453,8 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -656,8 +604,8 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SizedBox(
-          height: 185,
+        AspectRatio(
+          aspectRatio: 240 / 185,
           child: PageView.builder(
             controller: _pageController,
             itemCount: widget.activeTests.length,
@@ -747,7 +695,6 @@ class GroupCard extends StatelessWidget {
       alignment: Alignment.centerLeft,
       children: [
         Container(
-          width: MediaQuery.of(context).size.width,
           constraints: const BoxConstraints(maxHeight: double.infinity),
           margin: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
           decoration: BoxDecoration(
@@ -799,31 +746,6 @@ class GroupCard extends StatelessWidget {
               ),
             ),
           ),
-      ],
-    );
-  }
-}
-
-class HeaderWithDivider extends StatelessWidget {
-  final String title;
-  const HeaderWithDivider({super.key, required this.title});
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: 15,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          height: 1,
-          color: Colors.white.withOpacity(0.1),
-        ),
       ],
     );
   }

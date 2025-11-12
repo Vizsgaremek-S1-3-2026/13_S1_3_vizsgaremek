@@ -2,17 +2,60 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // A vágólaphoz szükséges
-import 'home_page.dart';
+import 'dart:async';
+import 'package:intl/intl.dart';
+
+// --- MEOSZTOTT MODELL ---
+class Group {
+  final String title;
+  final String subtitle;
+  final Gradient gradient;
+  final bool hasNotification;
+  final DateTime? testExpiryDate;
+  final String? activeTestTitle;
+  final String? activeTestDescription;
+
+  Group({
+    required this.title,
+    required this.subtitle,
+    required this.gradient,
+    this.hasNotification = false,
+    this.testExpiryDate,
+    this.activeTestTitle,
+    this.activeTestDescription,
+  });
+
+  Group copyWith({
+    String? title,
+    String? subtitle,
+    Gradient? gradient,
+    bool? hasNotification,
+    DateTime? testExpiryDate,
+    String? activeTestTitle,
+    String? activeTestDescription,
+  }) {
+    return Group(
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      gradient: gradient ?? this.gradient,
+      hasNotification: hasNotification ?? this.hasNotification,
+      testExpiryDate: testExpiryDate ?? this.testExpiryDate,
+      activeTestTitle: activeTestTitle ?? this.activeTestTitle,
+      activeTestDescription:
+          activeTestDescription ?? this.activeTestDescription,
+    );
+  }
+}
+
+// --- CSOPORT NÉZET WIDGET ---
 
 class GroupPage extends StatefulWidget {
   final Group group;
-  final VoidCallback onBack;
   final Function(Group) onTestExpired;
 
   const GroupPage({
     super.key,
     required this.group,
-    required this.onBack,
     required this.onTestExpired,
   });
 
@@ -51,46 +94,31 @@ class _GroupPageState extends State<GroupPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1c1c1c),
-      body: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: Stack(
-              children: [
-                _buildTestContent(),
-                if (_isMembersPanelVisible)
-                  GestureDetector(
-                    onTap: () => setState(() => _isMembersPanelVisible = false),
-                    child: Container(
-                      color: Colors.black.withOpacity(0.5),
-                    ),
+    return Column(
+      children: [
+        _buildHeader(),
+        Expanded(
+          child: Stack(
+            children: [
+              _buildTestContent(),
+              if (_isMembersPanelVisible)
+                GestureDetector(
+                  onTap: () => setState(() => _isMembersPanelVisible = false),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.5),
                   ),
-                _buildMembersPanel(),
-              ],
-            ),
+                ),
+              _buildMembersPanel(),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: !_isMembersPanelVisible
-          ? FloatingActionButton(
-              onPressed: () {
-                // Ide jöhet a tag hozzáadása logika
-              },
-              backgroundColor: const Color(0xFFff3b5f),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.0),
-              ),
-              child: const Icon(Icons.add, color: Colors.white, size: 32),
-            )
-          : null,
+        ),
+      ],
     );
   }
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.only(top: 40, left: 24, right: 24, bottom: 24),
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
       decoration: BoxDecoration(
         gradient: widget.group.gradient,
         borderRadius: const BorderRadius.only(
@@ -101,24 +129,6 @@ class _GroupPageState extends State<GroupPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: widget.onBack,
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.arrow_back, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'Vissza a csoportokhoz',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -335,15 +345,17 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  // *** MÓDOSÍTOTT TAGOK PANEL ***
   Widget _buildMembersPanel() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final panelWidth = (screenWidth > 500) ? 320.0 : screenWidth * 0.85;
+
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       top: -10,
       bottom: 0,
-      right: _isMembersPanelVisible ? 0 : -300,
-      width: 300,
+      right: _isMembersPanelVisible ? 0 : -panelWidth,
+      width: panelWidth,
       child: Container(
         decoration: BoxDecoration(
             color: const Color(0xFF1a1a1a),
@@ -378,17 +390,15 @@ class _GroupPageState extends State<GroupPage> {
             const Divider(color: Colors.white12, height: 1),
             _buildInviteCodeCard(),
             Expanded(
-              // *** MÓDOSÍTÁS KEZDETE: ListView-ra cserélve a szekciók miatt ***
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
                 children: [
-                  // --- ADMIN SZEKCIÓ ---
                   _buildSectionHeader('ADMIN'),
                   const Divider(color: Colors.white12, height: 1),
 
                   ListTile(
                     leading: const CircleAvatar(
-                      backgroundColor: const Color(0xFFed2f5b),
+                      backgroundColor: Color(0xFFed2f5b),
                       child: Icon(Icons.star, color: Colors.white),
                     ),
                     title: const Text(
@@ -405,13 +415,11 @@ class _GroupPageState extends State<GroupPage> {
                       color: const Color(0xFFed2f5b),
                     ),
                   ),
-                  // --- TAGOK SZEKCIÓ ---
                   _buildSectionHeader('TAGOK (23)'),
                   const Divider(color: Colors.white12, height: 1),
 
-                  // A többi 23 tag generálása
                   ...List.generate(23, (index) {
-                    final memberIndex = index + 1; // Tag Neve 2-től indul
+                    final memberIndex = index + 1;
                     return ListTile(
                       leading: const CircleAvatar(
                         backgroundColor: Colors.deepPurple,
@@ -443,7 +451,6 @@ class _GroupPageState extends State<GroupPage> {
                   }),
                 ],
               ),
-              // *** MÓDOSÍTÁS VÉGE ***
             ),
           ],
         ),
@@ -451,7 +458,6 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  // Segédfüggvény a szekciófejlécekhez
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
@@ -536,6 +542,140 @@ class _GroupPageState extends State<GroupPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// --- MEOSZTOTT WIDGETEK ---
+
+class CountdownTimerWidget extends StatefulWidget {
+  final DateTime expiryDate;
+  final VoidCallback? onExpired;
+  final bool isBig;
+
+  const CountdownTimerWidget({
+    super.key,
+    required this.expiryDate,
+    this.onExpired,
+    this.isBig = false,
+  });
+
+  @override
+  State<CountdownTimerWidget> createState() => _CountdownTimerWidgetState();
+}
+
+class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
+  Timer? _countdownTimer;
+  late Duration _remainingTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateRemainingTime();
+    if (!_remainingTime.isNegative) {
+      _startCountdownTimer();
+    }
+  }
+
+  void _updateRemainingTime() {
+    if (mounted) {
+      setState(() {
+        _remainingTime = widget.expiryDate.difference(DateTime.now());
+      });
+    }
+  }
+
+  void _startCountdownTimer() {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _updateRemainingTime();
+
+      if (_remainingTime.isNegative) {
+        _countdownTimer?.cancel();
+        widget.onExpired?.call();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    String hours = twoDigits(duration.inHours);
+    String minutes = twoDigits(duration.inMinutes.remainder(60));
+    String seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$hours:$minutes:$seconds";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isExpired = _remainingTime.isNegative;
+
+    if (isExpired) {
+      return const SizedBox.shrink();
+    }
+
+    if (_remainingTime.inHours >= 12) {
+      final formattedDate =
+          DateFormat('yyyy. MMM d. HH:mm').format(widget.expiryDate);
+      return Text(formattedDate,
+          style: TextStyle(
+              color: Colors.white,
+              fontSize: widget.isBig ? 16 : 14,
+              fontWeight: FontWeight.w500));
+    } else {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.25),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.timer_outlined,
+                color: Colors.white, size: widget.isBig ? 20 : 16),
+            const SizedBox(width: 8),
+            Text(
+              _formatDuration(_remainingTime),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+                fontSize: widget.isBig ? 18 : 14,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+}
+
+class HeaderWithDivider extends StatelessWidget {
+  final String title;
+  const HeaderWithDivider({super.key, required this.title});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 15,
+              fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 1,
+          color: Colors.white.withOpacity(0.1),
+        ),
+      ],
     );
   }
 }

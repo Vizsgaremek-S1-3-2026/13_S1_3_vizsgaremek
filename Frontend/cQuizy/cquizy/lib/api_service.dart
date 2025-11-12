@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 
 class ApiService {
   // Az API alap URL-je. Győződj meg róla, hogy a szerver ezen a címen fut.
-  static const String _baseUrl = 'http://127.0.0.1:8000/api';
+  static const String _baseUrl = 'https://4w07454m-8000.euw.devtunnels.ms/api';
 
   // Bejelentkezési funkció
   // Visszatérési érték: A szervertől kapott token, ha sikeres, egyébként null.
