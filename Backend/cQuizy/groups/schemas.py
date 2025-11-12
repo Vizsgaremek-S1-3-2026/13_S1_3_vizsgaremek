@@ -15,18 +15,18 @@ class GroupWithRankOutSchema(GroupOutSchema):
     rank: str
 
 #? Getting Data of Group Members
-class ProfileBasicOut(Schema):
-    nickname: Optional[str]
-    pfp_url: Optional[str]
 class UserBasicOut(Schema):
     id: int
     username: str
     first_name: str
     last_name: str
-    profile: ProfileBasicOut
+    nickname: Optional[str]
+    pfp_url: Optional[str]
+
 class MemberOutSchema(Schema):
     user: UserBasicOut
     rank: str
+    date_joined: datetime
 
 #? Updating group name (Input)
 class GroupUpdateSchema(Schema):

@@ -199,7 +199,7 @@ def list_members(request, group_id: int):
     # 2. Fetch all members.
     ### CHANGE: The default '.objects' manager automatically returns only active members.
     members = GroupMember.objects.filter(group=group) \
-        .select_related('user', 'user__profile') \
+        .select_related('user') \
         .order_by('rank', 'date_joined')
     
     return members

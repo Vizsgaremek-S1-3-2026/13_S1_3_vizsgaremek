@@ -1,52 +1,58 @@
 // static/js/profile.js
 
 document.addEventListener('DOMContentLoaded', () => {
+    // First, we get the authentication token from local storage.
     const token = localStorage.getItem('authToken');
+    // If no token exists, the user is not logged in. We immediately redirect
+    // them to the login page to prevent them from seeing a broken profile page.
     if (!token) {
         window.location.href = '/login/';
-        return;
+        return; // Stop executing the rest of the script.
     }
 
-    // --- 1. FUNCTION TO LOAD AND DISPLAY PROFILE DATA ---
-    const loadProfileData = async () => {
+    // --- 1. FUNCTION TO LOAD AND DISPLAY USER DATA ---
+    const loadUserData = async () => {
         try {
-            const response = await fetch('/api/users/profile/me', {
+            // We fetch the current user's data from the new '/api/users/me' endpoint.
+            const response = await fetch('/api/users/me', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
+            // If the response is not 'ok' (e.g., 401 Unauthorized if the token is bad),
+            // it means our token is invalid. We should log the user out.
             if (!response.ok) {
                 localStorage.removeItem('authToken');
                 window.location.href = '/login/';
                 return;
             }
 
-            const profile = await response.json();
+            // The response is good, so we parse the JSON body.
+            const user = await response.json();
 
-            // --- CORRECTED LOGIC FOR 'welcomeName' ID ---
-            // Determine the name to display. If nickname is null or an empty string, fall back to the username.
-            const displayName = profile.nickname || profile.username;
+            // We determine the name to display. If the user has a nickname, we use that.
+            // Otherwise, we fall back to their username.
+            const displayName = user.nickname || user.username;
             document.getElementById('welcomeName').textContent = `Welcome, ${displayName}!`;
             
-            // Populate main profile elements
-            document.getElementById('profilePfp').src = profile.pfp_url;
+            // Populate the main profile elements with the user's data.
+            document.getElementById('profilePfp').src = user.pfp_url;
 
-            // Populate "current" data fields in forms
-            // Also adjust the "Current Nickname" display based on whether it's set
-            document.getElementById('currentNickname').textContent = `Current Nickname: ${profile.nickname || 'Not set'}`;
-            document.getElementById('currentName').textContent = `Current Name: ${profile.first_name} ${profile.last_name}`;
-            document.getElementById('currentEmail').textContent = `Current Email: ${profile.email}`;
-            document.getElementById('currentUsername').textContent = `Your Username: ${profile.username}`;
+            // Populate the "current" data fields in the various forms to give the user context.
+            document.getElementById('currentNickname').textContent = `Current Nickname: ${user.nickname || 'Not set'}`;
+            document.getElementById('currentName').textContent = `Current Name: ${user.first_name} ${user.last_name}`;
+            document.getElementById('currentEmail').textContent = `Current Email: ${user.email}`;
+            document.getElementById('currentUsername').textContent = `Your Username: ${user.username}`;
 
         } catch (error) {
-            console.error('Failed to load profile data:', error);
-            alert('Could not load profile data. Please try again later.');
+            console.error('Failed to load user data:', error);
+            alert('Could not load your data. Please try again later.');
         }
     };
 
-    // Initial load
-    loadProfileData();
+    // We call this function once when the page loads to populate it with data.
+    loadUserData();
 
-    // --- 2. HELPER FUNCTION FOR API CALLS ---
+    // --- 2. HELPER FUNCTION FOR MAKING AUTHENTICATED API CALLS ---
     const apiCall = async (endpoint, method, body) => {
         try {
             const response = await fetch(endpoint, {
@@ -57,9 +63,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify(body)
             });
+
             if (response.ok) {
                 alert('Update successful!');
-                loadProfileData(); // Refresh data on success
+                // After a successful update, we call loadUserData() again to refresh
+                // the displayed information with the latest data from the server.
+                loadUserData();
             } else {
                 const errorData = await response.json();
                 const errorMessage = errorData.detail || 'An unknown error occurred.';
@@ -71,40 +80,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- 3. ADD EVENT LISTENERS FOR ALL FORMS ---
+    // --- 3. ADD EVENT LISTENERS FOR ALL SEPARATE FORMS ---
 
-    // Nickname
+    // Event listener for the "Set Nickname" form
     document.getElementById('formSetNickname').addEventListener('submit', (e) => {
         e.preventDefault();
         const nickname = e.target.querySelector('input[type="text"]').value;
-        apiCall('/api/users/profile/me', 'PATCH', { nickname });
+        // All simple profile updates go to the PATCH /me endpoint.
+        apiCall('/api/users/me', 'PATCH', { nickname });
     });
 
-    // Name
+    // Event listener for the "Set Name" form
     document.getElementById('formSetName').addEventListener('submit', (e) => {
         e.preventDefault();
         const inputs = e.target.querySelectorAll('input[type="text"]');
         const firstName = inputs[0].value;
         const lastName = inputs[1].value;
-        apiCall('/api/users/profile/change-name', 'PATCH', { first_name: firstName, last_name: lastName });
+        // This also goes to the PATCH /me endpoint.
+        apiCall('/api/users/me', 'PATCH', { first_name: firstName, last_name: lastName });
     });
     
-    // Profile Picture
+    // Event listener for the "Change Profile picture" form
     document.getElementById('formSetPfp').addEventListener('submit', (e) => {
         e.preventDefault();
         const pfp_url = e.target.querySelector('input[type="text"]').value;
-        apiCall('/api/users/profile/me', 'PATCH', { pfp_url });
+        // This also goes to the PATCH /me endpoint.
+        apiCall('/api/users/me', 'PATCH', { pfp_url });
     });
 
-    // Email
+    // Event listener for the "Change Email" form
     document.getElementById('formSetEmail').addEventListener('submit', (e) => {
         e.preventDefault();
         const email = e.target.querySelector('input[type="text"]').value;
         const password = e.target.querySelector('input[type="password"]').value;
-        apiCall('/api/users/profile/change-email', 'POST', { email, password });
+        // This is a high-risk action and uses its own endpoint.
+        apiCall('/api/users/me/change-email', 'POST', { email, password });
     });
 
-    // Password
+    // Event listener for the "Change Password" form
     document.getElementById('formSetPassword').addEventListener('submit', (e) => {
         e.preventDefault();
         const inputs = e.target.querySelectorAll('input[type="password"]');
@@ -116,26 +129,34 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('The new passwords do not match. Please try again.');
             return;
         }
-        apiCall('/api/users/profile/change-password', 'POST', { old_password, new_password });
+        // This is a high-risk action and uses its own endpoint.
+        apiCall('/api/users/me/change-password', 'POST', { old_password, new_password });
     });
 
-    // Delete Account
+    // Event listener for the "Delete Account" form
     document.getElementById('formSetDelete').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const username = e.target.querySelector('input[type="text"]').value;
+        // We get the password for confirmation from the password input field.
+        const password = e.target.querySelector('input[type="password"]').value;
+        // The username input is not needed for the API call, but we can keep the frontend check.
+        const usernameInput = e.target.querySelector('input[type="text"]').value;
         const currentUsername = document.getElementById('currentUsername').textContent.replace('Your Username: ', '');
 
-        if (username !== currentUsername) {
-            alert('The username you entered does not match.');
+        if (usernameInput !== currentUsername) {
+            alert('The username you entered does not match your current username.');
             return;
         }
 
-        if (confirm('Are you absolutely sure you want to delete your account? This cannot be undone.')) {
-            const response = await fetch('/api/users/profile/me', {
+        if (confirm('Are you absolutely sure you want to delete your account? This action cannot be undone.')) {
+            // We use the new '/api/users/me' DELETE endpoint.
+            const response = await fetch('/api/users/me', {
                 method: 'DELETE',
                 headers: { 
+                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}` 
                 },
+                // The API now requires the password in the request body for security.
+                body: JSON.stringify({ password: password })
             });
 
             if (response.ok) {
@@ -144,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.location.href = '/';
             } else {
                  const errorData = await response.json();
-                 alert(`Error: ${errorData.detail}`);
+                 alert(`Error: ${errorData.detail || 'An unknown error occurred.'}`);
             }
         }
     });

@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from colorfield.fields import ColorField
 
@@ -60,7 +60,7 @@ class GroupMember(models.Model):
         ('LEFT', 'Left Voluntarily'),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="group_memberships")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="group_memberships")
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="members")
     rank = models.CharField(
         max_length=10,
