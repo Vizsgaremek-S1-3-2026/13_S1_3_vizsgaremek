@@ -20,3 +20,7 @@ def profile(request):
     return render(request, 'website/pages/profile.html')
 def groups(request):
     return render(request, 'website/pages/groups.html')
+def projects(request):
+    return render(request, 'website/pages/projects.html')
+def builder(request):
+    return render(request, 'website/pages/builder.html')

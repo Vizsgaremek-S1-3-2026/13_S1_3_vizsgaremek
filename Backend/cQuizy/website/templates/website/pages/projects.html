@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Projects</title>
+</head>
+<body>
+    {% include "website/components/header.html" %}
+
+    <br><br>
+
+    <!-- FORM SECTION - UPDATED FOR NEW APIS -->
+    <div id="projectsForms">
+        <!-- Create and Join forms remain the same -->
+        <div class="item">
+            <p class="formTitle">Create a New Group</p>
+            <form id="formCreateProject">
+                <label>Project Name*</label><br>
+                <input id="projectNameInput" type="text" placeholder="Name" required><br>
+                <label>Project Description</label><br>
+                <textarea id="projectDescriptionInput" placeholder="Description" rows="4" cols="50" style="resize: vertical;"></textarea><br>
+                <button>Create</button>
+            </form>
+        </div>
+        <div class="item">
+            <p class="formTitle">Insert Project (Használatlan/Nincs API)</p>
+            <form id="formInsertProject">
+                <label>Project ID*</label><br>
+                <input id="projectInsertProjectIdInput" type="text" placeholder="Project ID" required><br>
+                <label>Group ID*</label><br>
+                <input id="projectInsertGroupIdInput" type="text" placeholder="Group ID" required><br>
+                <label for="projectInsertDateStartInput">Kezdés Dátuma*</label>
+                <input id="projectInsertDateStartInput" type="date" placeholder="Kezdés Dátuma" required><br>
+                <label for="projectInsertDateEndInput">Zarás Dátuma*</label>
+                <input id="projectInsertDateEndInput" type="date" placeholder="Zarás Dátuma" required><br>
+                <button>Insert</button>
+            </form>
+        </div>
+
+    <div id="projectsContainer">
+
+    </div>
+
+    <script src="{% static 'js/groups.js' %}"></script>
+</body>
+</html>

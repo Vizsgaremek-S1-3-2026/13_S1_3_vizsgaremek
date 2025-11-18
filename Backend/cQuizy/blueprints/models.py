@@ -13,8 +13,8 @@ class Project(models.Model):
     Corresponds to the 'projects' table (section 2.6 of the documentation).
     This model stores the templates for tests created by teachers.
     """
-    name = models.CharField(max_length=255, verbose_name="Project Name")
-    desc = models.TextField(verbose_name="Project Description", blank=True, null=True)
+    name = models.CharField(max_length=100, verbose_name="Project Name")
+    desc = models.TextField(max_length=1000, verbose_name="Project Description", blank=True, null=True)
     creator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
