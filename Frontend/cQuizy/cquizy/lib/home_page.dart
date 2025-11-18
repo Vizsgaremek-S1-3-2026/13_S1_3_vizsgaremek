@@ -1,8 +1,6 @@
-// lib/home_page.dart
-
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'group_page.dart'; // Módosított import
+import 'group_page.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -18,6 +16,7 @@ class _HomePageState extends State<HomePage> {
   late List<Group> _otherGroups;
   late List<Group> _activeTests;
   Group? _selectedGroup;
+  bool _isBottomBarVisible = true;
 
   @override
   void initState() {
@@ -147,6 +146,7 @@ class _HomePageState extends State<HomePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isDesktop = constraints.maxWidth > kDesktopBreakpoint;
+        final bool isGroupView = _selectedGroup != null;
 
         if (isDesktop) {
           // --- ASZTALI NÉZET ---
@@ -156,7 +156,54 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _buildSideNav(_activeTests),
                 Expanded(
-                  child: _buildAnimatedContent(),
+                  child: Stack(
+                    children: [
+                      _buildAnimatedContent(),
+                      // A "Vissza" gomb csak akkor jelenik meg, ha egy csoport ki van választva
+                      if (isGroupView)
+                        Positioned(
+                          bottom: 24,
+                          left: 24,
+                          child: _buildMenuButton(
+                            icon: Icons.arrow_back,
+                            tooltip: 'Vissza',
+                            onPressed: _unselectGroup,
+                          ),
+                        ),
+                      // A "+" gomb mindig látható
+                      Positioned(
+                        bottom: 24,
+                        right: 24,
+                        child: Tooltip(
+                          message: isGroupView
+                              ? 'Tag hozzáadása'
+                              : 'Csoport hozzáadása / Csatlakozás',
+                          child: InkWell(
+                            onTap: () {
+                              if (isGroupView) {
+                                // Tag hozzáadása logika
+                              } else {
+                                // Csoport hozzáadása / Csatlakozás logika
+                              }
+                            },
+                            customBorder: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFff3b5f),
+                                borderRadius: BorderRadius.circular(16.0),
+                              ),
+                              child: const Icon(Icons.add,
+                                  color: Colors.white, size: 32),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -166,10 +213,73 @@ class _HomePageState extends State<HomePage> {
           return Scaffold(
             backgroundColor: const Color(0xFF1c1c1c),
             drawer: _buildSideNav(_activeTests, isDrawer: true),
+            onDrawerChanged: (isOpened) {
+              if (!isOpened) {
+                setState(() {
+                  _isBottomBarVisible = true;
+                });
+              }
+            },
             body: _buildAnimatedContent(),
-            floatingActionButton: _buildFloatingActionButton(),
-            floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
-            bottomNavigationBar: _buildBottomAppBar(context),
+            bottomNavigationBar: _isBottomBarVisible
+                ? BottomAppBar(
+                    color: Colors.transparent,
+                    elevation: 0,
+                    child: Row(
+                      children: [
+                        Builder(
+                          builder: (context) => _buildMenuButton(
+                            icon: isGroupView
+                                ? Icons.arrow_back
+                                : Icons.menu_rounded,
+                            tooltip: isGroupView ? 'Vissza' : 'Menü',
+                            onPressed: () {
+                              if (isGroupView) {
+                                _unselectGroup();
+                              } else {
+                                setState(() {
+                                  _isBottomBarVisible = false;
+                                });
+                                Scaffold.of(context).openDrawer();
+                              }
+                            },
+                          ),
+                        ),
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: Tooltip(
+                            message: isGroupView
+                                ? 'Tag hozzáadása'
+                                : 'Csoport hozzáadása / Csatlakozás',
+                            child: InkWell(
+                              onTap: () {
+                                if (isGroupView) {
+                                  // Tag hozzáadása
+                                } else {
+                                  // Csoport hozzáadása vagy csatlakozás
+                                }
+                              },
+                              customBorder: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                              ),
+                              child: Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFff3b5f),
+                                  borderRadius: BorderRadius.circular(16.0),
+                                ),
+                                child: const Icon(Icons.add,
+                                    color: Colors.white, size: 32),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : null,
           );
         }
       },
@@ -190,41 +300,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // *** MÓDOSÍTOTT: Alsó navigációs sáv mobilra ***
-  Widget _buildBottomAppBar(BuildContext context) {
-    final bool isGroupView = _selectedGroup != null;
-
-    return BottomAppBar(
-      color: const Color(0xFF252525),
-      shape: const CircularNotchedRectangle(),
-      notchMargin: 8.0,
-      child: Row(
-        children: [
-          // *** ÚJ: Dinamikus menü/vissza gomb ***
-          _buildMenuButton(
-            icon: isGroupView ? Icons.arrow_back : Icons.menu,
-            tooltip: isGroupView ? 'Vissza' : 'Menü',
-            onPressed: () {
-              if (isGroupView) {
-                _unselectGroup();
-              } else {
-                Scaffold.of(context).openDrawer();
-              }
-            },
-          ),
-          const Spacer(),
-        ],
-      ),
-    );
-  }
-
-  // *** ÚJ: Segédfüggvény a menü/vissza gomb kirajzolásához ***
+  // Segédfüggvény a menü/vissza gomb kirajzolásához
   Widget _buildMenuButton({
     required IconData icon,
     required String tooltip,
     required VoidCallback onPressed,
   }) {
-    // A gombot egy Padding veszi körül, hogy ne érjen a képernyő széléhez
     return Padding(
       padding: const EdgeInsets.only(left: 8.0),
       child: Tooltip(
@@ -245,21 +326,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ),
-    );
-  }
-
-  // Feltételes lebegő akciógomb
-  Widget? _buildFloatingActionButton() {
-    if (_selectedGroup == null) return null;
-    return FloatingActionButton(
-      onPressed: () {
-        // Tag hozzáadása logika
-      },
-      backgroundColor: const Color(0xFFff3b5f),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      child: const Icon(Icons.add, color: Colors.white, size: 32),
     );
   }
 
@@ -337,7 +403,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 5),
-          const Divider(color: Color.fromARGB(61, 255, 255, 255)),         
+          const Divider(color: Color.fromARGB(61, 255, 255, 255)),
           const SizedBox(height: 10),
           if (activeTests.isNotEmpty)
             ActiveTestCarousel(
@@ -384,7 +450,8 @@ class SideNavItem extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
-            mainAxisAlignment: icon == null ? MainAxisAlignment.center : MainAxisAlignment.start,
+            mainAxisAlignment:
+                icon == null ? MainAxisAlignment.center : MainAxisAlignment.start,
             children: [
               if (icon != null) ...[
                 CircleAvatar(
@@ -689,14 +756,16 @@ class GroupCard extends StatelessWidget {
     required this.onGroupSelected,
   });
 
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       alignment: Alignment.centerLeft,
       children: [
         Container(
-          constraints: const BoxConstraints(maxHeight: double.infinity),
+          constraints: const BoxConstraints(),
           margin: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
+          width: double.infinity,
           decoration: BoxDecoration(
             gradient: group.gradient,
             borderRadius: BorderRadius.circular(5),
@@ -712,6 +781,7 @@ class GroupCard extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
                     Text(
                       group.title,
@@ -725,6 +795,7 @@ class GroupCard extends StatelessWidget {
                       group.subtitle,
                       style: TextStyle(
                           color: Colors.white.withOpacity(0.8), fontSize: 14),
+                          
                     ),
                   ],
                 ),
@@ -746,6 +817,31 @@ class GroupCard extends StatelessWidget {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+class HeaderWithDivider extends StatelessWidget {
+  final String title;
+  const HeaderWithDivider({super.key, required this.title});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 15,
+              fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 1,
+          color: Colors.white.withOpacity(0.1),
+        ),
       ],
     );
   }
