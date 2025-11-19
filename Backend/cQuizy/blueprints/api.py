@@ -3,11 +3,15 @@
 
 from ninja import Router
 from typing import List
+from django.db import transaction
+from django.utils import timezone
+from django.shortcuts import get_object_or_404
 
 from .models import Project
 from .schemas import (
-    ProjectOutSchema,
     ProjectCreateSchema,
+    ProjectUpdateSchema,
+    ProjectOutSchema
 )
 
 from users.auth import JWTAuth
@@ -17,7 +21,7 @@ router = Router(tags=['Projects'])  # The 'tags' are great for organizing docs
 
 #! Static Project Handleing Endpoints ==================================================
 #? Creation
-@router.post("/projects/create/", response=ProjectOutSchema, auth=JWTAuth())
+@router.post("/", response=ProjectOutSchema, auth=JWTAuth())
 def create_project(request, payload: ProjectCreateSchema):
     """
     Creates a new Project.
@@ -30,47 +34,43 @@ def create_project(request, payload: ProjectCreateSchema):
     
     return project
 
+#? List Projects
+@router.get("/", response=List[ProjectOutSchema], auth=JWTAuth())
+def list_projects(request):
+    """
+    Retrieves a list of all non-deleted projects created by the user.
+    """
+    user = request.auth
+    # We filter for date_deleted__isnull=True to only get active projects
+    return Project.objects.filter(creator=user, date_deleted__isnull=True)
+
 
 
 #! Resource-specific Group Handleing Endpoints ==================================================
-#? Deletion
-@router.delete("/projects/{project_id}", response={204: None}, auth=JWTAuth())
-def delete_project(request, project_id: int):
+#? Get Project
+@router.get("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
+def get_project_details(request, project_id: int):
     """
-    Soft-deletes a project.
-    A user can only delete a project they created.
+    Retrieves the full, nested details of a single project.
+    A user can only retrieve a project they created.
     """
-    # 1. Get the authenticated user
     user = request.auth
-    
-    # 2. Get the project from the database. If it doesn't exist, this will automatically return a 404 Not Found error.
-    project = get_object_or_404(Project, id=project_id)
-    
-    # 3. CRITICAL: Check if the user making the request is the project's creator.
-    if project.creator != user:
-        # If not, return a 403 Forbidden error.
-        return 403, {"detail": "You do not have permission to delete this project."}
-        
-    # 4. Perform the soft delete by setting the 'date_deleted' field.
-    project.date_deleted = timezone.now()
-    project.save()
-    
-    # 5. Return a 204 No Content success response.
-    return 204, None
+    # Fetches the project, ensuring it both exists and belongs to the requesting user.
+    project = get_object_or_404(Project, id=project_id, creator=user)
+    return project
 
 #? Update
-@router.put("/projects/{project_id}/update/", response=ProjectOutSchema, auth=JWTAuth())
+@router.put("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
     """
-    Intelligently updates a project, handling creations, updates, and deletions
-    for nested blocks and answers.
+    Intelligently updates a project, handling creates, updates, and deletions
+    for nested blocks and answers in a single atomic transaction.
     """
     user = request.auth
-    project = get_object_or_404(Project, id=project_id, creator=user) # More efficient check
+    project = get_object_or_404(Project, id=project_id, creator=user)
 
-    # Use a transaction for data integrity
     with transaction.atomic():
-        # 1. Update the top-level Project fields
+        # 1. Update top-level Project fields
         project.name = payload.name
         project.desc = payload.desc
         project.save()
@@ -86,21 +86,23 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
 
         # 3. Update existing blocks and create new ones
         for i, block_data in enumerate(payload.blocks):
-            if block_data.id:  # This is an existing block, UPDATE it
+            if block_data.id: # UPDATE existing block
                 block = get_object_or_404(project.blocks, id=block_data.id)
                 block.question = block_data.question
                 block.type = block_data.type
                 block.subtext = block_data.subtext
                 block.image_url = block_data.image_url
                 block.link_url = block_data.link_url
-                block.order = i + 1 # Update order as well
+                block.order = i + 1
                 block.save()
-            else:  # This is a new block, CREATE it
+            else: # CREATE new block
                 block = project.blocks.create(
                     order=i + 1,
                     question=block_data.question,
                     type=block_data.type,
-                    # ... etc ...
+                    subtext=block_data.subtext,
+                    image_url=block_data.image_url,
+                    link_url=block_data.link_url
                 )
 
             # --- ANSWER PROCESSING (nested inside each block) ---
@@ -124,5 +126,26 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
                         text=answer_data.text,
                         is_correct=answer_data.is_correct
                     )
-
+    
+    # Return the full, updated project object.
     return project
+
+#? Deletion
+@router.delete("/{project_id}/", response={204: None}, auth=JWTAuth())
+def delete_project(request, project_id: int):
+    """
+    Soft-deletes a project.
+    A user can only delete a project they created.
+    """
+    # 1. Get the authenticated user
+    user = request.auth
+    
+    # 2. Get the project from the database. If it doesn't exist, this will automatically return a 404 Not Found error. Also check if the user is the creator.
+    project = get_object_or_404(Project, id=project_id, creator=user)
+        
+    # 3. Perform the soft delete by setting the 'date_deleted' field.
+    project.date_deleted = timezone.now()
+    project.save()
+    
+    # 4. Return a 204 No Content success response.
+    return 204, None

@@ -246,3 +246,283 @@ input[type="color"]::-webkit-color-swatch {
     border: none;
     border-radius: 4px;
 }
+
+
+
+/*! PROJECTS ====================================================================================================*/
+#projectsForms{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    @media (max-width: 768px) {
+        flex-direction: column;
+    }
+}
+/* Container for the list of project cards */
+#projectsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin: 20px 0;
+}
+
+/* Individual project card - styled to match .groupItem */
+.project-item {
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    padding: 15px 25px;
+    margin: 0 10px;
+    max-width: 800px;
+    transition: background-color 0.2s ease-in-out;
+    border-left: 5px solid var(--primary-color); /* Accent color */
+}
+
+.project-item:hover {
+    background-color: var(--tertiary-background);
+}
+
+.project-item h3 {
+    color: var(--text-color);
+    margin-top: 5px;
+    margin-bottom: 10px;
+}
+
+.project-item p {
+    color: var(--secondary-text-color);
+    margin-bottom: 15px;
+}
+
+/* Container for Edit/Delete buttons */
+.project-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Re-using existing button styles for consistency */
+.project-actions button {
+    margin: 0;
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    border: none;
+    border-radius: 25px;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-family: "Comfortaa", sans-serif !important;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.project-actions button:hover {
+    background-color: var(--primary-color-hover);
+}
+
+/* Specific styling for the delete button */
+.project-actions .delete-btn {
+    background-color: #44252c;
+}
+.project-actions .delete-btn:hover {
+    background-color: var(--primary-color);
+}
+
+
+
+/*! BUILDER ====================================================================================================*/
+#builder-form {
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    padding: 20px 30px;
+    margin: 20px;
+    max-width: 900px;
+}
+
+/* Section for project name and description */
+.project-meta {
+    margin-bottom: 30px;
+}
+
+.project-meta label,
+#builder-form h3 {
+    color: var(--text-color);
+    margin: 10px 0 5px 5px;
+    font-size: 18px;
+}
+
+.project-meta input,
+.project-meta textarea {
+    width: 100%;
+    box-sizing: border-box; /* Ensures padding is included in the width */
+    margin: 5px 0;
+    background-color: var(--tertiary-background);
+    color: var(--text-color);
+    border: none;
+    border-radius: 15px;
+    padding: 10px 20px;
+    font-family: "Comfortaa", sans-serif !important;
+    font-size: 16px;
+    resize: vertical;
+}
+
+/* Container for all question blocks */
+#blocks-container {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+/* Card for a single question */
+.block-item {
+    background-color: var(--tertiary-background);
+    border-radius: 15px;
+    padding: 20px;
+    border-left: 4px solid var(--secondary-color);
+}
+
+.block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.block-header h4 {
+    margin: 0;
+    color: var(--secondary-color);
+}
+
+/* Textarea for the question text */
+.block-question {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 5px 0;
+    background-color: var(--primary-background);
+    color: var(--text-color);
+    border: none;
+    border-radius: 10px;
+    padding: 10px 15px;
+    font-family: "Comfortaa", sans-serif !important;
+    font-size: 15px;
+    resize: vertical;
+}
+
+/* Container for answers within a block */
+.answers-container {
+    margin-top: 20px;
+    border-top: 1px solid #444;
+    padding-top: 15px;
+}
+
+.answers-container h5 {
+    margin: 0 0 10px 0;
+    color: var(--secondary-text-color);
+}
+
+/* A single answer item */
+.answer-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    background-color: var(--primary-background);
+    padding: 10px;
+    border-radius: 10px;
+}
+
+.answer-item input[type="text"] {
+    flex-grow: 1; /* Make the text input take up available space */
+    margin: 0;
+    background-color: var(--tertiary-background);
+    color: var(--text-color);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: "Comfortaa", sans-serif !important;
+}
+
+.answer-item label {
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap; /* Prevents "Correct" from wrapping */
+}
+
+/* Custom checkbox style */
+.answer-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--secondary-color); /* Modern way to color checkboxes */
+}
+
+/* General button styling within the builder */
+.block-item button,
+.builder-actions button {
+    background-color: #333;
+    color: var(--text-color);
+    border: none;
+    border-radius: 25px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: "Comfortaa", sans-serif !important;
+    font-size: 14px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.block-item button:hover,
+.builder-actions button:hover {
+    background-color: #444;
+}
+
+/* Specific button styles */
+.add-answer-btn,
+#add-block-btn {
+    background-color: var(--secondary-color);
+    color: var(--primary-background);
+    font-weight: bold;
+}
+.add-answer-btn:hover,
+#add-block-btn:hover {
+    background-color: var(--secondary-color-hover);
+}
+
+.delete-answer-btn,
+.delete-block-btn {
+    background-color: #44252c;
+}
+.delete-answer-btn:hover,
+.delete-block-btn:hover {
+    background-color: var(--primary-color);
+}
+
+/* Main action buttons at the bottom */
+.builder-actions {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #444;
+    display: flex;
+    gap: 15px;
+    justify-content: flex-end;
+}
+
+/* Make the Save button big and primary */
+#save-project-btn {
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+}
+#save-project-btn:hover {
+    background-color: var(--primary-color-hover);
+}
+
+.drag-handle {
+    cursor: grab;
+    color: #888;
+    font-size: 24px;
+    padding: 0 10px;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}

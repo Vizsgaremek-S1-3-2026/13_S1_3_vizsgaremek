@@ -2,6 +2,7 @@
 
 from django.urls import path
 from . import views
+from .views import BuilderView
 
 urlpatterns = [
     # Pages
@@ -11,5 +12,5 @@ urlpatterns = [
     path('profile/', views.profile, name='profile'),
     path('groups/', views.groups, name='groups'),
     path('projects/', views.projects, name='projects'),
-    path('builder/', views.builder, name='builder'),
+    path('builder/', BuilderView.as_view(), name='builder'),
 ]

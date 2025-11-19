@@ -3,12 +3,28 @@
 
 from ninja import Schema
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
-#! Project Schemas ==================================================
+#! Project Creation Schema ==================================================
 class ProjectCreateSchema(Schema):
     name: str
     desc: Optional[str] = None
+
+#! Project JSON Output Schemas ===================================================
+class AnswerOutSchema(Schema):
+    id: int
+    text: str
+    is_correct: bool
+
+class BlockOutSchema(Schema):
+    id: int
+    order: int
+    question: str
+    type: str
+    subtext: Optional[str] = None
+    image_url: Optional[str] = None
+    link_url: Optional[str] = None
+    answers: List[AnswerOutSchema]
 
 class ProjectOutSchema(Schema):
     id: int
@@ -16,26 +32,28 @@ class ProjectOutSchema(Schema):
     desc: Optional[str] = None
     creator_username: str
     date_created: datetime
+    blocks: List[BlockOutSchema]
 
     @staticmethod
     def resolve_creator_username(obj):
         return obj.creator.username
 
-#! Nested Schemas ===================================================class AnswerNestedSchema(Schema):
+#! Project JSON Input Schemas ===================================================
+class AnswerUpdateSchema(Schema):
     id: Optional[int] = None
     text: str
     is_correct: bool
 
-class BlockNestedSchema(Schema):
+class BlockUpdateSchema(Schema):
     id: Optional[int] = None
     question: str
     type: str
     subtext: Optional[str] = None
     image_url: Optional[str] = None
     link_url: Optional[str] = None
-    answers: List[AnswerNestedSchema]
+    answers: List[AnswerUpdateSchema]
 
 class ProjectUpdateSchema(Schema):
     name: str
     desc: Optional[str] = None
-    blocks: List[BlockNestedSchema]
+    blocks: List[BlockUpdateSchema]

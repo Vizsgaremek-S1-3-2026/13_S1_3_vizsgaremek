@@ -4,6 +4,7 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.views.generic import TemplateView
 
 # Definitions
 def is_staff_member(user):
@@ -22,5 +23,5 @@ def groups(request):
     return render(request, 'website/pages/groups.html')
 def projects(request):
     return render(request, 'website/pages/projects.html')
-def builder(request):
-    return render(request, 'website/pages/builder.html')
+class BuilderView(TemplateView):
+    template_name = 'website/pages/builder.html'
