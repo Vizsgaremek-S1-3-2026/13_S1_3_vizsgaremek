@@ -1,6 +1,7 @@
 // lib/login_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:wave/config.dart';
@@ -107,7 +108,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   void _handleRegister() async {
-    // Az utolsó form (avatar) nem validálós, csak hozzáadjuk az adatot
     _registrationData['avatar_id'] = _selectedAvatarId;
     debugPrint("Regisztrációs adatok küldése: $_registrationData");
 
@@ -121,7 +121,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Sikeres regisztráció! Most már bejelentkezhetsz.')),
         );
-        setState(() => isLoginView = true); // Visszaváltás a bejelentkezési nézetre
+        setState(() => isLoginView = true);
         _resetRegistrationState();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -209,6 +209,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final colors = isDarkMode ? _darkThemeColors : _lightThemeColors;
+    
     final modernInputDecoration = InputDecoration(
       filled: true,
       fillColor: colors['fill'],
@@ -221,7 +222,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
     return Scaffold(
       backgroundColor: colors['scaffold'],
-      appBar: _buildAppBar(),
+      appBar: _buildAppBar(isDarkMode, colors['scaffold']!),
       body: Stack(
         children: [
           _buildBackgroundWave(),
@@ -243,10 +244,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     );
   }
 
-  AppBar _buildAppBar() {
+  AppBar _buildAppBar(bool isDarkMode, Color scaffoldColor) {
     return AppBar(
-      backgroundColor: Colors.transparent,
+      backgroundColor: const Color(0xFF101116),
       elevation: 0,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        // Ez biztosítja, hogy az állapotsáv ikonjai láthatóak legyenek az app bar színén.
+        statusBarIconBrightness: isDarkMode ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDarkMode ? Brightness.dark : Brightness.light,
+      ),
       actions: [
         AnimatedSize(
           duration: const Duration(milliseconds: 300),
@@ -309,26 +315,47 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         padding: const EdgeInsets.fromLTRB(32.0, 24.0, 32.0, 32.0),
         child: FormBuilder(
           key: _loginFormKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Image.asset('assets/logo/logo_2.png', height: 100),
-              const SizedBox(height: 16),
-              Text("Üdvözlünk újra!", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: colors['text']), textAlign: TextAlign.center),
-              const SizedBox(height: 8),
-              Text("Jelentkezz be a folytatáshoz.", style: Theme.of(context).textTheme.titleMedium?.copyWith(color: colors['subtext']), textAlign: TextAlign.center),
-              const SizedBox(height: 32),
-              FormBuilderTextField(name: 'username', style: TextStyle(color: colors['text']), decoration: decoration.copyWith(labelText: 'Felhasználónév', prefixIcon: Icon(Icons.person_outline, color: colors['subtext'])), onSubmitted: (_) => _handleLogin()),
-              const SizedBox(height: 16),
-              FormBuilderTextField(name: 'password', style: TextStyle(color: colors['text']), obscureText: _isPasswordObscured, decoration: decoration.copyWith(labelText: 'Jelszó', prefixIcon: Icon(Icons.lock_outline, color: colors['subtext']), suffixIcon: IconButton(icon: Icon(_isPasswordObscured ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: colors['subtext']), onPressed: () => setState(() => _isPasswordObscured = !_isPasswordObscured))), onSubmitted: (_) => _handleLogin()),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: _primaryColor, padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 2),
-                onPressed: _isLoading ? null : _handleLogin,
-                child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)) : const Text('Bejelentkezés', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Image.asset('assets/logo/logo_2.png', height: 100),
+                const SizedBox(height: 16),
+                Text("Üdvözlünk újra!", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: colors['text']), textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text("Jelentkezz be a folytatáshoz.", style: Theme.of(context).textTheme.titleMedium?.copyWith(color: colors['subtext']), textAlign: TextAlign.center),
+                const SizedBox(height: 32),
+                FormBuilderTextField(
+                  name: 'username',
+                  style: TextStyle(color: colors['text']),
+                  decoration: decoration.copyWith(labelText: 'Felhasználónév', prefixIcon: Icon(Icons.person_outline, color: colors['subtext'])),
+                  validator: FormBuilderValidators.required(errorText: 'A felhasználónév megadása kötelező.'),
+                  onSubmitted: (_) => _handleLogin(),
+                ),
+                const SizedBox(height: 16),
+                FormBuilderTextField(
+                  name: 'password',
+                  style: TextStyle(color: colors['text']),
+                  obscureText: _isPasswordObscured,
+                  decoration: decoration.copyWith(
+                    labelText: 'Jelszó',
+                    prefixIcon: Icon(Icons.lock_outline, color: colors['subtext']),
+                    suffixIcon: IconButton(
+                      icon: Icon(_isPasswordObscured ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: colors['subtext']),
+                      onPressed: () => setState(() => _isPasswordObscured = !_isPasswordObscured)),
+                  ),
+                  validator: FormBuilderValidators.required(errorText: 'A jelszó megadása kötelező.'),
+                  onSubmitted: (_) => _handleLogin(),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: _primaryColor, padding: const EdgeInsets.symmetric(vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 2),
+                  onPressed: _isLoading ? null : _handleLogin,
+                  child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)) : const Text('Bejelentkezés', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -369,16 +396,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 const Spacer(),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: _primaryColor, disabledBackgroundColor: Colors.grey.shade400, disabledForegroundColor: Colors.grey.shade600),
-                  onPressed: _isPageTransitioning || _isLoading
-                      ? null
-                      : (_currentPage == pages.length - 1)
-                          ? _handleRegister
-                          : (_currentPage == pages.length - 2)
-                              ? (_isRegisterButtonEnabled ? _nextPage : null)
-                              : _nextPage,
-                  child: _isLoading && _currentPage == pages.length - 1
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                      : Text(_currentPage == pages.length - 1 ? 'Regisztráció' : 'Tovább'),
+                  onPressed: _isPageTransitioning || _isLoading ? null : (_currentPage == pages.length - 1) ? _handleRegister : (_currentPage == pages.length - 2) ? (_isRegisterButtonEnabled ? _nextPage : null) : _nextPage,
+                  child: _isLoading && _currentPage == pages.length - 1 ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)) : Text(_currentPage == pages.length - 1 ? 'Regisztráció' : 'Tovább'),
                 ),
               ],
             ),
