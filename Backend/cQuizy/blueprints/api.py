@@ -16,136 +16,148 @@ from .schemas import (
 
 from users.auth import JWTAuth
 
-#? Instead of NinjaAPI, we use Router
-router = Router(tags=['Projects'])  # The 'tags' are great for organizing docs
+# Ahelyett, hogy a NinjaAPI-t használnánk, Router-t használunk az app-specifikus végpontokhoz
+router = Router(tags=['Projects'])
 
-#! Static Project Handleing Endpoints ==================================================
-#? Creation
+#? Létrehozás
 @router.post("/", response=ProjectOutSchema, auth=JWTAuth())
 def create_project(request, payload: ProjectCreateSchema):
     """
-    Creates a new Project.
-    The user must be authenticated, and the creator is set automatically.
+    Létrehoz egy új, üres Projektet.
     """
-
     user = request.auth
-    
     project = Project.objects.create(**payload.dict(), creator=user)
-    
     return project
 
-#? List Projects
+#? Projektek listázása
 @router.get("/", response=List[ProjectOutSchema], auth=JWTAuth())
 def list_projects(request):
     """
-    Retrieves a list of all non-deleted projects created by the user.
+    Lekéri a felhasználó által létrehozott összes nem törölt projekt listáját.
     """
     user = request.auth
-    # We filter for date_deleted__isnull=True to only get active projects
     return Project.objects.filter(creator=user, date_deleted__isnull=True)
 
-
-
-#! Resource-specific Group Handleing Endpoints ==================================================
-#? Get Project
+#? Projekt lekérése
 @router.get("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def get_project_details(request, project_id: int):
     """
-    Retrieves the full, nested details of a single project.
-    A user can only retrieve a project they created.
+    Lekéri egyetlen, a felhasználó által létrehozott projekt teljes, beágyazott részleteit.
     """
     user = request.auth
-    # Fetches the project, ensuring it both exists and belongs to the requesting user.
     project = get_object_or_404(Project, id=project_id, creator=user)
     return project
 
-#? Update
+#? Frissítés
 @router.put("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
     """
-    Intelligently updates a project, handling creates, updates, and deletions
-    for nested blocks and answers in a single atomic transaction.
+    Intelligensen frissít egy projektet, minden üzleti szabályt (limitek, kérdéstípusok, üres értékek)
+    érvényesítve mentés előtt.
     """
     user = request.auth
     project = get_object_or_404(Project, id=project_id, creator=user)
 
+    # --- TELJES VALIDÁCIÓS BLOKK ---
+
+    if not payload.name or not payload.name.strip():
+        return 400, {"detail": "A projekt neve nem lehet üres."}
+    if len(payload.blocks) > 100:
+        return 400, {"detail": "Egy projektnek nem lehet több, mint 100 kérdése."}
+
+    for i, block_data in enumerate(payload.blocks):
+        question_num = i + 1
+
+        if not block_data.question or not block_data.question.strip():
+            return 400, {"detail": f"A(z) #{question_num}. kérdés nem lehet üres."}
+        
+        # ÚJ: Minimum 2 válasz szabály feleletválasztós kérdéseknél
+        if block_data.type in ['SINGLE', 'MULTIPLE'] and len(block_data.answers) < 2:
+            return 400, {"detail": f"A(z) #{question_num}. kérdésnél ('{block_data.question[:20]}...') legalább két válasznak kell lennie."}
+
+        if len(block_data.answers) > 10:
+            return 400, {"detail": f"A(z) #{question_num}. kérdésnél ('{block_data.question[:20]}...') nem lehet több, mint 10 válasz."}
+        
+        for j, answer_data in enumerate(block_data.answers):
+            answer_num = j + 1
+            if not answer_data.text or not answer_data.text.strip():
+                return 400, {"detail": f"A(z) #{question_num}. kérdésnél a(z) #{answer_num}. válasz nem lehet üres."}
+
+        if block_data.type == 'SINGLE':
+            correct_answers_count = sum(1 for answer in block_data.answers if answer.is_correct)
+            if correct_answers_count > 1:
+                return 400, {"detail": f"A(z) #{question_num}. kérdésnél ('{block_data.question[:20]}...') csak egy helyes válasz lehet."}
+        if block_data.type == 'TEXT':
+            if any(not answer.is_correct for answer in block_data.answers):
+                return 400, {"detail": f"A(z) #{question_num}. kérdés ('{block_data.question[:20]}...') egy szöveges kérdés, de van helytelennek jelölt válasza."}
+
     with transaction.atomic():
-        # 1. Update top-level Project fields
         project.name = payload.name
-        project.desc = payload.desc
+        project.desc = payload.desc.strip() if payload.desc else None # Üres stringet None-ra konvertál
         project.save()
 
-        # --- BLOCK PROCESSING ---
         payload_block_ids = {b.id for b in payload.blocks if b.id is not None}
-        database_block_ids = set(project.blocks.values_list('id', flat=True))
-        
-        # 2. Delete blocks that are in the DB but not in the payload
-        ids_to_delete = database_block_ids - payload_block_ids
+        block_map = {b.id: b for b in project.blocks.all()}
+
+        ids_to_delete = set(block_map.keys()) - payload_block_ids
         if ids_to_delete:
             project.blocks.filter(id__in=ids_to_delete).delete()
 
-        # 3. Update existing blocks and create new ones
-        for i, block_data in enumerate(payload.blocks):
-            if block_data.id: # UPDATE existing block
-                block = get_object_or_404(project.blocks, id=block_data.id)
-                block.question = block_data.question
-                block.type = block_data.type
-                block.subtext = block_data.subtext
-                block.image_url = block_data.image_url
-                block.link_url = block_data.link_url
-                block.order = i + 1
+        for block_id in payload_block_ids:
+            if block_id in block_map:
+                block = block_map[block_id]
+                block.order += 10000
                 block.save()
-            else: # CREATE new block
-                block = project.blocks.create(
-                    order=i + 1,
-                    question=block_data.question,
-                    type=block_data.type,
-                    subtext=block_data.subtext,
-                    image_url=block_data.image_url,
-                    link_url=block_data.link_url
-                )
 
-            # --- ANSWER PROCESSING (nested inside each block) ---
+        for i, block_data in enumerate(payload.blocks):
+            final_order = i + 1
+            
+            # ÚJ: Adatok előkészítése a null konverzióhoz
+            block_values = {
+                'question': block_data.question,
+                'type': block_data.type,
+                'subtext': block_data.subtext.strip() if block_data.subtext else None,
+                'image_url': block_data.image_url.strip() if block_data.image_url else None,
+                'link_url': block_data.link_url.strip() if block_data.link_url else None,
+            }
+
+            if block_data.id:
+                block = block_map[block_data.id]
+                for key, value in block_values.items():
+                    setattr(block, key, value)
+                block.order = final_order
+                block.save()
+            else:
+                block_values['order'] = final_order
+                block = project.blocks.create(**block_values)
+            
+            # Válaszok feldolgozása
             payload_answer_ids = {a.id for a in block_data.answers if a.id is not None}
-            database_answer_ids = set(block.answers.values_list('id', flat=True))
-
-            # Delete answers for this block
-            answer_ids_to_delete = database_answer_ids - payload_answer_ids
+            answer_map = {a.id: a for a in block.answers.all()}
+            
+            answer_ids_to_delete = set(answer_map.keys()) - payload_answer_ids
             if answer_ids_to_delete:
                 block.answers.filter(id__in=answer_ids_to_delete).delete()
-            
-            # Update and create answers for this block
+
             for answer_data in block_data.answers:
-                if answer_data.id: # UPDATE answer
-                    answer = get_object_or_404(block.answers, id=answer_data.id)
+                if answer_data.id:
+                    answer = answer_map[answer_data.id]
                     answer.text = answer_data.text
                     answer.is_correct = answer_data.is_correct
                     answer.save()
-                else: # CREATE answer
-                    block.answers.create(
-                        text=answer_data.text,
-                        is_correct=answer_data.is_correct
-                    )
-    
-    # Return the full, updated project object.
+                else:
+                    block.answers.create(text=answer_data.text, is_correct=answer_data.is_correct)
+
     return project
 
-#? Deletion
+#? Törlés
 @router.delete("/{project_id}/", response={204: None}, auth=JWTAuth())
 def delete_project(request, project_id: int):
     """
-    Soft-deletes a project.
-    A user can only delete a project they created.
+    Logikailag töröl egy, a felhasználó által létrehozott projektet.
     """
-    # 1. Get the authenticated user
     user = request.auth
-    
-    # 2. Get the project from the database. If it doesn't exist, this will automatically return a 404 Not Found error. Also check if the user is the creator.
     project = get_object_or_404(Project, id=project_id, creator=user)
-        
-    # 3. Perform the soft delete by setting the 'date_deleted' field.
     project.date_deleted = timezone.now()
     project.save()
-    
-    # 4. Return a 204 No Content success response.
     return 204, None

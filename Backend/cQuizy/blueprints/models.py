@@ -17,7 +17,7 @@ class Project(models.Model):
     desc = models.TextField(max_length=1000, verbose_name="Project Description", blank=True, null=True)
     creator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.DO_NOTHING,
         related_name="projects",
         verbose_name="Creator"
     )
@@ -58,10 +58,10 @@ class Block(models.Model):
         default=BlockType.SINGLE_CHOICE,
         verbose_name="Block Type"
     )
-    question = models.TextField(verbose_name="Question")
-    subtext = models.TextField(verbose_name="Task Description, Information", blank=True, null=True)
-    image_url = models.URLField(verbose_name="Optional Image URL", blank=True, null=True)
-    link_url = models.URLField(verbose_name="Optional Link URL", blank=True, null=True)
+    question = models.TextField(max_length=1000, verbose_name="Question")
+    subtext = models.TextField(max_length=5000, verbose_name="Task Description, Information", blank=True, null=True)
+    image_url = models.URLField(max_length=2000, verbose_name="Optional Image URL", blank=True, null=True)
+    link_url = models.URLField(max_length=2000, verbose_name="Optional Link URL", blank=True, null=True)
 
     def __str__(self):
         return f"#{self.order}. Question: {self.question[:50]}... ({self.project.name})"
@@ -87,6 +87,7 @@ class Answer(models.Model):
         verbose_name="Block"
     )
     text = models.TextField(
+        max_length=500,
         verbose_name="Option Text",
         help_text="For text input questions, the correct answer goes here. Otherwise, it can be left empty."
     )

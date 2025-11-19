@@ -326,18 +326,23 @@ input[type="color"]::-webkit-color-swatch {
 
 
 /*! BUILDER ====================================================================================================*/
+
+/* NEW: Main container to center the form on the page */
+.builder-container {
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
 #builder-form {
     background-color: var(--secondary-background);
     border-radius: 25px;
     padding: 20px 30px;
-    margin: 20px;
+    width: 100%; /* Take up the full width of the container */
     max-width: 900px;
 }
 
-/* Section for project name and description */
-.project-meta {
-    margin-bottom: 30px;
-}
+/* --- General Form Elements --- */
 
 .project-meta label,
 #builder-form h3 {
@@ -346,29 +351,53 @@ input[type="color"]::-webkit-color-swatch {
     font-size: 18px;
 }
 
-.project-meta input,
-.project-meta textarea {
+/* Consolidated styles for all text inputs and textareas in the builder */
+#builder-form input[type="text"],
+#builder-form input[type="url"],
+#builder-form textarea {
     width: 100%;
-    box-sizing: border-box; /* Ensures padding is included in the width */
+    box-sizing: border-box;
     margin: 5px 0;
-    background-color: var(--tertiary-background);
     color: var(--text-color);
     border: none;
-    border-radius: 15px;
-    padding: 10px 20px;
+    padding: 10px 15px;
     font-family: "Comfortaa", sans-serif !important;
-    font-size: 16px;
+    font-size: 15px;
     resize: vertical;
 }
 
-/* Container for all question blocks */
+#builder-form .project-meta input,
+#builder-form .project-meta textarea {
+    background-color: var(--tertiary-background);
+    border-radius: 15px;
+    font-size: 16px;
+}
+
+#builder-form .block-item input,
+#builder-form .block-item textarea {
+    background-color: var(--primary-background);
+    border-radius: 10px;
+}
+
+#builder-form .block-optional-fields input[type="url"] {
+    color: var(--secondary-text-color);
+    border: 1px dashed #444;
+}
+#builder-form .block-optional-fields input[type="url"]:focus {
+    outline: none;
+    border: 1px solid var(--secondary-color);
+}
+
+
+/* --- Block (Question) Specifics --- */
+
 #blocks-container {
     display: flex;
     flex-direction: column;
     gap: 25px;
+    margin-top: 30px;
 }
 
-/* Card for a single question */
 .block-item {
     background-color: var(--tertiary-background);
     border-radius: 15px;
@@ -382,40 +411,31 @@ input[type="color"]::-webkit-color-swatch {
     align-items: center;
     margin-bottom: 10px;
 }
-
 .block-header h4 {
     margin: 0;
     color: var(--secondary-color);
 }
-
-/* Textarea for the question text */
-.block-question {
-    width: 100%;
-    box-sizing: border-box;
-    margin: 5px 0;
-    background-color: var(--primary-background);
-    color: var(--text-color);
-    border: none;
-    border-radius: 10px;
-    padding: 10px 15px;
-    font-family: "Comfortaa", sans-serif !important;
-    font-size: 15px;
-    resize: vertical;
+.drag-handle {
+    cursor: grab;
+    color: #888;
+    font-size: 24px;
+    padding: 0 10px;
+}
+.drag-handle:active {
+    cursor: grabbing;
 }
 
-/* Container for answers within a block */
+/* --- Answer Specifics --- */
+
 .answers-container {
     margin-top: 20px;
     border-top: 1px solid #444;
     padding-top: 15px;
 }
-
 .answers-container h5 {
     margin: 0 0 10px 0;
     color: var(--secondary-text-color);
 }
-
-/* A single answer item */
 .answer-item {
     display: flex;
     align-items: center;
@@ -425,36 +445,32 @@ input[type="color"]::-webkit-color-swatch {
     padding: 10px;
     border-radius: 10px;
 }
-
 .answer-item input[type="text"] {
-    flex-grow: 1; /* Make the text input take up available space */
+    flex-grow: 1;
     margin: 0;
     background-color: var(--tertiary-background);
-    color: var(--text-color);
-    border: none;
-    border-radius: 8px;
-    padding: 8px 12px;
-    font-family: "Comfortaa", sans-serif !important;
 }
-
 .answer-item label {
     color: var(--text-color);
     display: flex;
     align-items: center;
     gap: 5px;
     cursor: pointer;
-    white-space: nowrap; /* Prevents "Correct" from wrapping */
+    white-space: nowrap;
 }
-
-/* Custom checkbox style */
 .answer-item input[type="checkbox"] {
     width: 18px;
     height: 18px;
     cursor: pointer;
-    accent-color: var(--secondary-color); /* Modern way to color checkboxes */
+    accent-color: var(--secondary-color);
+}
+.answer-item.correct-hidden label {
+    display: none;
 }
 
-/* General button styling within the builder */
+
+/* --- Buttons --- */
+
 .block-item button,
 .builder-actions button {
     background-color: #333;
@@ -467,13 +483,11 @@ input[type="color"]::-webkit-color-swatch {
     font-size: 14px;
     transition: background-color 0.2s ease-in-out;
 }
-
 .block-item button:hover,
 .builder-actions button:hover {
     background-color: #444;
 }
 
-/* Specific button styles */
 .add-answer-btn,
 #add-block-btn {
     background-color: var(--secondary-color);
@@ -494,7 +508,6 @@ input[type="color"]::-webkit-color-swatch {
     background-color: var(--primary-color);
 }
 
-/* Main action buttons at the bottom */
 .builder-actions {
     margin-top: 30px;
     padding-top: 20px;
@@ -504,10 +517,8 @@ input[type="color"]::-webkit-color-swatch {
     justify-content: flex-end;
 }
 
-/* Make the Save button big and primary */
 #save-project-btn {
     background-color: var(--primary-color);
-    color: var(--text-color);
     padding: 12px 24px;
     font-size: 16px;
     font-weight: bold;
@@ -516,13 +527,10 @@ input[type="color"]::-webkit-color-swatch {
     background-color: var(--primary-color-hover);
 }
 
-.drag-handle {
-    cursor: grab;
-    color: #888;
-    font-size: 24px;
-    padding: 0 10px;
-}
-
-.drag-handle:active {
-    cursor: grabbing;
+/* Disabled State for buttons */
+.builder-actions button:disabled,
+.block-item button:disabled {
+    background-color: #333 !important;
+    opacity: 0.5;
+    cursor: not-allowed;
 }
