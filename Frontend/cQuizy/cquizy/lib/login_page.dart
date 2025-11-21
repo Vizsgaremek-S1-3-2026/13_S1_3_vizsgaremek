@@ -154,6 +154,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   late TabController _avatarTabController;
   String _selectedAvatarId = 'avatar_1';
+  String _currentPassword = '';
 
   final Map<String, dynamic> _registrationData = {};
 
@@ -258,6 +259,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   void _checkPasswordStrength(String? password) {
+    setState(() {
+      _currentPassword = password ?? '';
+    });
     if (password == null || password.isEmpty) {
       setState(() => _passwordStrength = PasswordStrength.none);
       return;
@@ -720,6 +724,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           const SizedBox(height: 8),
           PasswordStrengthIndicator(strength: _passwordStrength),
           const SizedBox(height: 8),
+          PasswordRequirements(password: _currentPassword),
+          const SizedBox(height: 8),
           Padding(
             padding: fieldPadding,
             child: FormBuilderTextField(
@@ -962,35 +968,45 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     GlobalKey<FormBuilderState> key,
     List<Widget> children,
   ) {
+    final hasExpanded = children.any((w) => w is Expanded);
+    Widget content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).textTheme.bodySmall?.color,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        if (hasExpanded)
+          Expanded(child: Column(children: children))
+        else
+          ...children,
+      ],
+    );
+
+    if (!hasExpanded) {
+      content = SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: content,
+      );
+    }
+
     return FormBuilder(
       key: key,
       autovalidateMode: AutovalidateMode.onUserInteraction,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).textTheme.bodyLarge?.color,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).textTheme.bodySmall?.color,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          if (children.any((w) => w is Expanded))
-            Expanded(child: Column(children: children))
-          else
-            ...children,
-        ],
-      ),
+      child: content,
     );
   }
 }
@@ -1052,6 +1068,52 @@ class PasswordStrengthIndicator extends StatelessWidget {
           style: TextStyle(fontSize: 12, color: _getColor(strength)),
         ),
       ],
+    );
+  }
+}
+
+class PasswordRequirements extends StatelessWidget {
+  final String password;
+
+  const PasswordRequirements({super.key, required this.password});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMinLength = password.length >= 8;
+    final hasUppercase = RegExp(r'[A-Z]').hasMatch(password);
+    final hasLowercase = RegExp(r'[a-z]').hasMatch(password);
+    final hasDigit = RegExp(r'[0-9]').hasMatch(password);
+
+    return Column(
+      children: [
+        _buildRequirement(hasMinLength, 'Legalább 8 karakter'),
+        _buildRequirement(hasUppercase, 'Nagybetű'),
+        _buildRequirement(hasLowercase, 'Kisbetű'),
+        _buildRequirement(hasDigit, 'Szám'),
+      ],
+    );
+  }
+
+  Widget _buildRequirement(bool met, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        children: [
+          Icon(
+            met ? Icons.check_circle : Icons.circle_outlined,
+            color: met ? Colors.green : Colors.grey,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              color: met ? Colors.green : Colors.grey,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
