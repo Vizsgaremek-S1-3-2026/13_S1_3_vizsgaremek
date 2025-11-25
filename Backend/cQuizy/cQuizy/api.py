@@ -3,12 +3,14 @@
 from ninja import NinjaAPI
 from users.api import router as users_router #? Import the router from the 'users' app
 from groups.api import router as groups_router #? Import the router from the 'groups' app
+from blueprints.api import router as blueprints_router #? Import the router from the 'blueprints' app
 
 api = NinjaAPI(title="cQuizy | API Docs", version="1.0.0", description="Auto generated API docs by Django Ninja using OpenAPI", urls_namespace='mainapi')
 
 # Add the router from the 'users' app
 api.add_router("/users/", users_router) #? Register the router from the 'users' app under the "/users" prefix
 api.add_router("/groups/", groups_router) #? Register the router from the 'groups' app under the "/groups" prefix
+api.add_router("/blueprints/", blueprints_router) #? Register the router from the 'blueprints' app under the "/blueprints" prefix
 
 #TODO You can add more routers here later
 #TODO from products.api import router as products_router
