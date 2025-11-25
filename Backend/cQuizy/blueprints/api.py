@@ -2,98 +2,141 @@
 # AKA Projects APIs
 
 from ninja import Router
-from typing import List
+from typing import List, Optional
 from django.db import transaction
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
-from .models import Project
+from .models import Project, Block
 from .schemas import (
     ProjectCreateSchema,
     ProjectUpdateSchema,
-    ProjectOutSchema
+    ProjectOutSchema,
+    BlockOutSchema
 )
 
 from users.auth import JWTAuth
 
-# Ahelyett, hogy a NinjaAPI-t használnánk, Router-t használunk az app-specifikus végpontokhoz
+# Instead of using NinjaAPI, we use Router for app-specific endpoints
 router = Router(tags=['Projects'])
 
-#? Létrehozás
+#? Creation
 @router.post("/", response=ProjectOutSchema, auth=JWTAuth())
 def create_project(request, payload: ProjectCreateSchema):
     """
-    Létrehoz egy új, üres Projektet.
+    Creates a new, empty Project.
     """
     user = request.auth
     project = Project.objects.create(**payload.dict(), creator=user)
     return project
 
-#? Projektek listázása
+#? List Projects
 @router.get("/", response=List[ProjectOutSchema], auth=JWTAuth())
 def list_projects(request):
     """
-    Lekéri a felhasználó által létrehozott összes nem törölt projekt listáját.
+    Retrieves a list of all non-deleted projects created by the user.
     """
     user = request.auth
     return Project.objects.filter(creator=user, date_deleted__isnull=True)
 
-#? Projekt lekérése
+#? Search User's Blocks
+@router.get("/my-blocks/", response=List[BlockOutSchema], auth=JWTAuth())
+def search_user_blocks(request, query: Optional[str] = None, mode: str = 'both'):
+    """
+    Searches for blocks (questions) within projects created by the authenticated user.
+    Used for the 'Insert Existing Question' feature.
+    Modes: 'question', 'answer', 'both'.
+    """
+    user = request.auth
+    
+    # 1. Base filter: User's blocks from non-deleted projects
+    blocks_qs = Block.objects.filter(
+        project__creator=user, 
+        project__date_deleted__isnull=True
+    ).select_related('project').prefetch_related('answers')
+
+    # 2. Apply search logic based on mode and query
+    if query and query.strip():
+        if mode == 'question':
+            blocks_qs = blocks_qs.filter(
+                Q(question__icontains=query) | 
+                Q(subtext__icontains=query)
+            )
+        elif mode == 'answer':
+            blocks_qs = blocks_qs.filter(
+                answers__text__icontains=query
+            )
+        else: # 'both'
+            blocks_qs = blocks_qs.filter(
+                Q(question__icontains=query) | 
+                Q(subtext__icontains=query) |
+                Q(answers__text__icontains=query)
+            )
+    
+    # 3. distinct() is required because filtering by 'answers' (many-to-many)
+    # can return the same block multiple times.
+    # Limit results to 20.
+    blocks_qs = blocks_qs.distinct()[:20]
+
+    return blocks_qs
+
+#? Retrieve Project
 @router.get("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def get_project_details(request, project_id: int):
     """
-    Lekéri egyetlen, a felhasználó által létrehozott projekt teljes, beágyazott részleteit.
+    Retrieves full, nested details of a single project created by the user.
     """
     user = request.auth
     project = get_object_or_404(Project, id=project_id, creator=user)
     return project
 
-#? Frissítés
+#? Update Project
 @router.put("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
     """
-    Intelligensen frissít egy projektet, minden üzleti szabályt (limitek, kérdéstípusok, üres értékek)
-    érvényesítve mentés előtt.
+    Intelligently updates a project, validating all business rules (limits, question types, empty values)
+    before saving.
     """
     user = request.auth
     project = get_object_or_404(Project, id=project_id, creator=user)
 
-    # --- TELJES VALIDÁCIÓS BLOKK ---
+    # --- FULL VALIDATION BLOCK ---
 
     if not payload.name or not payload.name.strip():
-        return 400, {"detail": "A projekt neve nem lehet üres."}
+        return 400, {"detail": "Project name cannot be empty."}
     if len(payload.blocks) > 100:
-        return 400, {"detail": "Egy projektnek nem lehet több, mint 100 kérdése."}
+        return 400, {"detail": "A project cannot have more than 100 questions."}
 
     for i, block_data in enumerate(payload.blocks):
         question_num = i + 1
 
         if not block_data.question or not block_data.question.strip():
-            return 400, {"detail": f"A(z) #{question_num}. kérdés nem lehet üres."}
+            return 400, {"detail": f"Question #{question_num} cannot be empty."}
         
-        # ÚJ: Minimum 2 válasz szabály feleletválasztós kérdéseknél
+        # Minimum 2 answers rule for multiple-choice questions
         if block_data.type in ['SINGLE', 'MULTIPLE'] and len(block_data.answers) < 2:
-            return 400, {"detail": f"A(z) #{question_num}. kérdésnél ('{block_data.question[:20]}...') legalább két válasznak kell lennie."}
+            return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') must have at least two answers."}
 
         if len(block_data.answers) > 10:
-            return 400, {"detail": f"A(z) #{question_num}. kérdésnél ('{block_data.question[:20]}...') nem lehet több, mint 10 válasz."}
+            return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') cannot have more than 10 answers."}
         
         for j, answer_data in enumerate(block_data.answers):
             answer_num = j + 1
             if not answer_data.text or not answer_data.text.strip():
-                return 400, {"detail": f"A(z) #{question_num}. kérdésnél a(z) #{answer_num}. válasz nem lehet üres."}
+                return 400, {"detail": f"At Question #{question_num}, answer #{answer_num} cannot be empty."}
 
         if block_data.type == 'SINGLE':
             correct_answers_count = sum(1 for answer in block_data.answers if answer.is_correct)
             if correct_answers_count > 1:
-                return 400, {"detail": f"A(z) #{question_num}. kérdésnél ('{block_data.question[:20]}...') csak egy helyes válasz lehet."}
+                return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') can only have one correct answer."}
         if block_data.type == 'TEXT':
             if any(not answer.is_correct for answer in block_data.answers):
-                return 400, {"detail": f"A(z) #{question_num}. kérdés ('{block_data.question[:20]}...') egy szöveges kérdés, de van helytelennek jelölt válasza."}
+                return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') is a text question but has an answer marked as incorrect."}
 
     with transaction.atomic():
         project.name = payload.name
-        project.desc = payload.desc.strip() if payload.desc else None # Üres stringet None-ra konvertál
+        project.desc = payload.desc.strip() if payload.desc else None # Converts empty string to None
         project.save()
 
         payload_block_ids = {b.id for b in payload.blocks if b.id is not None}
@@ -112,7 +155,6 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
         for i, block_data in enumerate(payload.blocks):
             final_order = i + 1
             
-            # ÚJ: Adatok előkészítése a null konverzióhoz
             block_values = {
                 'question': block_data.question,
                 'type': block_data.type,
@@ -131,7 +173,7 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
                 block_values['order'] = final_order
                 block = project.blocks.create(**block_values)
             
-            # Válaszok feldolgozása
+            # Processing answers
             payload_answer_ids = {a.id for a in block_data.answers if a.id is not None}
             answer_map = {a.id: a for a in block.answers.all()}
             
@@ -150,11 +192,11 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
 
     return project
 
-#? Törlés
+#? Delete Project
 @router.delete("/{project_id}/", response={204: None}, auth=JWTAuth())
 def delete_project(request, project_id: int):
     """
-    Logikailag töröl egy, a felhasználó által létrehozott projektet.
+    Logically deletes a project created by the user.
     """
     user = request.auth
     project = get_object_or_404(Project, id=project_id, creator=user)

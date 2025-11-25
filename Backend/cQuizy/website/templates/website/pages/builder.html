@@ -1,3 +1,4 @@
+<!-- templates/builder.html -->
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
@@ -10,7 +11,30 @@
     
     <br><br>
 
+    <!-- The Builder Container will be injected here by JS -->
     
+    <!-- NEW: Modal for Searching Questions -->
+    <div id="blockSearchModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Insert Question from Previous Project</h3>
+            
+            <div class="search-controls" style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <select id="searchModeSelect">
+                    <option value="both">Everything</option>
+                    <option value="question">Question Only</option>
+                    <option value="answer">Answer Only</option>
+                </select>
+                
+                <input type="text" id="blockSearchInput" placeholder="Search keywords..." style="flex-grow: 1;">
+                <button id="blockSearchBtn" style="padding: 8px 15px;">Search</button>
+            </div>
+
+            <div id="searchResultsContainer" style="max-height: 400px; overflow-y: auto;">
+                <p style="text-align: center; color: #777;">Type a keyword and click search.</p>
+            </div>
+        </div>
+    </div>
     
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="{% static 'js/builder.js' %}"></script>

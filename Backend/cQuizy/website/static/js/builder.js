@@ -12,7 +12,7 @@ function updateButtonStates() {
     if (addQuestionBtn) {
         const questionCount = document.querySelectorAll('.block-item').length;
         addQuestionBtn.disabled = questionCount >= 100;
-        addQuestionBtn.title = addQuestionBtn.disabled ? 'Egy projektnek nem lehet több, mint 100 kérdése.' : 'Új kérdés hozzáadása';
+        addQuestionBtn.title = addQuestionBtn.disabled ? 'A project cannot have more than 100 questions.' : 'Add New Question';
     }
     const allBlocks = document.querySelectorAll('.block-item');
     allBlocks.forEach(block => {
@@ -20,31 +20,31 @@ function updateButtonStates() {
         if (addAnswerBtn) {
             const answerCount = block.querySelectorAll('.answer-item').length;
             addAnswerBtn.disabled = answerCount >= 10;
-            addAnswerBtn.title = addAnswerBtn.disabled ? 'Egy kérdésnek nem lehet több, mint 10 válasza.' : 'Új válasz hozzáadása';
+            addAnswerBtn.title = addAnswerBtn.disabled ? 'A question cannot have more than 10 answers.' : 'Add New Answer';
         }
     });
 }
 
-// --- DINAMIKUS HTML GENERÁLÓ FÜGGVÉNYEK ---
+// --- DYNAMIC HTML GENERATION FUNCTIONS ---
 
 function createAnswerElement(answer = {}, blockType = 'SINGLE') {
     const answerId = answer.id || null;
     const answerText = answer.text || '';
     const isCorrect = answer.is_correct || false;
-    
+
     const div = document.createElement('div');
     div.className = 'answer-item';
     if (blockType === 'TEXT') {
         div.classList.add('correct-hidden');
     }
-    
+
     div.setAttribute('data-answer-id', answerId);
     div.innerHTML = `
-        <input type="text" class="answer-text" value="${answerText}" placeholder="Válaszlehetőség">
+        <input type="text" class="answer-text" value="${answerText}" placeholder="Answer Option">
         <label>
-            <input type="checkbox" class="answer-correct" ${isCorrect ? 'checked' : ''}> Helyes
+            <input type="checkbox" class="answer-correct" ${isCorrect ? 'checked' : ''}> Correct
         </label>
-        <button class="delete-answer-btn">Válasz törlése</button>
+        <button class="delete-answer-btn">Delete Answer</button>
     `;
     return div;
 }
@@ -62,24 +62,24 @@ function createBlockElement(block = {}) {
     div.innerHTML = `
         <div class="block-header">
             <div class="drag-handle">☰</div>
-            <h4>Kérdés</h4>
+            <h4>Question</h4>
             <select class="block-type">
-                <option value="SINGLE" ${blockType === 'SINGLE' ? 'selected' : ''}>Egy válaszos</option>
-                <option value="MULTIPLE" ${blockType === 'MULTIPLE' ? 'selected' : ''}>Több válaszos</option>
-                <option value="TEXT" ${blockType === 'TEXT' ? 'selected' : ''}>Szöveges</option>
+                <option value="SINGLE" ${blockType === 'SINGLE' ? 'selected' : ''}>Single Choice</option>
+                <option value="MULTIPLE" ${blockType === 'MULTIPLE' ? 'selected' : ''}>Multiple Choice</option>
+                <option value="TEXT" ${blockType === 'TEXT' ? 'selected' : ''}>Text Input</option>
             </select>
-            <button class="delete-block-btn">Kérdés törlése</button>
+            <button class="delete-block-btn">Delete Question</button>
         </div>
-        <textarea class="block-question" rows="3" placeholder="Ide írd a kérdést...">${questionText}</textarea>
-        <textarea class="block-subtext" rows="2" placeholder="Opcionális segédszöveg vagy instrukciók...">${subtext}</textarea>
+        <textarea class="block-question" rows="3" placeholder="Enter the question here...">${questionText}</textarea>
+        <textarea class="block-subtext" rows="2" placeholder="Optional subtext or instructions...">${subtext}</textarea>
         <div class="block-optional-fields">
-            <input type="url" class="block-image-url" value="${imageUrl}" placeholder="Opcionális kép URL">
-            <input type="url" class="block-link-url" value="${linkUrl}" placeholder="Opcionális link URL">
+            <input type="url" class="block-image-url" value="${imageUrl}" placeholder="Optional Image URL">
+            <input type="url" class="block-link-url" value="${linkUrl}" placeholder="Optional Link URL">
         </div>
         <div class="answers-container">
-            <h5>Válaszok</h5>
+            <h5>Answers</h5>
         </div>
-        <button class="add-answer-btn">Válasz hozzáadása</button>
+        <button class="add-answer-btn">Add Answer</button>
     `;
     const answersContainer = div.querySelector('.answers-container');
     if (block.answers && block.answers.length > 0) {
@@ -92,30 +92,31 @@ function createBlockElement(block = {}) {
 
 function renderProjectForm(projectData) {
     const container = document.body;
-    // Előző tartalom törlése
+    // Remove previous content
     const existingContainer = document.querySelector('.builder-container');
     if (existingContainer) existingContainer.remove();
 
-    // ÚJ: Létrehozzuk a fő konténert, ami középre igazít
+    // Create the main container
     const builderContainer = document.createElement('div');
     builderContainer.className = 'builder-container';
 
     const form = document.createElement('div');
     form.id = 'builder-form';
     form.innerHTML = `
-        <h2>Projekt szerkesztő</h2>
+        <h2>Project Editor</h2>
         <div class="project-meta">
-            <label>Projekt neve</label>
+            <label>Project Name</label>
             <input type="text" id="project-name-input" value="${projectData.name}">
-            <label>Projekt leírása</label>
+            <label>Project Description</label>
             <textarea id="project-desc-input" rows="4">${projectData.desc || ''}</textarea>
         </div>
         <div id="blocks-container">
-            <h3>Kérdések</h3>
+            <h3>Questions</h3>
         </div>
         <div class="builder-actions">
-            <button id="add-block-btn">Kérdés hozzáadása</button>
-            <button id="save-project-btn" class="primary-btn">Projekt mentése</button>
+            <button id="add-block-btn">Add Question</button>
+            <button id="open-import-modal-btn" style="background-color: #17a2b8; color: white;">Insert Existing</button>
+            <button id="save-project-btn" class="primary-btn">Save Project</button>
         </div>
     `;
     const blocksContainer = form.querySelector('#blocks-container');
@@ -125,7 +126,7 @@ function renderProjectForm(projectData) {
         });
     }
 
-    // A formot a konténerhez, a konténert pedig a body-hoz adjuk
+    // Append form to container, then container to body
     builderContainer.appendChild(form);
     container.appendChild(builderContainer);
 
@@ -134,6 +135,7 @@ function renderProjectForm(projectData) {
         handle: '.drag-handle',
     });
     updateButtonStates();
+    attachModalEvents();
 }
 
 function generateJsonPayload() {
@@ -173,7 +175,7 @@ function generateJsonPayload() {
 function validateForm() {
     const projectName = document.getElementById('project-name-input').value;
     if (!projectName.trim()) {
-        alert("A projekt neve nem lehet üres.");
+        alert("Project name cannot be empty.");
         return false;
     }
     const blockElements = document.querySelectorAll('.block-item');
@@ -182,14 +184,14 @@ function validateForm() {
         const questionNum = i + 1;
         const questionText = blockEl.querySelector('.block-question').value;
         if (!questionText.trim()) {
-            alert(`Hiba: A(z) #${questionNum}. kérdés nem lehet üres.`);
+            alert(`Error: Question #${questionNum} cannot be empty.`);
             return false;
         }
         const blockType = blockEl.querySelector('.block-type').value;
         const answerElements = blockEl.querySelectorAll('.answer-item');
 
         if ((blockType === 'SINGLE' || blockType === 'MULTIPLE') && answerElements.length < 2) {
-            alert(`Hiba a(z) #${questionNum}. kérdésnél: A feleletválasztós kérdéseknek legalább két válaszlehetőséggel kell rendelkezniük.`);
+            alert(`Error at Question #${questionNum}: Multiple choice questions must have at least two answers.`);
             return false;
         }
 
@@ -198,35 +200,35 @@ function validateForm() {
             const answerNum = j + 1;
             const answerText = answerEl.querySelector('.answer-text').value;
             if (!answerText.trim()) {
-                alert(`Hiba a(z) #${questionNum}. kérdésnél: A(z) #${answerNum}. válasz nem lehet üres.`);
+                alert(`Error at Question #${questionNum}: Answer #${answerNum} cannot be empty.`);
                 return false;
             }
         }
     }
-    return true; // Minden ellenőrzés sikeres
+    return true; // All checks passed
 }
 
-// --- ADATKEZELŐ FÜGGVÉNYEK ---
+// --- DATA HANDLING FUNCTIONS ---
 
 async function loadProjectData() {
     const urlParams = new URLSearchParams(window.location.search);
     projectId = urlParams.get('projectId');
     if (!projectId) {
-        document.body.innerHTML = '<h1>Nincs megadva projekt azonosító. <a href="/projects/">Vissza a projektekhez</a></h1>';
+        document.body.innerHTML = '<h1>No project ID specified. <a href="/projects/">Back to projects</a></h1>';
         return;
     }
     try {
         const response = await fetch(`/api/blueprints/${projectId}/`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
         if (response.status === 401) {
-            alert("Lejárt a munkameneted. Kérlek, jelentkezz be újra.");
+            alert("Session expired. Please log in again.");
             window.location.href = '/login/';
             return;
         }
-        if (!response.ok) throw new Error('A projektadatok betöltése sikertelen.');
+        if (!response.ok) throw new Error('Failed to load project data.');
         projectState = await response.json();
         renderProjectForm(projectState);
     } catch (error) {
-        document.body.innerHTML = `<h1>Hiba: ${error.message}</h1>`;
+        document.body.innerHTML = `<h1>Error: ${error.message}</h1>`;
     }
 }
 
@@ -243,26 +245,172 @@ async function saveProject() {
             body: JSON.stringify(payload)
         });
         if (response.status === 401) {
-            alert("Lejárt a munkameneted. Kérlek, jelentkezz be újra.");
+            alert("Session expired. Please log in again.");
             window.location.href = '/login/';
             return;
         }
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.detail || 'A projekt mentése sikertelen.');
+            throw new Error(errorData.detail || 'Failed to save project.');
         }
-        alert('A projekt sikeresen mentve!');
+        alert('Project saved successfully!');
         loadProjectData();
     } catch (error) {
-        alert(`Mentési hiba: ${error.message}`);
+        alert(`Save Error: ${error.message}`);
     }
 }
 
-// --- ESEMÉNYKEZELŐK ---
+// --- NEW: IMPORT BLOCK LOGIC ---
+
+function attachModalEvents() {
+    const modal = document.getElementById("blockSearchModal");
+    const btn = document.getElementById("open-import-modal-btn");
+    const span = document.querySelector(".close-modal");
+    const searchBtn = document.getElementById("blockSearchBtn");
+    const searchInput = document.getElementById("blockSearchInput");
+    const resultsContainer = document.getElementById('searchResultsContainer');
+
+    if (btn) {
+        btn.onclick = function () {
+            modal.style.display = "block";
+            // Do not search automatically. Reset container message.
+            resultsContainer.innerHTML = '<p style="text-align:center; color:#666;">Type a keyword and click search.</p>';
+        }
+    }
+
+    if (span) {
+        span.onclick = function () {
+            modal.style.display = "none";
+        }
+    }
+
+    window.onclick = function (event) {
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    }
+
+    if (searchBtn) {
+        searchBtn.onclick = () => searchUserBlocks(searchInput.value);
+    }
+
+    // Allow pressing Enter in the input field
+    if (searchInput) {
+        searchInput.addEventListener("keypress", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                searchUserBlocks(searchInput.value);
+            }
+        });
+    }
+}
+
+async function searchUserBlocks(query) {
+    const container = document.getElementById('searchResultsContainer');
+    const modeSelect = document.getElementById('searchModeSelect');
+    const mode = modeSelect ? modeSelect.value : 'both';
+
+    container.innerHTML = '<p style="text-align:center; color:#666;">Loading...</p>';
+
+    try {
+        // Build URL with params
+        let url = `/api/blueprints/my-blocks/?mode=${mode}`;
+
+        if (query && query.trim() !== '') {
+            url += `&query=${encodeURIComponent(query)}`;
+        }
+
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+
+        if (!response.ok) throw new Error("Search failed.");
+
+        const blocks = await response.json();
+
+        container.innerHTML = '';
+
+        if (blocks.length === 0) {
+            if (query && query.trim() !== '') {
+                container.innerHTML = '<p style="text-align:center; color:#666;">No results for this query.</p>';
+            } else {
+                container.innerHTML = '<p style="text-align:center; color:#666;">No questions found.</p>';
+            }
+            return;
+        }
+
+        blocks.forEach(block => {
+            const div = document.createElement('div');
+            div.className = 'search-result-item';
+
+            // Build answer list preview
+            let answersHtml = '<ul class="result-answers-list">';
+            if (block.answers && block.answers.length > 0) {
+                block.answers.forEach(ans => {
+                    const isCorrectClass = ans.is_correct ? 'correct-answer' : '';
+                    answersHtml += `<li class="${isCorrectClass}">${ans.text}</li>`;
+                });
+            } else {
+                answersHtml += '<li><i>No answers</i></li>';
+            }
+            answersHtml += '</ul>';
+
+            div.innerHTML = `
+                <div class="search-result-info">
+                    <div class="result-header">
+                        <h5>${block.question}</h5>
+                        <span class="badge type-${block.type.toLowerCase()}" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #444; color: white;">${block.type}</span>
+                    </div>
+                    <div class="result-preview" style="background-color: rgba(0,0,0,0.05); border-radius: 8px; padding: 8px;">
+                        ${answersHtml}
+                    </div>
+                </div>
+                <button class="insert-btn">Insert</button>
+            `;
+
+            div.querySelector('.insert-btn').addEventListener('click', () => {
+                insertBlockAsCopy(block);
+                document.getElementById("blockSearchModal").style.display = "none";
+            });
+
+            container.appendChild(div);
+        });
+
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = `<p style="color:red; text-align:center;">Error: ${error.message}</p>`;
+    }
+}
+
+function insertBlockAsCopy(originalBlock) {
+    // 1. Deep copy
+    const blockData = JSON.parse(JSON.stringify(originalBlock));
+
+    // 2. Delete IDs -> Will be treated as new upon save
+    blockData.id = null;
+    blockData.answers.forEach(ans => {
+        ans.id = null;
+    });
+
+    // 3. Render
+    const newBlockElement = createBlockElement(blockData);
+
+    // 4. Append and scroll
+    const blocksContainer = document.getElementById('blocks-container');
+    blocksContainer.appendChild(newBlockElement);
+
+    updateButtonStates();
+
+    newBlockElement.scrollIntoView({ behavior: 'smooth' });
+    newBlockElement.style.border = "2px solid #28a745";
+    setTimeout(() => newBlockElement.style.border = "", 2000);
+}
+
+// --- EVENT HANDLERS ---
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!getToken()) {
-        alert("A szerkesztő eléréséhez be kell jelentkezned.");
+        alert("You must be logged in to access the editor.");
         window.location.href = '/login/';
         return;
     }
@@ -281,7 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateButtonStates();
         }
         if (event.target.classList.contains('delete-block-btn')) {
-            if (confirm('Biztosan törlöd ezt a kérdést és az összes válaszát?')) {
+            if (confirm('Are you sure you want to delete this question and all its answers?')) {
                 event.target.closest('.block-item').remove();
                 updateButtonStates();
             }

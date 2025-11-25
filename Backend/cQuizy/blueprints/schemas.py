@@ -26,6 +26,11 @@ class BlockOutSchema(Schema):
     link_url: Optional[str] = None
     answers: List[AnswerOutSchema]
 
+    @staticmethod
+    def resolve_answers(obj):
+        # Explicitly fetch all answers to ensure it returns a list, not a Manager
+        return obj.answers.all()
+
 class ProjectOutSchema(Schema):
     id: int
     name: str
