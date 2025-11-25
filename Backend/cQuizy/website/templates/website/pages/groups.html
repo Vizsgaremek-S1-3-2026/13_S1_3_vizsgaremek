@@ -18,6 +18,8 @@
             <form id="formCreateGroup">
                 <label>Group Name*</label><br>
                 <input id="groupNameInput" type="text" placeholder="Name" required><br>
+                <label>Group Color*</label><br>
+                <input id="groupColorInput" type="color" value="#555555" required><br>
                 <button>Create</button>
             </form>
         </div>
@@ -38,6 +40,12 @@
                 <input id="groupUpdateId" type="text" placeholder="ID of group to update" required><br>
                 <label>New Name (optional)</label><br>
                 <input id="groupUpdateName" type="text" placeholder="New group name"><br>
+                <div class="checkbox-container">
+                    <label>New Color (optional)</label><br>
+                    <input id="groupUpdateColor" type="color" value="#555555"><br>
+                    <input id="groupUpdateColorCheck" type="checkbox">
+                    <label for="groupUpdateColorCheck">Update Color?</label><hr>
+                </div>
                 <div class="checkbox-container">
                     <input id="groupUpdateAnticheat" type="checkbox">
                     <label for="groupUpdateAnticheat">Enable Anti-Cheat</label>

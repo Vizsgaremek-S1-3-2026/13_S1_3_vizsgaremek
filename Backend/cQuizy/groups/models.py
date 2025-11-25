@@ -1,3 +1,5 @@
+# groups/models.py
+
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -26,7 +28,7 @@ class Group(models.Model):
     """
     name = models.CharField(max_length=100, verbose_name="Group Name")
     date_created = models.DateTimeField(auto_now_add=True, verbose_name="Date Created")
-    invite_code = models.CharField(max_length=20, unique=True, verbose_name="Invite Code")
+    invite_code = models.CharField(max_length=8, unique=True, verbose_name="Invite Code")
     color = ColorField(default="#555555", verbose_name="Group Color")
     anticheat = models.BooleanField(default=False, verbose_name="Anti-cheat")
     kiosk = models.BooleanField(default=False, verbose_name="Kiosk Mode")
@@ -37,6 +39,15 @@ class Group(models.Model):
 
     def __str__(self):
         return self.name
+    
+    def get_formatted_invite_code(self):
+        """
+        Returns the invite code with a hyphen for display purposes (e.g., '2k6o-1u7p').
+        The API can expose this, or the frontend can format it.
+        """
+        if self.invite_code:
+            return f"{self.invite_code[:4]}-{self.invite_code[4:]}"
+        return ""
 
     class Meta:
         verbose_name = "Group"
@@ -50,29 +61,31 @@ class GroupMember(models.Model):
     Manages the relationship between users and groups,
     defining the user's role within a specific group.
     """
-    RANK_CHOICES = [
-        ('ADMIN', 'Admin'),
-        ('MEMBER', 'Member'),
-    ]
-    LEAVE_REASON_CHOICES = [
-        ('GROUP_DELETED', 'Group Deleted'),
-        ('KICKED', 'Kicked by Admin'),
-        ('LEFT', 'Left Voluntarily'),
-    ]
+    
+    #* Choices
+    class RankChoices(models.TextChoices):
+        ADMIN = 'ADMIN', 'Admin'
+        MEMBER = 'MEMBER', 'Member'
+
+    class LeaveReasonChoices(models.TextChoices):
+        GROUP_DELETED = 'GROUP_DELETED', 'Group Deleted'
+        KICKED = 'KICKED', 'Kicked by Admin'
+        LEFT = 'LEFT', 'Left Voluntarily'
+
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="group_memberships")
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="members")
     rank = models.CharField(
         max_length=10,
-        choices=RANK_CHOICES,
-        default='MEMBER',
+        choices=RankChoices.choices,
+        default=RankChoices.MEMBER, 
         verbose_name="Rank"
     )
     date_joined = models.DateTimeField(auto_now_add=True, verbose_name="Date Joined")
     date_left = models.DateTimeField(null=True, blank=True, verbose_name="Date Left") #* Soft Delete
     left_reason = models.CharField(
         max_length=15, # Needs to be long enough for 'GROUP_DELETED', 'KICKED' and 'LEFT'
-        choices=LEAVE_REASON_CHOICES,
+        choices=LeaveReasonChoices.choices,
         null=True,
         blank=True,
         verbose_name="Left Reason"

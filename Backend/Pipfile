@@ -12,6 +12,7 @@ psycopg2-binary = "*"
 pydantic = {extras = ["email"], version = "*"}
 django-ninja = "*"
 django-colorfield = "*"
+django-cors-headers = "*"
 
 [dev-packages]
 
