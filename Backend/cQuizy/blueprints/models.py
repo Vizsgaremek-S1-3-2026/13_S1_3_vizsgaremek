@@ -96,6 +96,11 @@ class Answer(models.Model):
         verbose_name="Is Correct?",
         help_text="Check this if this is a correct answer/option."
     )
+    points = models.IntegerField(
+        default=1,
+        verbose_name="Points",
+        help_text="How many points is this answer worth? (Can be 0 or negative for penalties)"
+    )
 
     def __str__(self):
         return f"Answer: {self.text[:50]}... (for: {self.block.question[:30]}...)"

@@ -96,6 +96,15 @@ class Submission(models.Model):
         related_name='submissions'
     )
 
+    grade = models.ForeignKey(
+        'groups.Grade',
+        on_delete=models.SET_NULL, # If grade is deleted, keep the submission
+        null=True,
+        blank=True,
+        related_name='submission',
+        verbose_name="Associated Grade"
+    )
+
     def __str__(self):
         return f"{self.student} - {self.quiz} ({self.percentage}%)"
 
@@ -117,6 +126,11 @@ class SubmittedAnswer(models.Model):
     )
     
     answer = models.TextField()
+    
+    points_awarded = models.IntegerField(
+        default=0,
+        help_text="The points the student earned for this specific answer."
+    )
 
     def __str__(self):
         return f"Answer to Block {self.block} by {self.submission.student}"
