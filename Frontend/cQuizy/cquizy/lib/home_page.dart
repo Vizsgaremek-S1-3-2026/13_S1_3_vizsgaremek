@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'group_page.dart';
+import 'settings_page.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -26,10 +27,12 @@ class _HomePageState extends State<HomePage> {
 
   List<Group> _getActiveTests() {
     return [..._myGroups, ..._otherGroups]
-        .where((group) =>
-            group.hasNotification &&
-            group.testExpiryDate != null &&
-            group.testExpiryDate!.isAfter(DateTime.now()))
+        .where(
+          (group) =>
+              group.hasNotification &&
+              group.testExpiryDate != null &&
+              group.testExpiryDate!.isAfter(DateTime.now()),
+        )
         .toList();
   }
 
@@ -65,23 +68,29 @@ class _HomePageState extends State<HomePage> {
           end: Alignment.centerRight,
         ),
         hasNotification: true,
-        testExpiryDate:
-            DateTime.now().add(const Duration(seconds: 45)), // Teszteléshez rövid idő
+        testExpiryDate: DateTime.now().add(
+          const Duration(seconds: 45),
+        ), // Teszteléshez rövid idő
         activeTestTitle: 'Algoritmusok I. Témazáró',
         activeTestDescription:
             'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
       ),
       Group(
-          title: 'Angol Haladó 11.B',
-          subtitle: 'Fordító Ágnes',
-          gradient: const LinearGradient(
-              colors: [Color(0xff1a7a6a), Color(0xff2cb39a)],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight),
-          hasNotification: true,
-          testExpiryDate: DateTime.now().add(const Duration(hours: 8, minutes: 30)),
-          activeTestTitle: 'Present Perfect Szódolgozat',
-          activeTestDescription: 'Rövid, 10 perces szódolgozat a legutóbbi órán vett szavakból.'),
+        title: 'Angol Haladó 11.B',
+        subtitle: 'Fordító Ágnes',
+        gradient: const LinearGradient(
+          colors: [Color(0xff1a7a6a), Color(0xff2cb39a)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        hasNotification: true,
+        testExpiryDate: DateTime.now().add(
+          const Duration(hours: 8, minutes: 30),
+        ),
+        activeTestTitle: 'Present Perfect Szódolgozat',
+        activeTestDescription:
+            'Rövid, 10 perces szódolgozat a legutóbbi órán vett szavakból.',
+      ),
     ];
 
     _cleanupExpiredNotifications();
@@ -106,17 +115,21 @@ class _HomePageState extends State<HomePage> {
 
   void _handleTestExpired(Group expiredGroup) {
     setState(() {
-      int otherIndex =
-          _otherGroups.indexWhere((g) => g.title == expiredGroup.title);
+      int otherIndex = _otherGroups.indexWhere(
+        (g) => g.title == expiredGroup.title,
+      );
       if (otherIndex != -1) {
-        _otherGroups[otherIndex] =
-            _otherGroups[otherIndex].copyWith(hasNotification: false);
+        _otherGroups[otherIndex] = _otherGroups[otherIndex].copyWith(
+          hasNotification: false,
+        );
       } else {
-        int myIndex =
-            _myGroups.indexWhere((g) => g.title == expiredGroup.title);
+        int myIndex = _myGroups.indexWhere(
+          (g) => g.title == expiredGroup.title,
+        );
         if (myIndex != -1) {
-          _myGroups[myIndex] =
-              _myGroups[myIndex].copyWith(hasNotification: false);
+          _myGroups[myIndex] = _myGroups[myIndex].copyWith(
+            hasNotification: false,
+          );
         }
       }
 
@@ -196,8 +209,11 @@ class _HomePageState extends State<HomePage> {
                                 color: const Color(0xFFff3b5f),
                                 borderRadius: BorderRadius.circular(16.0),
                               ),
-                              child: const Icon(Icons.add,
-                                  color: Colors.white, size: 32),
+                              child: const Icon(
+                                Icons.add,
+                                color: Colors.white,
+                                size: 32,
+                              ),
                             ),
                           ),
                         ),
@@ -270,8 +286,11 @@ class _HomePageState extends State<HomePage> {
                                   color: const Color(0xFFff3b5f),
                                   borderRadius: BorderRadius.circular(16.0),
                                 ),
-                                child: const Icon(Icons.add,
-                                    color: Colors.white, size: 32),
+                                child: const Icon(
+                                  Icons.add,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
                               ),
                             ),
                           ),
@@ -341,8 +360,9 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 20),
         ..._myGroups
-            .map((group) =>
-                GroupCard(group: group, onGroupSelected: _selectGroup))
+            .map(
+              (group) => GroupCard(group: group, onGroupSelected: _selectGroup),
+            )
             .toList(),
         const SizedBox(height: 30),
         const Padding(
@@ -351,8 +371,9 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 20),
         ..._otherGroups
-            .map((group) =>
-                GroupCard(group: group, onGroupSelected: _selectGroup))
+            .map(
+              (group) => GroupCard(group: group, onGroupSelected: _selectGroup),
+            )
             .toList(),
         const SizedBox(height: 80),
       ],
@@ -387,10 +408,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Image.asset(
-                'assets/logo/logo_2.png',
-                height: 16,
-              ),
+              Image.asset('assets/logo/logo_2.png', height: 16),
               const SizedBox(width: 8),
               Text(
                 'cQuizy',
@@ -413,7 +431,16 @@ class _HomePageState extends State<HomePage> {
             ),
           const SizedBox(height: 24),
           const SizedBox(height: 16),
-          SideNavItem(label: 'Profil & Beállítások'),
+          SideNavItem(
+            label: 'Profil & Beállítások',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsPage()),
+              );
+            },
+          ),
+
           const SizedBox(height: 10),
         ],
       ),
@@ -450,8 +477,9 @@ class SideNavItem extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
-            mainAxisAlignment:
-                icon == null ? MainAxisAlignment.center : MainAxisAlignment.start,
+            mainAxisAlignment: icon == null
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
             children: [
               if (icon != null) ...[
                 CircleAvatar(
@@ -517,9 +545,10 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                 Text(
                   widget.group.title,
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
@@ -527,7 +556,9 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                 Text(
                   '$subject Témazáró',
                   style: TextStyle(
-                      color: Colors.white.withOpacity(0.8), fontSize: 12),
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 12,
+                  ),
                 ),
                 const Spacer(),
                 if (widget.group.testExpiryDate != null)
@@ -551,9 +582,13 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('Teszt Indítása',
-                          style: TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.bold)),
+                      Text(
+                        'Teszt Indítása',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       SizedBox(width: 8),
                       Icon(Icons.play_arrow, size: 20, color: Colors.white),
                     ],
@@ -648,8 +683,9 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
         timer.cancel();
         return;
       }
-      int nextPage =
-          _currentPage < widget.activeTests.length - 1 ? _currentPage + 1 : 0;
+      int nextPage = _currentPage < widget.activeTests.length - 1
+          ? _currentPage + 1
+          : 0;
       if (_pageController.hasClients) {
         _pageController.animateToPage(
           nextPage,
@@ -727,7 +763,7 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
               ),
             ),
           ),
-        ]
+        ],
       ],
     );
   }
@@ -756,7 +792,6 @@ class GroupCard extends StatelessWidget {
     required this.onGroupSelected,
   });
 
-
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -777,7 +812,9 @@ class GroupCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(5),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 40.0, vertical: 20.0),
+                  horizontal: 40.0,
+                  vertical: 20.0,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -786,16 +823,18 @@ class GroupCard extends StatelessWidget {
                     Text(
                       group.title,
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold),
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       group.subtitle,
                       style: TextStyle(
-                          color: Colors.white.withOpacity(0.8), fontSize: 14),
-                          
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -833,15 +872,13 @@ class HeaderWithDivider extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: 15,
-              fontWeight: FontWeight.w600),
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
-        Container(
-          height: 1,
-          color: Colors.white.withOpacity(0.1),
-        ),
+        Container(height: 1, color: Colors.white.withOpacity(0.1)),
       ],
     );
   }
