@@ -4,21 +4,39 @@ import 'package:flutter/material.dart';
 import 'login_page.dart';
 import 'home_page.dart';
 
+import 'theme.dart';
+
 void main() {
   runApp(const MainApp());
 }
 
-class MainApp extends StatelessWidget {
+class MainApp extends StatefulWidget {
   const MainApp({super.key});
 
   @override
+  State<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends State<MainApp> {
+  final ThemeProvider _themeProvider = ThemeProvider();
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'cQuizy',
-      themeMode: ThemeMode.dark,
-      darkTheme: ThemeData.dark(useMaterial3: true),
-      debugShowCheckedModeBanner: false,
-      home: const AuthGate(), // Az alkalmazás az AuthGate-tel indul
+    return ThemeInherited(
+      themeProvider: _themeProvider,
+      child: ListenableBuilder(
+        listenable: _themeProvider,
+        builder: (context, child) {
+          return MaterialApp(
+            title: 'cQuizy',
+            themeMode: _themeProvider.themeMode,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            debugShowCheckedModeBanner: false,
+            home: const AuthGate(),
+          );
+        },
+      ),
     );
   }
 }

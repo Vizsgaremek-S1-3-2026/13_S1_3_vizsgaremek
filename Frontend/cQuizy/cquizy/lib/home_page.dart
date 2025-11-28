@@ -166,7 +166,7 @@ class _HomePageState extends State<HomePage> {
         if (isDesktop) {
           // --- ASZTALI NÉZET ---
           return Scaffold(
-            backgroundColor: const Color(0xFF1c1c1c),
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             body: Row(
               children: [
                 _buildSideNav(_activeTests),
@@ -208,12 +208,12 @@ class _HomePageState extends State<HomePage> {
                               width: 56,
                               height: 56,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFff3b5f),
+                                color: Theme.of(context).primaryColor,
                                 borderRadius: BorderRadius.circular(16.0),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.add,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.onPrimary,
                                 size: 32,
                               ),
                             ),
@@ -229,7 +229,7 @@ class _HomePageState extends State<HomePage> {
         } else {
           // --- MOBIL NÉZET ---
           return Scaffold(
-            backgroundColor: const Color(0xFF1c1c1c),
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             drawer: _buildSideNav(_activeTests, isDrawer: true),
             onDrawerChanged: (isOpened) {
               if (!isOpened) {
@@ -285,12 +285,14 @@ class _HomePageState extends State<HomePage> {
                                 width: 56,
                                 height: 56,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFff3b5f),
+                                  color: Theme.of(context).primaryColor,
                                   borderRadius: BorderRadius.circular(16.0),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.add,
-                                  color: Colors.white,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onPrimary,
                                   size: 32,
                                 ),
                               ),
@@ -340,10 +342,14 @@ class _HomePageState extends State<HomePage> {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: const Color(0xFFff3b5f),
+              color: Theme.of(context).primaryColor,
               borderRadius: BorderRadius.circular(16.0),
             ),
-            child: Icon(icon, color: Colors.white, size: 28),
+            child: Icon(
+              icon,
+              color: Theme.of(context).colorScheme.onPrimary,
+              size: 28,
+            ),
           ),
         ),
       ),
@@ -384,9 +390,10 @@ class _HomePageState extends State<HomePage> {
 
   // Oldalsó menü / Drawer
   Widget _buildSideNav(List<Group> activeTests, {bool isDrawer = false}) {
+    final theme = Theme.of(context);
     final navContent = Container(
       width: 280,
-      color: const Color(0xFF252525),
+      color: theme.cardColor,
       padding: const EdgeInsets.all(20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -415,7 +422,7 @@ class _HomePageState extends State<HomePage> {
               Text(
                 'cQuizy',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: theme.textTheme.titleMedium?.color?.withOpacity(0.7),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
@@ -423,7 +430,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 5),
-          const Divider(color: Color.fromARGB(61, 255, 255, 255)),
+          Divider(color: theme.dividerColor),
           const SizedBox(height: 10),
           if (activeTests.isNotEmpty)
             ActiveTestCarousel(
@@ -472,8 +479,17 @@ class SideNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = isSelected
+        ? theme.primaryColor
+        : theme.textTheme.bodyLarge?.color;
+    final iconColor = isSelected ? theme.primaryColor : theme.iconTheme.color;
+
     return Material(
-      color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+      color: isSelected
+          ? theme.primaryColor.withOpacity(0.1)
+          : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -487,15 +503,19 @@ class SideNavItem extends StatelessWidget {
             children: [
               if (icon != null) ...[
                 CircleAvatar(
-                  backgroundColor: const Color(0xFF4f4f4f),
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
                   radius: 18,
-                  child: Icon(icon, color: Colors.white, size: 20),
+                  child: Icon(icon, color: iconColor, size: 20),
                 ),
                 const SizedBox(width: 16),
               ],
               Text(
                 label,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 16,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
             ],
           ),
@@ -870,19 +890,20 @@ class HeaderWithDivider extends StatelessWidget {
   const HeaderWithDivider({super.key, required this.title});
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: theme.textTheme.titleMedium?.color?.withOpacity(0.8),
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
-        Container(height: 1, color: Colors.white.withOpacity(0.1)),
+        Container(height: 1, color: theme.dividerColor),
       ],
     );
   }

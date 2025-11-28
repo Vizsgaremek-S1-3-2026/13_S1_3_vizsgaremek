@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme.dart';
 
 class SettingsPage extends StatelessWidget {
   final VoidCallback onLogout;
@@ -7,65 +8,81 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = ThemeInherited.of(context);
+    final isDark = themeProvider.isDarkMode;
+    final theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF1c1c1c),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1c1c1c),
+        backgroundColor: theme.appBarTheme.backgroundColor,
         elevation: 0,
-        title: const Text('Beállítások', style: TextStyle(color: Colors.white)),
+        title: Text(
+          'Beállítások',
+          style: TextStyle(color: theme.appBarTheme.foregroundColor),
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: theme.iconTheme.color),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          _buildSectionHeader('Profil'),
+          _buildSectionHeader(context, 'Profil'),
           const SizedBox(height: 10),
-          _buildProfileCard(),
+          _buildProfileCard(context),
           const SizedBox(height: 30),
-          _buildSectionHeader('Általános'),
+          _buildSectionHeader(context, 'Általános'),
           const SizedBox(height: 10),
           _buildSettingsItem(
+            context,
             icon: Icons.notifications_outlined,
             title: 'Értesítések',
             subtitle: 'Kezeld az értesítéseidet',
             onTap: () {},
           ),
           _buildSettingsItem(
+            context,
             icon: Icons.language,
             title: 'Nyelv',
             subtitle: 'Magyar',
             onTap: () {},
           ),
           const SizedBox(height: 30),
-          _buildSectionHeader('Megjelenés'),
+          _buildSectionHeader(context, 'Megjelenés'),
           const SizedBox(height: 10),
           _buildSettingsItem(
+            context,
             icon: Icons.dark_mode_outlined,
             title: 'Sötét mód',
-            subtitle: 'Bekapcsolva',
+            subtitle: isDark ? 'Bekapcsolva' : 'Kikapcsolva',
             trailing: Switch(
-              value: true,
-              onChanged: (val) {},
-              activeColor: const Color(0xFFff3b5f),
+              value: isDark,
+              onChanged: (val) {
+                themeProvider.toggleTheme(val);
+              },
+              activeColor: theme.primaryColor,
             ),
-            onTap: () {},
+            onTap: () {
+              themeProvider.toggleTheme(!isDark);
+            },
           ),
           const SizedBox(height: 30),
-          _buildSectionHeader('Egyéb'),
+          _buildSectionHeader(context, 'Egyéb'),
           const SizedBox(height: 10),
           _buildSettingsItem(
+            context,
             icon: Icons.info_outline,
             title: 'Névjegy',
             subtitle: 'Verzió 1.0.0',
             onTap: () {},
           ),
           _buildSettingsItem(
+            context,
             icon: Icons.logout,
             title: 'Kijelentkezés',
-            titleColor: const Color(0xFFff3b5f),
+            titleColor: theme.primaryColor,
             onTap: () {
               onLogout();
               Navigator.of(context).pop();
@@ -76,14 +93,12 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
       child: Text(
         title,
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.6),
-          fontSize: 14,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.bold,
           letterSpacing: 1.0,
         ),
@@ -91,19 +106,20 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileCard() {
+  Widget _buildProfileCard(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF252525),
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16.0),
       ),
       child: Row(
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 30,
-            backgroundColor: Color(0xFFff3b5f),
-            child: Text(
+            backgroundColor: theme.primaryColor,
+            child: const Text(
               'JD',
               style: TextStyle(
                 color: Colors.white,
@@ -117,10 +133,9 @@ class SettingsPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'John Doe',
-                  style: TextStyle(
-                    color: Colors.white,
+                  style: theme.textTheme.bodyLarge?.copyWith(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -128,8 +143,8 @@ class SettingsPage extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   'Diák',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
                     fontSize: 14,
                   ),
                 ),
@@ -137,7 +152,7 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.edit_outlined, color: Colors.white),
+            icon: Icon(Icons.edit_outlined, color: theme.iconTheme.color),
             onPressed: () {},
           ),
         ],
@@ -145,7 +160,8 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingsItem({
+  Widget _buildSettingsItem(
+    BuildContext context, {
     required IconData icon,
     required String title,
     String? subtitle,
@@ -153,10 +169,11 @@ class SettingsPage extends StatelessWidget {
     Color? titleColor,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF252525),
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(12.0),
       ),
       child: ListTile(
@@ -167,15 +184,19 @@ class SettingsPage extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(8.0),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: theme.iconTheme.color?.withOpacity(0.05),
             borderRadius: BorderRadius.circular(8.0),
           ),
-          child: Icon(icon, color: titleColor ?? Colors.white, size: 20),
+          child: Icon(
+            icon,
+            color: titleColor ?? theme.iconTheme.color,
+            size: 20,
+          ),
         ),
         title: Text(
           title,
           style: TextStyle(
-            color: titleColor ?? Colors.white,
+            color: titleColor ?? theme.textTheme.bodyLarge?.color,
             fontSize: 16,
             fontWeight: FontWeight.w500,
           ),
@@ -184,7 +205,7 @@ class SettingsPage extends StatelessWidget {
             ? Text(
                 subtitle,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
+                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
                   fontSize: 13,
                 ),
               )
@@ -193,7 +214,7 @@ class SettingsPage extends StatelessWidget {
             trailing ??
             Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white.withOpacity(0.3),
+              color: theme.iconTheme.color?.withOpacity(0.3),
               size: 16,
             ),
       ),

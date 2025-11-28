@@ -113,21 +113,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   ];
 
   // 2. Színpaletta
-  static const _primaryColor = Color(0xFFED2F5B);
-  static const _lightThemeColors = {
-    'scaffold': Color(0xFFF4F4F4),
-    'fill': Color(0xFFEAEAEA),
-    'text': Color(0xFF1A1A1A),
-    'subtext': Color(0xFF666666),
-    'hint': Color(0xFF888888),
-  };
-  static const _darkThemeColors = {
-    'scaffold': Color(0xFF121212),
-    'fill': Color(0xFF2E2E2E),
-    'text': Color(0xFFF0F0F0),
-    'subtext': Color(0xFF9E9E9E),
-    'hint': Color(0xFF757575),
-  };
+  // static const _primaryColor = Color(0xFFED2F5B); // Use Theme.of(context).primaryColor instead
 
   // --- BELSŐ ÁLLAPOTVÁLTOZÓK ---
 
@@ -195,7 +181,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     if (mounted) {
       setState(() => _isLoading = false);
       if (token != null) {
-        widget.onLoginSuccess(); // Sikeres bejelentkezés jelzése
+        widget.onLoginSuccess(); // Sikeres bejelentkezés jelzésére
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -327,12 +313,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final colors = isDarkMode ? _darkThemeColors : _lightThemeColors;
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final primaryColor = theme.primaryColor;
 
     final modernInputDecoration = InputDecoration(
       filled: true,
-      fillColor: colors['fill'],
+      fillColor: theme.colorScheme.surface, // Was colors['fill']
       contentPadding: const EdgeInsets.symmetric(
         vertical: 18.0,
         horizontal: 20.0,
@@ -347,17 +334,17 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12.0),
-        borderSide: const BorderSide(color: _primaryColor, width: 2),
+        borderSide: BorderSide(color: primaryColor, width: 2),
       ),
-      floatingLabelStyle: const TextStyle(color: _primaryColor),
+      floatingLabelStyle: TextStyle(color: primaryColor),
     );
 
     return Scaffold(
-      backgroundColor: colors['scaffold'],
-      appBar: _buildAppBar(isDarkMode, colors['scaffold']!),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: _buildAppBar(isDarkMode, theme.scaffoldBackgroundColor),
       body: Stack(
         children: [
-          _buildBackgroundWave(),
+          _buildBackgroundWave(context),
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
@@ -380,8 +367,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   );
                 },
                 child: isLoginView
-                    ? _buildLoginForm(modernInputDecoration, colors)
-                    : _buildRegisterStepper(modernInputDecoration, colors),
+                    ? _buildLoginForm(modernInputDecoration)
+                    : _buildRegisterStepper(modernInputDecoration),
               ),
             ),
           ),
@@ -391,6 +378,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   AppBar _buildAppBar(bool isDarkMode, Color scaffoldColor) {
+    final theme = Theme.of(context);
     return AppBar(
       backgroundColor: scaffoldColor,
       scrolledUnderElevation: 0,
@@ -426,7 +414,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               },
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white,
-                backgroundColor: _primaryColor,
+                backgroundColor: theme.primaryColor,
                 padding: const EdgeInsets.symmetric(
                   vertical: 16,
                   horizontal: 18,
@@ -450,16 +438,17 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildBackgroundWave() {
+  Widget _buildBackgroundWave(BuildContext context) {
+    final primaryColor = Theme.of(context).primaryColor;
     return Positioned.fill(
       child: Align(
         alignment: Alignment.bottomCenter,
         child: WaveWidget(
           config: CustomConfig(
             gradients: [
-              [_primaryColor.withOpacity(0.5), _primaryColor.withOpacity(0.3)],
-              [_primaryColor.withOpacity(0.4), _primaryColor.withOpacity(0.2)],
-              [_primaryColor.withOpacity(0.1), _primaryColor.withOpacity(0.3)],
+              [primaryColor.withOpacity(0.5), primaryColor.withOpacity(0.3)],
+              [primaryColor.withOpacity(0.4), primaryColor.withOpacity(0.2)],
+              [primaryColor.withOpacity(0.1), primaryColor.withOpacity(0.3)],
             ],
             durations: [19440, 10800],
             heightPercentages: [0.20, 0.23],
@@ -474,21 +463,20 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildLoginForm(
-    InputDecoration decoration,
-    Map<String, Color> colors,
-  ) {
+  Widget _buildLoginForm(InputDecoration decoration) {
+    final theme = Theme.of(context);
+    final primaryColor = theme.primaryColor;
     return Container(
       key: const ValueKey('loginForm'),
       margin: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24.0),
-        border: Border.all(color: _primaryColor.withOpacity(0.5), width: 1.5),
+        border: Border.all(color: primaryColor.withOpacity(0.5), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(
-              Theme.of(context).brightness == Brightness.dark ? 0.3 : 0.1,
+              theme.brightness == Brightness.dark ? 0.3 : 0.1,
             ),
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -508,29 +496,29 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 const SizedBox(height: 16),
                 Text(
                   "Üdvözlünk újra!",
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  style: theme.textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: colors['text'],
+                    color: theme.textTheme.bodyLarge?.color,
                   ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   "Jelentkezz be a folytatáshoz.",
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(color: colors['subtext']),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
                 FormBuilderTextField(
                   name: 'username',
-                  style: TextStyle(color: colors['text']),
+                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                   decoration: decoration.copyWith(
                     labelText: 'Felhasználónév',
                     prefixIcon: Icon(
                       Icons.person_outline,
-                      color: colors['subtext'],
+                      color: theme.iconTheme.color,
                     ),
                   ),
                   validator: FormBuilderValidators.required(
@@ -541,20 +529,20 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 const SizedBox(height: 16),
                 FormBuilderTextField(
                   name: 'password',
-                  style: TextStyle(color: colors['text']),
+                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                   obscureText: _isPasswordObscured,
                   decoration: decoration.copyWith(
                     labelText: 'Jelszó',
                     prefixIcon: Icon(
                       Icons.lock_outline,
-                      color: colors['subtext'],
+                      color: theme.iconTheme.color,
                     ),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _isPasswordObscured
                             ? Icons.visibility_off_outlined
                             : Icons.visibility_outlined,
-                        color: colors['subtext'],
+                        color: theme.iconTheme.color,
                       ),
                       onPressed: () => setState(
                         () => _isPasswordObscured = !_isPasswordObscured,
@@ -570,7 +558,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     foregroundColor: Colors.white,
-                    backgroundColor: _primaryColor,
+                    backgroundColor: primaryColor,
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -603,15 +591,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildRegisterStepper(
-    InputDecoration decoration,
-    Map<String, Color> colors,
-  ) {
+  Widget _buildRegisterStepper(InputDecoration decoration) {
     const fieldPadding = EdgeInsets.symmetric(horizontal: 5.0);
-    final textColor = colors['text']!;
-    final hintColor = colors['hint']!;
+    final theme = Theme.of(context);
+    final textColor = theme.textTheme.bodyLarge?.color;
+    final hintColor = theme.hintColor;
+    final primaryColor = theme.primaryColor;
 
-    final step5Fields = [_buildAvatarSelector(textColor)];
+    final step5Fields = [_buildAvatarSelector(textColor!)];
 
     final List<Widget> pages = [
       _buildStep(
@@ -772,13 +759,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       margin: const EdgeInsets.all(16.0),
       height: 540,
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24.0),
-        border: Border.all(color: _primaryColor.withOpacity(0.5), width: 1.5),
+        border: Border.all(color: primaryColor.withOpacity(0.5), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(
-              Theme.of(context).brightness == Brightness.dark ? 0.3 : 0.1,
+              theme.brightness == Brightness.dark ? 0.3 : 0.1,
             ),
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -792,7 +779,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             LinearProgressIndicator(
               value: (_currentPage + 1) / pages.length,
               backgroundColor: Colors.grey.shade300,
-              color: _primaryColor,
+              color: primaryColor,
               minHeight: 6,
               borderRadius: BorderRadius.circular(10),
             ),
@@ -813,9 +800,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     onPressed: _isPageTransitioning || _isLoading
                         ? null
                         : _previousPage,
-                    child: const Text(
+                    child: Text(
                       'Vissza',
-                      style: TextStyle(color: _primaryColor),
+                      style: TextStyle(color: theme.primaryColor),
                     ),
                   )
                 else
@@ -824,7 +811,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     foregroundColor: Colors.white,
-                    backgroundColor: _primaryColor,
+                    backgroundColor: theme.primaryColor,
                     disabledBackgroundColor: Colors.grey.shade400,
                     disabledForegroundColor: Colors.grey.shade600,
                   ),
@@ -859,6 +846,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildAvatarSelector(Color textColor) {
+    final theme = Theme.of(context);
     final pageController = PageController(viewportFraction: 0.6);
     final categories = _avatars
         .map((a) => a['category'] as String)
@@ -870,7 +858,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         children: [
           TabBar(
             controller: _avatarTabController,
-            indicatorColor: _primaryColor,
+            indicatorColor: theme.primaryColor,
             labelColor: textColor,
             unselectedLabelColor: Colors.grey,
             tabAlignment: TabAlignment.fill,
@@ -880,12 +868,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               final firstIndexInCategory = _avatars.indexWhere(
                 (a) => a['category'] == category,
               );
-              if (firstIndexInCategory != -1)
+              if (firstIndexInCategory != -1) {
                 pageController.animateToPage(
                   firstIndexInCategory,
                   duration: const Duration(milliseconds: 350),
                   curve: Curves.easeOut,
                 );
+              }
             },
           ),
           const SizedBox(height: 24),
@@ -917,14 +906,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: isSelected
-                                ? _primaryColor
+                                ? theme.primaryColor
                                 : Colors.transparent,
                             width: 4,
                           ),
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: _primaryColor.withOpacity(0.5),
+                                    color: theme.primaryColor.withOpacity(0.5),
                                     blurRadius: 10,
                                     spreadRadius: 2,
                                   ),
@@ -949,8 +938,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 final category = _avatars[index]['category'] as String;
                 final categoryIndex = categories.indexOf(category);
                 if (categoryIndex != -1 &&
-                    _avatarTabController.index != categoryIndex)
+                    _avatarTabController.index != categoryIndex) {
                   _avatarTabController.animateTo(categoryIndex);
+                }
                 setState(
                   () => _selectedAvatarId = _avatars[index]['id'] as String,
                 );
