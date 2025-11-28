@@ -6,7 +6,9 @@ import 'settings_page.dart';
 const double kDesktopBreakpoint = 900.0;
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final VoidCallback onLogout;
+
+  const HomePage({super.key, required this.onLogout});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -436,7 +438,9 @@ class _HomePageState extends State<HomePage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const SettingsPage()),
+                MaterialPageRoute(
+                  builder: (context) => SettingsPage(onLogout: widget.onLogout),
+                ),
               );
             },
           ),

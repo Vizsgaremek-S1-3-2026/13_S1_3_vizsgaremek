@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  final VoidCallback onLogout;
+
+  const SettingsPage({super.key, required this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +66,10 @@ class SettingsPage extends StatelessWidget {
             icon: Icons.logout,
             title: 'Kijelentkezés',
             titleColor: const Color(0xFFff3b5f),
-            onTap: () {},
+            onTap: () {
+              onLogout();
+              Navigator.of(context).pop();
+            },
           ),
         ],
       ),
