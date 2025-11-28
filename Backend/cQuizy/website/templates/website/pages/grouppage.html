@@ -1,0 +1,100 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Group Details</title>
+    <style>
+        /* Specific styles for this page */
+        #groupHeader {
+            padding: 30px;
+            border-radius: 10px;
+            color: white;
+            margin-bottom: 30px;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        .section-container {
+            background-color: #f9f9f9; /* Light background for contrast */
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .dark-mode .section-container {
+            background-color: #2a2a2a;
+            border-color: #444;
+        }
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .list-item:last-child { border-bottom: none; }
+
+        .quiz-status {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .status-active { background-color: #d4edda; color: #155724; }
+        .status-upcoming { background-color: #fff3cd; color: #856404; }
+        .status-ended { background-color: #f8d7da; color: #721c24; }
+
+        .back-btn {
+            background-color: #555;
+            color: white;
+            padding: 8px 15px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .back-btn:hover { background-color: #333; }
+    </style>
+</head>
+<body>
+    {% include "website/components/header.html" %}
+
+    <div style="max-width: 1000px; margin: 0 auto; padding: 20px;">
+        
+        <a href="/groups/" class="back-btn">← Back to Groups</a>
+
+        <!-- 1. GROUP HEADER (Color & Info) -->
+        <div id="groupHeader">
+            <h1 id="groupName">Loading...</h1>
+            <p>ID: <span id="groupIdDisplay">...</span></p>
+            <p>Invite Code: <span id="groupInviteCode" style="font-family: monospace; font-size: 1.2em; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px;">...</span></p>
+            <div style="margin-top: 10px; font-size: 0.9em;">
+                <span id="groupAnticheatBadge"></span>
+                <span id="groupKioskBadge"></span>
+            </div>
+        </div>
+
+        <!-- 2. QUIZZES SECTION -->
+        <div class="section-container">
+            <h2>Quizzes</h2>
+            <div id="quizzesList">
+                <p>Loading quizzes...</p>
+            </div>
+        </div>
+
+        <!-- 3. MEMBERS SECTION -->
+        <div class="section-container">
+            <h2>Members</h2>
+            <div id="membersList">
+                <p>Loading members...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="{% static 'js/grouppage.js' %}"></script>
+</body>
+</html>

@@ -23,5 +23,7 @@ def groups(request):
     return render(request, 'website/pages/groups.html')
 def projects(request):
     return render(request, 'website/pages/projects.html')
+class GroupPageView(TemplateView):
+    template_name = 'website/pages/grouppage.html'
 class BuilderView(TemplateView):
     template_name = 'website/pages/builder.html'
