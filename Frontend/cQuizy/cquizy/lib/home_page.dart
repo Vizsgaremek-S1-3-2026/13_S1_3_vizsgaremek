@@ -43,36 +43,22 @@ class _HomePageState extends State<HomePage> {
       Group(
         title: 'Matematika 8.A',
         subtitle: 'Toszt Elek',
-        gradient: const LinearGradient(
-          colors: [Color(0xff6a1b2d), Color(0xffb72c31)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        color: const Color(0xffb72c31),
       ),
     ];
     _otherGroups = [
       Group(
         title: 'Földrajz 7.C',
         subtitle: 'Csillagos Klára',
-        gradient: const LinearGradient(
-          colors: [Color(0xff9e6a18), Color(0xffd49c2e)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        color: const Color(0xffd49c2e),
         hasNotification: false,
       ),
       Group(
         title: 'Programozás alapjai 10.A',
         subtitle: 'Kód Elek',
-        gradient: const LinearGradient(
-          colors: [Color(0xff6d2c77), Color(0xffa142ad)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        color: const Color(0xffa142ad),
         hasNotification: true,
-        testExpiryDate: DateTime.now().add(
-          const Duration(seconds: 45),
-        ), // Teszteléshez rövid idő
+        testExpiryDate: DateTime.now().add(const Duration(seconds: 45)),
         activeTestTitle: 'Algoritmusok I. Témazáró',
         activeTestDescription:
             'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
@@ -80,11 +66,7 @@ class _HomePageState extends State<HomePage> {
       Group(
         title: 'Angol Haladó 11.B',
         subtitle: 'Fordító Ágnes',
-        gradient: const LinearGradient(
-          colors: [Color(0xff1a7a6a), Color(0xff2cb39a)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        color: const Color(0xff2cb39a),
         hasNotification: true,
         testExpiryDate: DateTime.now().add(
           const Duration(hours: 8, minutes: 30),
@@ -560,7 +542,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
             width: double.infinity,
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
-              gradient: widget.group.gradient,
+              gradient: widget.group.getGradient(context),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
@@ -826,7 +808,7 @@ class GroupCard extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
           width: double.infinity,
           decoration: BoxDecoration(
-            gradient: group.gradient,
+            gradient: group.getGradient(context),
             borderRadius: BorderRadius.circular(5),
           ),
           child: Material(

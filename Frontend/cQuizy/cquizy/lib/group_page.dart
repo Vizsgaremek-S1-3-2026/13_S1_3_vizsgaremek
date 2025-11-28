@@ -9,7 +9,7 @@ import 'package:intl/intl.dart';
 class Group {
   final String title;
   final String subtitle;
-  final Gradient gradient;
+  final Color color;
   final bool hasNotification;
   final DateTime? testExpiryDate;
   final String? activeTestTitle;
@@ -18,7 +18,7 @@ class Group {
   Group({
     required this.title,
     required this.subtitle,
-    required this.gradient,
+    required this.color,
     this.hasNotification = false,
     this.testExpiryDate,
     this.activeTestTitle,
@@ -28,7 +28,7 @@ class Group {
   Group copyWith({
     String? title,
     String? subtitle,
-    Gradient? gradient,
+    Color? color,
     bool? hasNotification,
     DateTime? testExpiryDate,
     String? activeTestTitle,
@@ -37,12 +37,41 @@ class Group {
     return Group(
       title: title ?? this.title,
       subtitle: subtitle ?? this.subtitle,
-      gradient: gradient ?? this.gradient,
+      color: color ?? this.color,
       hasNotification: hasNotification ?? this.hasNotification,
       testExpiryDate: testExpiryDate ?? this.testExpiryDate,
       activeTestTitle: activeTestTitle ?? this.activeTestTitle,
       activeTestDescription:
           activeTestDescription ?? this.activeTestDescription,
+    );
+  }
+
+  // Dinamikus gradient generálás a téma alapján
+  Gradient getGradient(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hsl = HSLColor.fromColor(color);
+
+    Color startColor;
+    Color endColor;
+
+    if (isDark) {
+      // Sötét módban: sötétebb -> alap szín
+      startColor = hsl
+          .withLightness((hsl.lightness - 0.15).clamp(0.0, 1.0))
+          .toColor();
+      endColor = color;
+    } else {
+      // Világos módban: alap szín -> világosabb
+      startColor = color;
+      endColor = hsl
+          .withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0))
+          .toColor();
+    }
+
+    return LinearGradient(
+      colors: [startColor, endColor],
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
     );
   }
 }
@@ -112,18 +141,6 @@ class _GroupPageState extends State<GroupPage> {
         ),
       ],
     );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
-      decoration: BoxDecoration(
-        gradient: widget.group.gradient,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(14),
-          bottomRight: Radius.circular(14),
-        ),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
