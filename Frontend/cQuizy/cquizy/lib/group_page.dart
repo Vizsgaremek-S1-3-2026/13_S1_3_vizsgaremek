@@ -51,28 +51,34 @@ class Group {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hsl = HSLColor.fromColor(color);
 
-    Color startColor;
-    Color endColor;
+    Color startColor; // Bal felső sarok
+    Color endColor; // Jobb alsó sarok
 
     if (isDark) {
-      // Sötét módban: sötétebb -> alap szín
+      // Sötét módban: jobb alsó világosabb -> bal felső sötétebb
+      endColor = color; // Jobb alsó
       startColor = hsl
           .withLightness((hsl.lightness - 0.15).clamp(0.0, 1.0))
-          .toColor();
-      endColor = color;
+          .toColor(); // Bal felső (sötétebb)
     } else {
-      // Világos módban: alap szín -> világosabb
-      startColor = color;
-      endColor = hsl
+      // Világos módban: jobb alsó sötétebb -> bal felső világosabb
+      endColor = color; // Jobb alsó
+      startColor = hsl
           .withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0))
-          .toColor();
+          .toColor(); // Bal felső (világosabb)
     }
 
     return LinearGradient(
       colors: [startColor, endColor],
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
     );
+  }
+
+  // Dinamikus szövegszín meghatározása a téma alapján
+  Color getTextColor(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? Colors.white : Colors.black;
   }
 }
 
@@ -141,6 +147,13 @@ class _GroupPageState extends State<GroupPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(gradient: widget.group.getGradient(context)),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -154,15 +167,18 @@ class _GroupPageState extends State<GroupPage> {
                   children: [
                     Text(
                       widget.group.title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: widget.group.getTextColor(context),
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
                         shadows: [
                           Shadow(
                             blurRadius: 2,
-                            color: Colors.black38,
-                            offset: Offset(1, 1),
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.black38
+                                : Colors.white38,
+                            offset: const Offset(1, 1),
                           ),
                         ],
                       ),
@@ -171,7 +187,9 @@ class _GroupPageState extends State<GroupPage> {
                     Text(
                       'Oktató: ${widget.group.subtitle}',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: widget.group
+                            .getTextColor(context)
+                            .withOpacity(0.9),
                         fontSize: 18,
                       ),
                     ),
@@ -182,13 +200,18 @@ class _GroupPageState extends State<GroupPage> {
                 onPressed: () => setState(
                   () => _isMembersPanelVisible = !_isMembersPanelVisible,
                 ),
-                icon: const Icon(Icons.people_outline, color: Colors.white),
-                label: const Text(
+                icon: Icon(
+                  Icons.people_outline,
+                  color: widget.group.getTextColor(context),
+                ),
+                label: Text(
                   'Tagok',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: widget.group.getTextColor(context)),
                 ),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.white.withOpacity(0.7)),
+                  side: BorderSide(
+                    color: widget.group.getTextColor(context).withOpacity(0.7),
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),

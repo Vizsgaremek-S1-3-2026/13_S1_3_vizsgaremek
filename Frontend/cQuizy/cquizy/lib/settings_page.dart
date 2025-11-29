@@ -59,10 +59,28 @@ class SettingsPage extends StatelessWidget {
             subtitle: isDark ? 'Bekapcsolva' : 'Kikapcsolva',
             trailing: Switch(
               value: isDark,
+              activeColor: theme.primaryColor,
+              activeTrackColor: theme.primaryColor,
               onChanged: (val) {
                 themeProvider.toggleTheme(val);
               },
-              activeColor: theme.primaryColor,
+              thumbColor: WidgetStateProperty.resolveWith<Color>((
+                Set<WidgetState> states,
+              ) {
+                if (states.contains(WidgetState.selected)) {
+                  return Colors.white;
+                }
+                return theme.colorScheme.outline;
+              }),
+              trackColor: WidgetStateProperty.resolveWith<Color>((
+                Set<WidgetState> states,
+              ) {
+                if (states.contains(WidgetState.selected)) {
+                  return theme.primaryColor;
+                }
+                return theme.colorScheme.surfaceContainerHighest;
+              }),
+              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
             ),
             onTap: () {
               themeProvider.toggleTheme(!isDark);

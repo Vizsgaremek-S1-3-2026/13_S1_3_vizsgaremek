@@ -330,7 +330,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12.0),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(
+          color: theme.dividerColor.withOpacity(0.3),
+          width: 1,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12.0),
@@ -470,7 +473,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       key: const ValueKey('loginForm'),
       margin: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: theme.brightness == Brightness.dark
+            ? const Color(0xFF1A1A1A) // Sötétebb sötét módban
+            : const Color(0xFFF8F8F8), // Halvány szürke világos módban
         borderRadius: BorderRadius.circular(24.0),
         border: Border.all(color: primaryColor.withOpacity(0.5), width: 1.5),
         boxShadow: [
@@ -759,7 +764,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       margin: const EdgeInsets.all(16.0),
       height: 540,
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: theme.brightness == Brightness.dark
+            ? const Color(0xFF1A1A1A) // Sötétebb sötét módban
+            : const Color(0xFFF8F8F8), // Halvány szürke világos módban
         borderRadius: BorderRadius.circular(24.0),
         border: Border.all(color: primaryColor.withOpacity(0.5), width: 1.5),
         boxShadow: [

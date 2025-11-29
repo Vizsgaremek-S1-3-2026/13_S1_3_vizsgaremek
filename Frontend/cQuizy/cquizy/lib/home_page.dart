@@ -43,20 +43,20 @@ class _HomePageState extends State<HomePage> {
       Group(
         title: 'Matematika 8.A',
         subtitle: 'Toszt Elek',
-        color: const Color(0xffb72c31),
+        color: const Color.fromARGB(255, 255, 0, 8),
       ),
     ];
     _otherGroups = [
       Group(
         title: 'Földrajz 7.C',
         subtitle: 'Csillagos Klára',
-        color: const Color(0xffd49c2e),
+        color: const Color.fromARGB(255, 255, 170, 0),
         hasNotification: false,
       ),
       Group(
         title: 'Programozás alapjai 10.A',
         subtitle: 'Kód Elek',
-        color: const Color(0xffa142ad),
+        color: const Color.fromARGB(255, 206, 0, 233),
         hasNotification: true,
         testExpiryDate: DateTime.now().add(const Duration(seconds: 45)),
         activeTestTitle: 'Algoritmusok I. Témazáró',
@@ -66,7 +66,7 @@ class _HomePageState extends State<HomePage> {
       Group(
         title: 'Angol Haladó 11.B',
         subtitle: 'Fordító Ágnes',
-        color: const Color(0xff2cb39a),
+        color: const Color.fromARGB(255, 0, 240, 196),
         hasNotification: true,
         testExpiryDate: DateTime.now().add(
           const Duration(hours: 8, minutes: 30),
@@ -195,7 +195,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                               child: Icon(
                                 Icons.add,
-                                color: Theme.of(context).colorScheme.onPrimary,
+                                color: Colors.white,
                                 size: 32,
                               ),
                             ),
@@ -272,9 +272,7 @@ class _HomePageState extends State<HomePage> {
                                 ),
                                 child: Icon(
                                   Icons.add,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onPrimary,
+                                  color: Colors.white,
                                   size: 32,
                                 ),
                               ),
@@ -327,11 +325,7 @@ class _HomePageState extends State<HomePage> {
               color: Theme.of(context).primaryColor,
               borderRadius: BorderRadius.circular(16.0),
             ),
-            child: Icon(
-              icon,
-              color: Theme.of(context).colorScheme.onPrimary,
-              size: 28,
-            ),
+            child: Icon(icon, color: Colors.white, size: 28),
           ),
         ),
       ),
@@ -550,8 +544,8 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
               children: [
                 Text(
                   widget.group.title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: widget.group.getTextColor(context),
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -562,7 +556,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                 Text(
                   '$subject Témazáró',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
+                    color: widget.group.getTextColor(context).withOpacity(0.8),
                     fontSize: 12,
                   ),
                 ),
@@ -585,18 +579,22 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     elevation: 0,
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         'Teszt Indítása',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: widget.group.getTextColor(context),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      SizedBox(width: 8),
-                      Icon(Icons.play_arrow, size: 20, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.play_arrow,
+                        size: 20,
+                        color: widget.group.getTextColor(context),
+                      ),
                     ],
                   ),
                 ),
@@ -828,8 +826,8 @@ class GroupCard extends StatelessWidget {
                   children: [
                     Text(
                       group.title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: group.getTextColor(context),
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
@@ -838,7 +836,7 @@ class GroupCard extends StatelessWidget {
                     Text(
                       group.subtitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
+                        color: group.getTextColor(context).withOpacity(0.8),
                         fontSize: 14,
                       ),
                     ),
