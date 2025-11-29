@@ -19,7 +19,9 @@ class _HomePageState extends State<HomePage> {
   late List<Group> _otherGroups;
   late List<Group> _activeTests;
   Group? _selectedGroup;
+
   bool _isBottomBarVisible = true;
+  bool _isMemberPanelOpen = false;
 
   @override
   void initState() {
@@ -135,6 +137,7 @@ class _HomePageState extends State<HomePage> {
   void _unselectGroup() {
     setState(() {
       _selectedGroup = null;
+      _isMemberPanelOpen = false;
     });
   }
 
@@ -167,36 +170,43 @@ class _HomePageState extends State<HomePage> {
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      // A "+" gomb mindig látható
+                      // A "+" gomb mindig látható, de animálva eltűnik, ha a tag panel nyitva van
                       Positioned(
                         bottom: 24,
                         right: 24,
-                        child: Tooltip(
-                          message: isGroupView
-                              ? 'Tag hozzáadása'
-                              : 'Csoport hozzáadása / Csatlakozás',
-                          child: InkWell(
-                            onTap: () {
-                              if (isGroupView) {
-                                // Tag hozzáadása logika
-                              } else {
-                                // Csoport hozzáadása / Csatlakozás logika
-                              }
-                            },
-                            customBorder: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16.0),
-                            ),
-                            child: Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).primaryColor,
-                                borderRadius: BorderRadius.circular(16.0),
-                              ),
-                              child: Icon(
-                                Icons.add,
-                                color: Colors.white,
-                                size: 32,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 300),
+                          opacity: _isMemberPanelOpen ? 0.0 : 1.0,
+                          child: IgnorePointer(
+                            ignoring: _isMemberPanelOpen,
+                            child: Tooltip(
+                              message: isGroupView
+                                  ? 'Tag hozzáadása'
+                                  : 'Csoport hozzáadása / Csatlakozás',
+                              child: InkWell(
+                                onTap: () {
+                                  if (isGroupView) {
+                                    // Tag hozzáadása logika
+                                  } else {
+                                    // Csoport hozzáadása / Csatlakozás logika
+                                  }
+                                },
+                                customBorder: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16.0),
+                                ),
+                                child: Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).primaryColor,
+                                    borderRadius: BorderRadius.circular(16.0),
+                                  ),
+                                  child: Icon(
+                                    Icons.add,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -222,64 +232,77 @@ class _HomePageState extends State<HomePage> {
             },
             body: _buildAnimatedContent(),
             bottomNavigationBar: _isBottomBarVisible
-                ? BottomAppBar(
-                    color: Colors.transparent,
-                    elevation: 0,
-                    child: Row(
-                      children: [
-                        Builder(
-                          builder: (context) => _buildMenuButton(
-                            icon: isGroupView
-                                ? Icons.arrow_back
-                                : Icons.menu_rounded,
-                            tooltip: isGroupView ? 'Vissza' : 'Menü',
-                            onPressed: () {
-                              if (isGroupView) {
-                                _unselectGroup();
-                              } else {
-                                setState(() {
-                                  _isBottomBarVisible = false;
-                                });
-                                Scaffold.of(context).openDrawer();
-                              }
-                            },
-                          ),
-                        ),
-                        const Spacer(),
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: Tooltip(
-                            message: isGroupView
-                                ? 'Tag hozzáadása'
-                                : 'Csoport hozzáadása / Csatlakozás',
-                            child: InkWell(
-                              onTap: () {
-                                if (isGroupView) {
-                                  // Tag hozzáadása
-                                } else {
-                                  // Csoport hozzáadása vagy csatlakozás
-                                }
-                              },
-                              customBorder: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16.0),
-                              ),
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).primaryColor,
-                                  borderRadius: BorderRadius.circular(16.0),
+                ? AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: _isMemberPanelOpen ? 0.0 : 1.0,
+                    child: IgnorePointer(
+                      ignoring: _isMemberPanelOpen,
+                      child: Container(
+                        color: Colors.transparent,
+                        child: SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                              vertical: 8.0,
+                            ),
+                            child: Row(
+                              children: [
+                                Builder(
+                                  builder: (context) => _buildMenuButton(
+                                    icon: isGroupView
+                                        ? Icons.arrow_back
+                                        : Icons.menu_rounded,
+                                    tooltip: isGroupView ? 'Vissza' : 'Menü',
+                                    onPressed: () {
+                                      if (isGroupView) {
+                                        _unselectGroup();
+                                      } else {
+                                        setState(() {
+                                          _isBottomBarVisible = false;
+                                        });
+                                        Scaffold.of(context).openDrawer();
+                                      }
+                                    },
+                                  ),
                                 ),
-                                child: Icon(
-                                  Icons.add,
-                                  color: Colors.white,
-                                  size: 32,
+                                const Spacer(),
+                                Tooltip(
+                                  message: isGroupView
+                                      ? 'Tag hozzáadása'
+                                      : 'Csoport hozzáadása / Csatlakozás',
+                                  child: InkWell(
+                                    onTap: () {
+                                      if (isGroupView) {
+                                        // Tag hozzáadása
+                                      } else {
+                                        // Csoport hozzáadása vagy csatlakozás
+                                      }
+                                    },
+                                    customBorder: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16.0),
+                                    ),
+                                    child: Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).primaryColor,
+                                        borderRadius: BorderRadius.circular(
+                                          16.0,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 32,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   )
                 : null,
@@ -299,6 +322,11 @@ class _HomePageState extends State<HomePage> {
               key: ValueKey(_selectedGroup!.title),
               group: _selectedGroup!,
               onTestExpired: _handleTestExpired,
+              onMemberPanelToggle: (isOpen) {
+                setState(() {
+                  _isMemberPanelOpen = isOpen;
+                });
+              },
             ),
     );
   }

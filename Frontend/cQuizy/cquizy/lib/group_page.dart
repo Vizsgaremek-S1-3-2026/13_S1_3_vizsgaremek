@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
 import 'package:intl/intl.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 // --- MEOSZTOTT MODELL ---
 class Group {
@@ -87,11 +88,13 @@ class Group {
 class GroupPage extends StatefulWidget {
   final Group group;
   final Function(Group) onTestExpired;
+  final ValueChanged<bool>? onMemberPanelToggle;
 
   const GroupPage({
     super.key,
     required this.group,
     required this.onTestExpired,
+    this.onMemberPanelToggle,
   });
 
   @override
@@ -138,7 +141,10 @@ class _GroupPageState extends State<GroupPage> {
               _buildTestContent(),
               if (_isMembersPanelVisible)
                 GestureDetector(
-                  onTap: () => setState(() => _isMembersPanelVisible = false),
+                  onTap: () {
+                    setState(() => _isMembersPanelVisible = false);
+                    widget.onMemberPanelToggle?.call(false);
+                  },
                   child: Container(color: Colors.black.withOpacity(0.5)),
                 ),
               _buildMembersPanel(),
@@ -197,9 +203,12 @@ class _GroupPageState extends State<GroupPage> {
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: () => setState(
-                  () => _isMembersPanelVisible = !_isMembersPanelVisible,
-                ),
+                onPressed: () {
+                  setState(() {
+                    _isMembersPanelVisible = !_isMembersPanelVisible;
+                  });
+                  widget.onMemberPanelToggle?.call(_isMembersPanelVisible);
+                },
                 icon: Icon(
                   Icons.people_outline,
                   color: widget.group.getTextColor(context),
@@ -276,15 +285,21 @@ class _GroupPageState extends State<GroupPage> {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: theme.textTheme.bodyLarge?.color,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 2,
+              softWrap: true,
             ),
           ),
+          const SizedBox(width: 16),
           Text(
             detail,
             style: TextStyle(
@@ -304,42 +319,56 @@ class _GroupPageState extends State<GroupPage> {
     final isExpired = widget.group.testExpiryDate!.isBefore(DateTime.now());
     final theme = Theme.of(context);
 
-    return Card(
-      color: theme.cardColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 0,
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.hourglass_bottom,
-                      color: Colors.yellow,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Jelenleg aktív teszt',
-                      style: TextStyle(
-                        color: theme.textTheme.bodyLarge?.color,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 350;
+        final horizontalPadding = constraints.maxWidth * 0.05;
+        final responsivePadding = horizontalPadding.clamp(16.0, 24.0);
+
+        return Card(
+          color: theme.cardColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  responsivePadding,
+                  20,
+                  responsivePadding,
+                  16,
                 ),
-                Divider(color: theme.dividerColor, height: 24),
-                Row(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.hourglass_bottom,
+                          color: Colors.yellow,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            'Jelenleg aktív teszt',
+                            style: TextStyle(
+                              color: theme.textTheme.bodyLarge?.color,
+                              fontSize: isNarrow ? 18 : 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Divider(color: theme.dividerColor, height: 24),
+                    if (isNarrow)
+                      // Narrow layout: stack content vertically
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -349,6 +378,8 @@ class _GroupPageState extends State<GroupPage> {
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -359,6 +390,8 @@ class _GroupPageState extends State<GroupPage> {
                               fontSize: 14,
                               height: 1.4,
                             ),
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -367,51 +400,188 @@ class _GroupPageState extends State<GroupPage> {
                               color: theme.textTheme.bodySmall?.color,
                               fontSize: 12,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
+                          if (widget.group.testExpiryDate != null) ...[
+                            const SizedBox(height: 16),
+                            CountdownTimerWidget(
+                              expiryDate: widget.group.testExpiryDate!,
+                              onExpired: () =>
+                                  widget.onTestExpired(widget.group),
+                            ),
+                          ],
                         ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    if (widget.group.testExpiryDate != null)
-                      CountdownTimerWidget(
-                        expiryDate: widget.group.testExpiryDate!,
-                        onExpired: () => widget.onTestExpired(widget.group),
+                      )
+                    else
+                      // Wide layout: side-by-side with timer
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.group.activeTestTitle ?? 'Nincs cím',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodyLarge?.color,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  widget.group.activeTestDescription ??
+                                      'Nincs leírása a tesztnek.',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodyMedium?.color,
+                                    fontSize: 14,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Készítő: ${widget.group.subtitle}',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodySmall?.color,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          if (widget.group.testExpiryDate != null)
+                            CountdownTimerWidget(
+                              expiryDate: widget.group.testExpiryDate!,
+                              onExpired: () =>
+                                  widget.onTestExpired(widget.group),
+                            ),
+                        ],
                       ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: isExpired ? null : () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isExpired
-                  ? theme.disabledColor
-                  : theme.primaryColor.withOpacity(0.2),
-              foregroundColor: isExpired
-                  ? theme.disabledColor.withOpacity(0.5)
-                  : theme.primaryColor,
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero,
               ),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              elevation: 0,
-              disabledBackgroundColor: theme.disabledColor,
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Teszt indítása',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+              ElevatedButton(
+                onPressed: isExpired ? null : () {},
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isExpired
+                      ? theme.disabledColor
+                      : theme.primaryColor.withOpacity(0.2),
+                  foregroundColor: isExpired
+                      ? theme.disabledColor.withOpacity(0.5)
+                      : theme.primaryColor,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  elevation: 0,
+                  disabledBackgroundColor: theme.disabledColor,
                 ),
-                SizedBox(width: 8),
-                Icon(Icons.play_arrow, size: 20),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Teszt indítása',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.play_arrow, size: 20),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showDeleteConfirmation(
+    BuildContext context,
+    String memberName,
+  ) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Tag törlése'),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text('Biztosan törölni szeretnéd $memberName felhasználót?'),
+                const Text('Ez a művelet nem vonható vissza.'),
               ],
             ),
           ),
-        ],
-      ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Mégse'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Törlés', style: TextStyle(color: Colors.red)),
+              onPressed: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('$memberName törölve.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showAdminTransferConfirmation(
+    BuildContext context,
+    String memberName,
+  ) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Admin jog átadása'),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text(
+                  'Biztosan át szeretnéd adni az admin jogot $memberName felhasználónak?',
+                ),
+                const Text('Ezzel te elveszíted az admin jogosultságot.'),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Mégse'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Átadás'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Admin jog átadva $memberName részére.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -461,8 +631,10 @@ class _GroupPageState extends State<GroupPage> {
                       Icons.close,
                       color: theme.iconTheme.color?.withOpacity(0.7),
                     ),
-                    onPressed: () =>
-                        setState(() => _isMembersPanelVisible = false),
+                    onPressed: () {
+                      setState(() => _isMembersPanelVisible = false);
+                      widget.onMemberPanelToggle?.call(false);
+                    },
                   ),
                 ],
               ),
@@ -502,37 +674,70 @@ class _GroupPageState extends State<GroupPage> {
 
                   ...List.generate(23, (index) {
                     final memberIndex = index + 1;
-                    return ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Colors.deepPurple,
-                        child: Icon(Icons.person, color: Colors.white),
+                    return Slidable(
+                      key: ValueKey(memberIndex),
+                      endActionPane: ActionPane(
+                        motion: const ScrollMotion(),
+                        extentRatio: 0.6,
+                        children: [
+                          SlidableAction(
+                            onPressed: (context) {
+                              _showAdminTransferConfirmation(
+                                context,
+                                'Tag Neve $memberIndex',
+                              );
+                            },
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            icon: Icons.admin_panel_settings,
+                            label: 'Admin',
+                          ),
+                          SlidableAction(
+                            onPressed: (context) {
+                              _showDeleteConfirmation(
+                                context,
+                                'Tag Neve $memberIndex',
+                              );
+                            },
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            icon: Icons.delete,
+                            label: 'Törlés',
+                          ),
+                        ],
                       ),
-                      title: Text(
-                        'Tag Neve $memberIndex',
-                        style: TextStyle(
-                          color: theme.textTheme.bodyLarge?.color,
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Colors.deepPurple,
+                          child: Icon(Icons.person, color: Colors.white),
                         ),
-                      ),
-                      subtitle: Text(
-                        'Felhasználónév$memberIndex',
-                        style: TextStyle(
-                          color: theme.textTheme.bodyMedium?.color,
+                        title: Text(
+                          'Tag Neve $memberIndex',
+                          style: TextStyle(
+                            color: theme.textTheme.bodyLarge?.color,
+                          ),
                         ),
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(
-                          Icons.delete_outline,
-                          color: Colors.red.shade300,
+                        subtitle: Text(
+                          'Felhasználónév$memberIndex',
+                          style: TextStyle(
+                            color: theme.textTheme.bodyMedium?.color,
+                          ),
                         ),
-                        tooltip: 'Tag eltávolítása',
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Tag $memberIndex eltávolítása...'),
-                              backgroundColor: Colors.red.shade400,
-                            ),
-                          );
-                        },
+                        trailing: Builder(
+                          builder: (context) {
+                            return IconButton(
+                              icon: Icon(
+                                Icons.more_vert,
+                                color: theme.iconTheme.color?.withOpacity(0.5),
+                              ),
+                              onPressed: () {
+                                final slidable = Slidable.of(context);
+                                slidable?.openEndActionPane();
+                              },
+                              tooltip: 'Műveletek',
+                            );
+                          },
+                        ),
                       ),
                     );
                   }),
