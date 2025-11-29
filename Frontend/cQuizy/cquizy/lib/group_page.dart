@@ -600,6 +600,10 @@ class _GroupPageState extends State<GroupPage> {
       child: Container(
         decoration: BoxDecoration(
           color: theme.cardColor,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(24),
+            bottomLeft: Radius.circular(24),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(

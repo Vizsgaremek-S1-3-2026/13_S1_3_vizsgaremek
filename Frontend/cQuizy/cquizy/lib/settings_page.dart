@@ -14,7 +14,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   String _selectedSection = 'Profil';
-  bool _isSidebarVisible = true;
 
   @override
   Widget build(BuildContext context) {
@@ -33,10 +32,14 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
-                  width: _isSidebarVisible ? 220 : 0,
-                  child: _isSidebarVisible
-                      ? _buildSidebar(context, isDesktop: true)
-                      : null,
+                  width: 220,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: 220,
+                      child: _buildSidebar(context, isDesktop: true),
+                    ),
+                  ),
                 ),
                 Expanded(child: _buildContent(context, isDesktop: true)),
               ],
@@ -58,7 +61,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = Theme.of(context);
 
     return Container(
-      color: theme.cardColor,
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: isDesktop
+            ? const BorderRadius.only(
+                topRight: Radius.circular(24),
+                bottomRight: Radius.circular(24),
+              )
+            : null,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -74,22 +85,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          // Back button
-          const SizedBox(height: 10),
-          // Back button
-          _buildNavItem(
-            context,
-            'Vissza',
-            Icons.arrow_back,
-            onTap: () {
-              if (!isDesktop) {
-                Navigator.of(context).pop(); // Close drawer
-              }
-              Navigator.of(context).pop(); // Close settings page
-            },
-            isDesktop: isDesktop,
-          ),
+
           Divider(color: theme.dividerColor, height: 20),
           _buildNavItem(context, 'Profil', Icons.person, isDesktop: isDesktop),
           _buildNavItem(
@@ -136,12 +132,44 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 20),
           // Logout button
+          // Logout button
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton(
               onPressed: () {
-                widget.onLogout();
-                Navigator.of(context).pop();
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: const Text('Kijelentkezés'),
+                      content: const Text('Biztosan ki szeretne jelentkezni?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: Text(
+                            'Mégse',
+                            style: TextStyle(
+                              color: theme.textTheme.bodyMedium?.color,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop(); // Close dialog
+                            widget.onLogout();
+                            Navigator.of(context).pop(); // Close settings page
+                          },
+                          child: Text(
+                            'Kijelentkezés',
+                            style: TextStyle(color: theme.primaryColor),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
@@ -238,53 +266,81 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildContent(BuildContext context, {required bool isDesktop}) {
     final theme = Theme.of(context);
 
-    return Column(
+    return Stack(
       children: [
-        // Top bar with menu/collapse toggle
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Row(
-            children: [
-              if (isDesktop)
-                IconButton(
-                  icon: Icon(
-                    _isSidebarVisible ? Icons.menu_open : Icons.menu,
-                    color: theme.iconTheme.color,
+        Column(
+          children: [
+            // Top bar with menu/collapse toggle
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                children: [
+                  if (!isDesktop)
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(Icons.menu, color: theme.iconTheme.color),
+                        onPressed: () {
+                          Scaffold.of(context).openDrawer();
+                        },
+                      ),
+                    ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      _selectedSection,
+                      style: TextStyle(
+                        color: theme.textTheme.bodyLarge?.color,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  onPressed: () {
-                    setState(() {
-                      _isSidebarVisible = !_isSidebarVisible;
-                    });
-                  },
-                  tooltip: _isSidebarVisible
-                      ? 'Menü bezárása'
-                      : 'Menü megnyitása',
-                )
-              else
-                Builder(
-                  builder: (context) => IconButton(
-                    icon: Icon(Icons.menu, color: theme.iconTheme.color),
-                    onPressed: () {
-                      Scaffold.of(context).openDrawer();
-                    },
-                  ),
+                ],
+              ),
+            ),
+            Expanded(child: _buildSectionContent(context)),
+          ],
+        ),
+        // Floating Back Button
+        Positioned(
+          bottom: 24,
+          left: 24,
+          child: Tooltip(
+            message: 'Vissza',
+            child: InkWell(
+              onTap: () {
+                if (!isDesktop) {
+                  Navigator.of(context).pop(); // Close drawer
+                }
+                Navigator.of(context).pop(); // Close settings page
+              },
+              customBorder: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: BorderRadius.circular(16.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  _selectedSection,
-                  style: TextStyle(
-                    color: theme.textTheme.bodyLarge?.color,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 28,
                 ),
               ),
-            ],
+            ),
           ),
         ),
-        Expanded(child: _buildSectionContent(context)),
       ],
     );
   }

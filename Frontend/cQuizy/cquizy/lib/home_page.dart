@@ -397,7 +397,13 @@ class _HomePageState extends State<HomePage> {
     final theme = Theme.of(context);
     final navContent = Container(
       width: 280,
-      color: theme.cardColor,
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
       padding: const EdgeInsets.all(20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
