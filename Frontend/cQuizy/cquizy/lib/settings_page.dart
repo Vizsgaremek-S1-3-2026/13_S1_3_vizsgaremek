@@ -1,221 +1,771 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
 
-class SettingsPage extends StatelessWidget {
+const double kSettingsDesktopBreakpoint = 700.0;
+
+class SettingsPage extends StatefulWidget {
   final VoidCallback onLogout;
 
   const SettingsPage({super.key, required this.onLogout});
 
   @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  String _selectedSection = 'Profil';
+  bool _isSidebarVisible = true;
+
+  @override
   Widget build(BuildContext context) {
-    final themeProvider = ThemeInherited.of(context);
-    final isDark = themeProvider.isDarkMode;
     final theme = Theme.of(context);
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.appBarTheme.backgroundColor,
-        elevation: 0,
-        title: Text(
-          'Beállítások',
-          style: TextStyle(color: theme.appBarTheme.foregroundColor),
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: theme.iconTheme.color),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          _buildSectionHeader(context, 'Profil'),
-          const SizedBox(height: 10),
-          _buildProfileCard(context),
-          const SizedBox(height: 30),
-          _buildSectionHeader(context, 'Általános'),
-          const SizedBox(height: 10),
-          _buildSettingsItem(
-            context,
-            icon: Icons.notifications_outlined,
-            title: 'Értesítések',
-            subtitle: 'Kezeld az értesítéseidet',
-            onTap: () {},
-          ),
-          _buildSettingsItem(
-            context,
-            icon: Icons.language,
-            title: 'Nyelv',
-            subtitle: 'Magyar',
-            onTap: () {},
-          ),
-          const SizedBox(height: 30),
-          _buildSectionHeader(context, 'Megjelenés'),
-          const SizedBox(height: 10),
-          _buildSettingsItem(
-            context,
-            icon: Icons.dark_mode_outlined,
-            title: 'Sötét mód',
-            subtitle: isDark ? 'Bekapcsolva' : 'Kikapcsolva',
-            trailing: Switch(
-              value: isDark,
-              activeColor: theme.primaryColor,
-              activeTrackColor: theme.primaryColor,
-              onChanged: (val) {
-                themeProvider.toggleTheme(val);
-              },
-              thumbColor: WidgetStateProperty.resolveWith<Color>((
-                Set<WidgetState> states,
-              ) {
-                if (states.contains(WidgetState.selected)) {
-                  return Colors.white;
-                }
-                return theme.colorScheme.outline;
-              }),
-              trackColor: WidgetStateProperty.resolveWith<Color>((
-                Set<WidgetState> states,
-              ) {
-                if (states.contains(WidgetState.selected)) {
-                  return theme.primaryColor;
-                }
-                return theme.colorScheme.surfaceContainerHighest;
-              }),
-              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isDesktop =
+            constraints.maxWidth > kSettingsDesktopBreakpoint;
+
+        if (isDesktop) {
+          // Desktop view with collapsible sidebar
+          return Scaffold(
+            backgroundColor: theme.scaffoldBackgroundColor,
+            body: Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: _isSidebarVisible ? 220 : 0,
+                  child: _isSidebarVisible
+                      ? _buildSidebar(context, isDesktop: true)
+                      : null,
+                ),
+                Expanded(child: _buildContent(context, isDesktop: true)),
+              ],
             ),
-            onTap: () {
-              themeProvider.toggleTheme(!isDark);
-            },
+          );
+        } else {
+          // Mobile view with drawer
+          return Scaffold(
+            backgroundColor: theme.scaffoldBackgroundColor,
+            drawer: Drawer(child: _buildSidebar(context, isDesktop: false)),
+            body: _buildContent(context, isDesktop: false),
+          );
+        }
+      },
+    );
+  }
+
+  Widget _buildSidebar(BuildContext context, {required bool isDesktop}) {
+    final theme = Theme.of(context);
+
+    return Container(
+      color: theme.cardColor,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Text(
+              'Beállítások',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-          const SizedBox(height: 30),
-          _buildSectionHeader(context, 'Egyéb'),
           const SizedBox(height: 10),
-          _buildSettingsItem(
+          // Back button
+          const SizedBox(height: 10),
+          // Back button
+          _buildNavItem(
             context,
-            icon: Icons.info_outline,
-            title: 'Névjegy',
-            subtitle: 'Verzió 1.0.0',
-            onTap: () {},
-          ),
-          _buildSettingsItem(
-            context,
-            icon: Icons.logout,
-            title: 'Kijelentkezés',
-            titleColor: theme.primaryColor,
+            'Vissza',
+            Icons.arrow_back,
             onTap: () {
-              onLogout();
-              Navigator.of(context).pop();
+              if (!isDesktop) {
+                Navigator.of(context).pop(); // Close drawer
+              }
+              Navigator.of(context).pop(); // Close settings page
             },
+            isDesktop: isDesktop,
+          ),
+          Divider(color: theme.dividerColor, height: 20),
+          _buildNavItem(context, 'Profil', Icons.person, isDesktop: isDesktop),
+          _buildNavItem(
+            context,
+            'Megjelenés és Kezelés',
+            Icons.palette,
+            isDesktop: isDesktop,
+          ),
+          _buildNavItem(context, 'Nyelv', Icons.language, isDesktop: isDesktop),
+          _buildNavItem(
+            context,
+            'Értesítés',
+            Icons.notifications,
+            isDesktop: isDesktop,
+          ),
+          _buildNavItem(
+            context,
+            'Kisegítő lehetőségek',
+            Icons.accessibility,
+            isDesktop: isDesktop,
+          ),
+          _buildNavItem(
+            context,
+            'Általános',
+            Icons.settings,
+            isDesktop: isDesktop,
+          ),
+          const Spacer(),
+          // Logo
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset('assets/logo/logo_2.png', height: 16),
+              const SizedBox(width: 8),
+              Text(
+                'cQuizy',
+                style: TextStyle(
+                  color: theme.textTheme.titleMedium?.color?.withOpacity(0.7),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // Logout button
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton(
+              onPressed: () {
+                widget.onLogout();
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.logout, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Kijelentkezés',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.0,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileCard(BuildContext context) {
+  Widget _buildNavItem(
+    BuildContext context,
+    String title,
+    IconData icon, {
+    VoidCallback? onTap,
+    required bool isDesktop,
+  }) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: theme.primaryColor,
-            child: const Text(
-              'JD',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final isSelected = _selectedSection == title && onTap == null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+      child: Material(
+        color: isSelected
+            ? theme.primaryColor.withOpacity(0.1)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () {
+            if (onTap != null) {
+              onTap();
+            } else {
+              setState(() {
+                _selectedSection = title;
+              });
+              if (!isDesktop) {
+                Navigator.of(context).pop(); // Close drawer on mobile
+              }
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
               children: [
-                Text(
-                  'John Doe',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Icon(
+                  icon,
+                  color: isSelected
+                      ? theme.primaryColor
+                      : theme.iconTheme.color?.withOpacity(0.6),
+                  size: 20,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Diák',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
-                    fontSize: 14,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: isSelected
+                          ? theme.primaryColor
+                          : theme.textTheme.bodyLarge?.color,
+                      fontSize: 14,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          IconButton(
-            icon: Icon(Icons.edit_outlined, color: theme.iconTheme.color),
-            onPressed: () {},
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildSettingsItem(
+  Widget _buildContent(BuildContext context, {required bool isDesktop}) {
+    final theme = Theme.of(context);
+
+    return Column(
+      children: [
+        // Top bar with menu/collapse toggle
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Row(
+            children: [
+              if (isDesktop)
+                IconButton(
+                  icon: Icon(
+                    _isSidebarVisible ? Icons.menu_open : Icons.menu,
+                    color: theme.iconTheme.color,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _isSidebarVisible = !_isSidebarVisible;
+                    });
+                  },
+                  tooltip: _isSidebarVisible
+                      ? 'Menü bezárása'
+                      : 'Menü megnyitása',
+                )
+              else
+                Builder(
+                  builder: (context) => IconButton(
+                    icon: Icon(Icons.menu, color: theme.iconTheme.color),
+                    onPressed: () {
+                      Scaffold.of(context).openDrawer();
+                    },
+                  ),
+                ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  _selectedSection,
+                  style: TextStyle(
+                    color: theme.textTheme.bodyLarge?.color,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: _buildSectionContent(context)),
+      ],
+    );
+  }
+
+  Widget _buildSectionContent(BuildContext context) {
+    switch (_selectedSection) {
+      case 'Általános':
+        return _buildGeneralSettings(context);
+      case 'Profil':
+        return _buildProfileSettings(context);
+      case 'Megjelenés és Kezelés':
+        return _buildAppearanceSettings(context);
+      case 'Nyelv':
+        return _buildLanguageSettings(context);
+      case 'Értesítés':
+        return _buildNotificationSettings(context);
+      case 'Kisegítő lehetőségek':
+        return _buildAccessibilitySettings(context);
+      default:
+        return Container();
+    }
+  }
+
+  Widget _buildGeneralSettings(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      children: [
+        _buildSettingsCard(
+          context,
+          title: 'Verzió',
+          subtitle: 'Alkalmazás verzió információ',
+          trailing: Text(
+            '1.0.0',
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+              fontSize: 14,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'Névjegy',
+          subtitle: 'Az alkalmazásról',
+          onTap: () {},
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileSettings(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20.0),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: theme.primaryColor,
+                child: const Text(
+                  'JD',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'John Doe',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Diák',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () {},
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Profil szerkesztése'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.primaryColor,
+                  side: BorderSide(color: theme.primaryColor),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAppearanceSettings(BuildContext context) {
+    final theme = Theme.of(context);
+    final themeProvider = ThemeInherited.of(context);
+    final isDark = themeProvider.isDarkMode;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Text(
+            'TÉMA',
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Text(
+            'Alapértelmezett téma kiválasztása:',
+            style: TextStyle(
+              color: theme.textTheme.bodyLarge?.color,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Theme selection - always stacked on mobile for better UX
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 500) {
+              // Mobile: Stack vertically
+              return Column(
+                children: [
+                  _buildThemeOption(
+                    context,
+                    title: 'Sötét',
+                    isSelected: isDark,
+                    onTap: () => themeProvider.toggleTheme(true),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildThemeOption(
+                    context,
+                    title: 'Világos',
+                    isSelected: !isDark,
+                    onTap: () => themeProvider.toggleTheme(false),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildThemeOption(
+                    context,
+                    title: 'Rendszer téma',
+                    isSelected: false,
+                    onTap: () {},
+                  ),
+                ],
+              );
+            } else {
+              // Desktop: Row layout
+              return Row(
+                children: [
+                  Expanded(
+                    child: _buildThemeOption(
+                      context,
+                      title: 'Sötét',
+                      isSelected: isDark,
+                      onTap: () => themeProvider.toggleTheme(true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildThemeOption(
+                      context,
+                      title: 'Világos',
+                      isSelected: !isDark,
+                      onTap: () => themeProvider.toggleTheme(false),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildThemeOption(
+                      context,
+                      title: 'Rendszer téma',
+                      isSelected: false,
+                      onTap: () {},
+                    ),
+                  ),
+                ],
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 32),
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Text(
+            'VISSZAJELZÉSEK',
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'Haptikus visszajelzés',
+          subtitle: 'Rezgés interakciók során',
+          trailing: Switch(
+            value: true,
+            activeColor: theme.primaryColor,
+            onChanged: (val) {},
+            thumbColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return theme.colorScheme.outline;
+            }),
+            trackColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return theme.primaryColor;
+              }
+              return theme.colorScheme.surfaceContainerHighest;
+            }),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'Hangjelzések',
+          subtitle: 'Hangeffektek',
+          trailing: Switch(
+            value: false,
+            activeColor: theme.primaryColor,
+            onChanged: (val) {},
+            thumbColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return theme.colorScheme.outline;
+            }),
+            trackColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return theme.primaryColor;
+              }
+              return theme.colorScheme.surfaceContainerHighest;
+            }),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLanguageSettings(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      children: [
+        _buildSettingsCard(
+          context,
+          title: 'Magyar',
+          subtitle: 'Jelenlegi nyelv',
+          trailing: const Icon(Icons.check, color: Colors.green),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'English',
+          subtitle: 'Hamarosan',
+          onTap: () {},
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotificationSettings(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      children: [
+        _buildSettingsCard(
+          context,
+          title: 'Tesztek értesítései',
+          subtitle: 'Új tesztek és határidők',
+          trailing: Switch(
+            value: true,
+            activeColor: theme.primaryColor,
+            onChanged: (val) {},
+            thumbColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return theme.colorScheme.outline;
+            }),
+            trackColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return theme.primaryColor;
+              }
+              return theme.colorScheme.surfaceContainerHighest;
+            }),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'Csoportos értesítések',
+          subtitle: 'Csoporttagság és tevékenységek',
+          trailing: Switch(
+            value: true,
+            activeColor: theme.primaryColor,
+            onChanged: (val) {},
+            thumbColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return theme.colorScheme.outline;
+            }),
+            trackColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return theme.primaryColor;
+              }
+              return theme.colorScheme.surfaceContainerHighest;
+            }),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAccessibilitySettings(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      children: [
+        _buildSettingsCard(
+          context,
+          title: 'Betűméret',
+          subtitle: 'Szöveg méretének beállítása',
+          onTap: () {},
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'Magas kontraszt',
+          subtitle: 'Jobb láthatóság',
+          trailing: Switch(
+            value: false,
+            activeColor: theme.primaryColor,
+            onChanged: (val) {},
+            thumbColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return theme.colorScheme.outline;
+            }),
+            trackColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return theme.primaryColor;
+              }
+              return theme.colorScheme.surfaceContainerHighest;
+            }),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThemeOption(
     BuildContext context, {
-    required IconData icon,
     required String title,
-    String? subtitle,
-    Widget? trailing,
-    Color? titleColor,
+    required bool isSelected,
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? theme.primaryColor : theme.dividerColor,
+            width: isSelected ? 2.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            if (isSelected)
+              Icon(Icons.check_circle, color: theme.primaryColor, size: 28)
+            else
+              Icon(
+                Icons.circle_outlined,
+                color: theme.iconTheme.color?.withOpacity(0.3),
+                size: 28,
+              ),
+            const SizedBox(width: 16),
+            Text(
+              title,
+              style: TextStyle(
+                color: isSelected
+                    ? theme.primaryColor
+                    : theme.textTheme.bodyLarge?.color,
+                fontSize: 15,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsCard(
+    BuildContext context, {
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+  }) {
+    final theme = Theme.of(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 8.0),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
         onTap: onTap,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.0),
-        ),
-        leading: Container(
-          padding: const EdgeInsets.all(8.0),
-          decoration: BoxDecoration(
-            color: theme.iconTheme.color?.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          child: Icon(
-            icon,
-            color: titleColor ?? theme.iconTheme.color,
-            size: 20,
-          ),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text(
           title,
           style: TextStyle(
-            color: titleColor ?? theme.textTheme.bodyLarge?.color,
-            fontSize: 16,
+            color: theme.textTheme.bodyLarge?.color,
+            fontSize: 15,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -230,11 +780,13 @@ class SettingsPage extends StatelessWidget {
             : null,
         trailing:
             trailing ??
-            Icon(
-              Icons.arrow_forward_ios,
-              color: theme.iconTheme.color?.withOpacity(0.3),
-              size: 16,
-            ),
+            (onTap != null
+                ? Icon(
+                    Icons.arrow_forward_ios,
+                    color: theme.iconTheme.color?.withOpacity(0.3),
+                    size: 16,
+                  )
+                : null),
       ),
     );
   }
