@@ -12,7 +12,7 @@ import 'api_service.dart'; // Importáljuk az API szolgáltatást
 enum PasswordStrength { none, weak, medium, strong }
 
 class LoginPage extends StatefulWidget {
-  final VoidCallback
+  final Function(String)
   onLoginSuccess; // Callback a sikeres bejelentkezés jelzésére
 
   const LoginPage({super.key, required this.onLoginSuccess});
@@ -181,7 +181,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     if (mounted) {
       setState(() => _isLoading = false);
       if (token != null) {
-        widget.onLoginSuccess(); // Sikeres bejelentkezés jelzésére
+        widget.onLoginSuccess(token); // Sikeres bejelentkezés jelzésére
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

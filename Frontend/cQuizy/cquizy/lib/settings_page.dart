@@ -1,5 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'providers/user_provider.dart';
 import 'theme.dart';
+import 'dart:math' as math;
 
 const double kSettingsDesktopBreakpoint = 700.0;
 
@@ -12,8 +15,25 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with SingleTickerProviderStateMixin {
   String _selectedSection = 'Profil';
+  late AnimationController _waveController;
+
+  @override
+  void initState() {
+    super.initState();
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _waveController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +143,9 @@ class _SettingsPageState extends State<SettingsPage> {
               Text(
                 'cQuizy',
                 style: TextStyle(
-                  color: theme.textTheme.titleMedium?.color?.withOpacity(0.7),
+                  color: theme.textTheme.titleMedium?.color?.withValues(
+                    alpha: 0.7,
+                  ),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
@@ -212,7 +234,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
       child: Material(
         color: isSelected
-            ? theme.primaryColor.withOpacity(0.1)
+            ? theme.primaryColor.withValues(alpha: 0.1)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
@@ -237,7 +259,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon,
                   color: isSelected
                       ? theme.primaryColor
-                      : theme.iconTheme.color?.withOpacity(0.6),
+                      : theme.iconTheme.color?.withValues(alpha: 0.6),
                   size: 20,
                 ),
                 const SizedBox(width: 12),
@@ -326,7 +348,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   borderRadius: BorderRadius.circular(16.0),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -355,7 +377,7 @@ class _SettingsPageState extends State<SettingsPage> {
         return _buildAppearanceSettings(context);
       case 'Nyelv':
         return _buildLanguageSettings(context);
-      case 'Értesítés':
+      case 'Értesítések':
         return _buildNotificationSettings(context);
       case 'Kisegítő lehetőségek':
         return _buildAccessibilitySettings(context);
@@ -376,7 +398,7 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: Text(
             '1.0.0',
             style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
               fontSize: 14,
             ),
           ),
@@ -394,62 +416,176 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildProfileSettings(BuildContext context) {
     final theme = Theme.of(context);
+    final userProvider = context.watch<UserProvider>();
+    final user = userProvider.user;
+
+    if (user == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      padding: EdgeInsets.zero,
       children: [
-        Container(
-          padding: const EdgeInsets.all(20.0),
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(16.0),
+        SizedBox(
+          height: 360,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: WavePainter(
+                    animation: _waveController,
+                    color: theme.primaryColor,
+                  ),
+                ),
+              ),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 20),
+                    CircleAvatar(
+                      radius: 54,
+                      backgroundColor: Colors.white,
+                      child: CircleAvatar(
+                        radius: 50,
+                        backgroundColor: theme.primaryColor,
+                        child: Text(
+                          user.firstName.isNotEmpty
+                              ? user.firstName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 40,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '${user.lastName} ${user.firstName}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black26,
+                            offset: Offset(0, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        user.nickname ?? 'Nincs becenév',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
-              CircleAvatar(
-                radius: 50,
-                backgroundColor: theme.primaryColor,
-                child: const Text(
-                  'JD',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
+              _buildProfileInfoRow(
+                context,
+                Icons.email_outlined,
+                'E-mail',
+                user.email,
+              ),
+              const Divider(height: 32),
+              _buildProfileInfoRow(
+                context,
+                Icons.calendar_today_outlined,
+                'Csatlakozott',
+                user.dateJoined.toString().split(' ')[0],
+              ),
+              const Divider(height: 32),
+              _buildProfileInfoRow(
+                context,
+                Icons.verified_user_outlined,
+                'Státusz',
+                user.isActive ? 'Aktív' : 'Inaktív',
+              ),
+              if (user.isSuperuser) ...[
+                const Divider(height: 32),
+                _buildProfileInfoRow(
+                  context,
+                  Icons.admin_panel_settings_outlined,
+                  'Jogosultság',
+                  'Adminisztrátor',
+                ),
+              ] else if (user.isStaff) ...[
+                const Divider(height: 32),
+                _buildProfileInfoRow(
+                  context,
+                  Icons.security_outlined,
+                  'Jogosultság',
+                  'Moderátor',
+                ),
+              ],
+              const SizedBox(height: 40),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showEditProfileDialog(context, user),
+                      icon: const Icon(Icons.edit, size: 20),
+                      label: const Text('Szerkesztés'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 4,
+                        shadowColor: theme.primaryColor.withValues(alpha: 0.4),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'John Doe',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Diák',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('Profil szerkesztése'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: theme.primaryColor,
-                  side: BorderSide(color: theme.primaryColor),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showChangePasswordDialog(context),
+                      icon: const Icon(Icons.lock_outline, size: 20),
+                      label: const Text('Jelszó'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: theme.primaryColor,
+                        side: BorderSide(color: theme.primaryColor, width: 2),
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
+                ],
               ),
+              const SizedBox(height: 40),
             ],
           ),
         ),
@@ -470,7 +606,7 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Text(
             'TÉMA',
             style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 1.2,
@@ -559,7 +695,7 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Text(
             'VISSZAJELZÉSEK',
             style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 1.2,
@@ -754,6 +890,282 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildProfileInfoRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: theme.primaryColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: theme.primaryColor, size: 20),
+        ),
+        const SizedBox(width: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: theme.textTheme.bodyMedium?.color?.withValues(
+                  alpha: 0.6,
+                ),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _showEditProfileDialog(BuildContext context, dynamic user) {
+    final firstNameController = TextEditingController(text: user.firstName);
+    final lastNameController = TextEditingController(text: user.lastName);
+    final nicknameController = TextEditingController(text: user.nickname);
+    final emailController = TextEditingController(text: user.email);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Profil szerkesztése',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              _buildDialogTextField(
+                lastNameController,
+                'Vezetéknév',
+                Icons.person_outline,
+              ),
+              const SizedBox(height: 16),
+              _buildDialogTextField(
+                firstNameController,
+                'Keresztnév',
+                Icons.person_outline,
+              ),
+              const SizedBox(height: 16),
+              _buildDialogTextField(
+                nicknameController,
+                'Becenév',
+                Icons.badge_outlined,
+              ),
+              const SizedBox(height: 16),
+              _buildDialogTextField(
+                emailController,
+                'E-mail',
+                Icons.email_outlined,
+              ),
+            ],
+          ),
+        ),
+        actionsPadding: const EdgeInsets.all(20),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Mégse', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final success = await context.read<UserProvider>().updateUser({
+                'first_name': firstNameController.text,
+                'last_name': lastNameController.text,
+                'nickname': nicknameController.text,
+                'email': emailController.text,
+              });
+              if (mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Profil sikeresen frissítve'
+                          : 'Hiba történt a frissítés során',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Mentés'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context) {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Jelszó módosítása',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                _buildDialogTextField(
+                  currentPasswordController,
+                  'Jelenlegi jelszó',
+                  Icons.lock_outline,
+                  isPassword: true,
+                  validator: (value) =>
+                      value?.isEmpty ?? true ? 'Kötelező mező' : null,
+                ),
+                const SizedBox(height: 16),
+                _buildDialogTextField(
+                  newPasswordController,
+                  'Új jelszó',
+                  Icons.lock_reset,
+                  isPassword: true,
+                  validator: (value) {
+                    if (value == null || value.length < 8) {
+                      return 'Legalább 8 karakter';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildDialogTextField(
+                  confirmPasswordController,
+                  'Új jelszó megerősítése',
+                  Icons.check_circle_outline,
+                  isPassword: true,
+                  validator: (value) {
+                    if (value != newPasswordController.text) {
+                      return 'A jelszavak nem egyeznek';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.all(20),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Mégse', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (formKey.currentState?.validate() ?? false) {
+                final success = await context
+                    .read<UserProvider>()
+                    .changePassword(
+                      currentPasswordController.text,
+                      newPasswordController.text,
+                    );
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        success
+                            ? 'Jelszó sikeresen módosítva'
+                            : 'Hiba történt a jelszó módosítása során',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Mentés'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDialogTextField(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool isPassword = false,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: isPassword,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: Theme.of(context).primaryColor,
+            width: 2,
+          ),
+        ),
+        filled: true,
+        fillColor: Colors.grey.withValues(alpha: 0.05),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+      ),
+    );
+  }
+
   Widget _buildThemeOption(
     BuildContext context, {
     required String title,
@@ -781,7 +1193,7 @@ class _SettingsPageState extends State<SettingsPage> {
             else
               Icon(
                 Icons.circle_outlined,
-                color: theme.iconTheme.color?.withOpacity(0.3),
+                color: theme.iconTheme.color?.withValues(alpha: 0.3),
                 size: 28,
               ),
             const SizedBox(width: 16),
@@ -829,7 +1241,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ? Text(
                 subtitle,
                 style: TextStyle(
-                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+                  color: theme.textTheme.bodyMedium?.color?.withValues(
+                    alpha: 0.5,
+                  ),
                   fontSize: 13,
                 ),
               )
@@ -839,11 +1253,55 @@ class _SettingsPageState extends State<SettingsPage> {
             (onTap != null
                 ? Icon(
                     Icons.arrow_forward_ios,
-                    color: theme.iconTheme.color?.withOpacity(0.3),
+                    color: theme.iconTheme.color?.withValues(alpha: 0.3),
                     size: 16,
                   )
                 : null),
       ),
     );
   }
+}
+
+class WavePainter extends CustomPainter {
+  final Animation<double> animation;
+  final Color color;
+
+  WavePainter({required this.animation, required this.color})
+    : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [color.withValues(alpha: 0.8), color],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final path = Path();
+    final y = size.height - 20;
+
+    path.moveTo(0, 0);
+    path.lineTo(0, y);
+
+    for (double i = 0; i <= size.width; i++) {
+      path.lineTo(
+        i,
+        y +
+            10 *
+                math.sin(
+                  (i / size.width * 2 * math.pi) +
+                      (animation.value * 2 * math.pi),
+                ),
+      );
+    }
+
+    path.lineTo(size.width, 0);
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant WavePainter oldDelegate) => true;
 }

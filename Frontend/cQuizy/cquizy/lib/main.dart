@@ -6,8 +6,16 @@ import 'home_page.dart';
 
 import 'theme.dart';
 
+import 'package:provider/provider.dart';
+import 'providers/user_provider.dart';
+
 void main() {
-  runApp(const MainApp());
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => UserProvider())],
+      child: const MainApp(),
+    ),
+  );
 }
 
 class MainApp extends StatefulWidget {
@@ -51,27 +59,21 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  bool _isLoggedIn = true; // Kezdet
-
   // Ezt a metódust hívjuk meg, amikor a bejelentkezés sikeres.
-  void _handleLogin() {
-    setState(() {
-      _isLoggedIn = true;
-    });
+  void _handleLogin(String token) {
+    context.read<UserProvider>().setToken(token);
   }
 
   // Ezt a metódust hívjuk meg, amikor a felhasználó kijelentkezik.
   void _handleLogout() {
-    setState(() {
-      _isLoggedIn = false;
-    });
+    context.read<UserProvider>().setToken(null);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Ha a felhasználó be van jelentkezve, a HomePage-t mutatjuk.
-    // Ha nincs, akkor a LoginPage-t.
-    if (_isLoggedIn) {
+    final userProvider = context.watch<UserProvider>();
+
+    if (userProvider.isLoggedIn) {
       return HomePage(onLogout: _handleLogout);
     } else {
       return LoginPage(onLoginSuccess: _handleLogin);
