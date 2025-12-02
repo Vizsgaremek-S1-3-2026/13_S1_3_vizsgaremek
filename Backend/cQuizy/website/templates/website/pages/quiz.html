@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Taking Quiz</title>
+    
+</head>
+<body>
+    {% include "website/components/header.html" %}
+
+    <!-- LOCK SCREEN OVERLAY -->
+    <div id="lockOverlay">
+        <div class="lock-icon">🔒</div>
+        <div class="lock-msg">Your test has been locked!</div>
+        <p class="lock-sub">The system detected that you left the quiz window.</p>
+        <p class="lock-sub" id="lockStatusText">Waiting for teacher approval...</p>
+        <div class="loader" style="margin-top:20px;"></div> <!-- You can add a CSS spinner here -->
+    </div>
+
+    <!-- MAIN QUIZ UI -->
+    <div id="quizApp" style="display: none;"> <!-- Hidden until loaded -->
+        <div id="quizHeader">
+            <div>
+                <span id="quizTitle" style="font-size:1.2em; font-weight:bold;">Loading...</span>
+                <span id="quizModeBadge" style="font-size:0.8em; opacity:0.8; margin-left:10px;"></span>
+            </div>
+            <div id="timerBadge">--:--:--</div>
+        </div>
+
+        <div id="questionsContainer">
+            <!-- Questions injected here by JS -->
+        </div>
+
+        <div class="submit-container">
+            <button class="submit-btn" id="submitQuizBtn">Submit Answers</button>
+        </div>
+    </div>
+
+    <!-- LOADING STATE -->
+    <div id="loadingMessage" style="text-align: center; padding: 50px;">
+        <h2>Loading Quiz...</h2>
+    </div>
+
+    <script src="{% static 'js/quiz.js' %}"></script>
+</body>
+</html>

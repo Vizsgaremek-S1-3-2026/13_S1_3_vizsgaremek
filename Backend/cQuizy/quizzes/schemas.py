@@ -26,11 +26,10 @@ class QuizOutSchema(Schema):
     def resolve_group_name(obj):
         return obj.group.name
 
-# --- Safe Schemas for taking a test (No 'is_correct' or 'points') ---
+# --- Safe Schemas for taking a test ---
 class StudentOptionSchema(Schema):
     id: int
     text: str 
-    # Important: Correctness and Points hidden from student
 
 class StudentBlockSchema(Schema):
     id: int
@@ -73,7 +72,6 @@ class QuizContentSchema(Schema):
     
     @staticmethod
     def resolve_blocks(obj):
-        # We assume blocks are prefetched in the View
         return obj.project.blocks.all()
 
 
@@ -124,6 +122,7 @@ class SubmissionOutSchema(Schema):
     percentage: float
     grade_value: Optional[str] = None
     date_submitted: datetime
+    group_id: int
 
     @staticmethod
     def resolve_student_name(obj):
@@ -137,21 +136,41 @@ class SubmissionOutSchema(Schema):
     def resolve_grade_value(obj):
         return obj.grade.value if obj.grade else None
 
+    @staticmethod
+    def resolve_group_id(obj):
+        return obj.quiz.group.id 
+
 # --- Detailed View for Teachers ---
 class SubmittedAnswerDetailSchema(Schema):
     id: int
-    block_question: str
-    student_answer: str
+    block_id: int          # Computed via resolver
+    block_order: int       # Computed via resolver
+    block_question: str    # Computed via resolver
+    student_answer: str    # Computed via resolver
     points_awarded: int
 
     @staticmethod
     def resolve_block_question(obj):
         return obj.block.question
 
+    @staticmethod
+    def resolve_student_answer(obj):
+        return obj.answer
+    
+    @staticmethod
+    def resolve_block_id(obj):
+        return obj.block.id
+
+    @staticmethod
+    def resolve_block_order(obj):
+        return obj.block.order
+
 class SubmissionDetailSchema(Schema):
     id: int
     student_name: str
     percentage: float
+    grade_value: Optional[str] = None
+    group_id: int          # Computed via resolver
     answers: List[SubmittedAnswerDetailSchema]
 
     @staticmethod
@@ -160,7 +179,15 @@ class SubmissionDetailSchema(Schema):
     
     @staticmethod
     def resolve_answers(obj):
-        return obj.answers.all()
+        return obj.answers.all().select_related('block').order_by('block__order')
+
+    @staticmethod
+    def resolve_grade_value(obj):
+        return obj.grade.value if obj.grade else None
+
+    @staticmethod
+    def resolve_group_id(obj):
+        return obj.quiz.group.id
 
 # --- Update Points ---
 class PointUpdateItemSchema(Schema):
@@ -169,3 +196,7 @@ class PointUpdateItemSchema(Schema):
 
 class PointUpdatePayload(Schema):
     updates: List[PointUpdateItemSchema]
+
+# --- Update Grade ---
+class GradeUpdateSchema(Schema):
+    new_grade: str

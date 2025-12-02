@@ -1,0 +1,91 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy | Quiz Admin</title>
+</head>
+<body>
+    {% include "website/components/header.html" %}
+
+    <div style="padding: 20px 40px;">
+        <button onclick="history.back()" class="back-btn">← Back to Group</button>
+        <h1 id="quizAdminTitle" style="color: var(--text-color); font-family: 'Comfortaa', sans-serif;">Loading Quiz...</h1>
+    </div>
+
+    <div class="admin-container">
+        
+        <!-- LEFT: LIVE EVENTS -->
+        <div class="admin-section">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2>Live Events Log</h2>
+                <div style="font-size:0.8em; color:var(--secondary-text-color);">
+                    <span id="activeCount" style="color:#dc3545; font-weight:bold;">0</span> Active Alerts
+                </div>
+            </div>
+            
+            <div id="eventsContainer" class="events-list">
+                <p style="color:var(--secondary-text-color); text-align:center;">Waiting for events...</p>
+            </div>
+        </div>
+
+        <!-- RIGHT: SUBMISSIONS -->
+        <div class="admin-section">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2>Submissions</h2>
+                <button onclick="loadSubmissions()" style="font-size:0.8em; padding:5px 10px;">Refresh</button>
+            </div>
+
+            <table class="submission-table">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Score</th>
+                        <th>Grade</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="submissionsBody">
+                    <!-- Rows injected via JS -->
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- SUBMISSION DETAIL MODAL -->
+    <div id="submissionModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;"> <!-- Wider modal for test view -->
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 id="modalStudentName" style="margin:0; color:var(--secondary-color);">Student Name</h2>
+                
+                <!-- Grade Controls -->
+                <div style="background:var(--tertiary-background); padding:10px; border-radius:10px; display:flex; gap:10px; align-items:center;">
+                    <label style="margin:0;">Grade:</label>
+                    <select id="modalGradeSelect" style="padding:5px; border-radius:5px;">
+                        <option value="">No Grade</option>
+                        <!-- Populated by JS -->
+                    </select>
+                    <button onclick="saveGradeOverride()" style="background-color:var(--primary-color); font-size:0.8em;">Save Grade</button>
+                </div>
+            </div>
+
+            <h4 id="modalScoreDisplay" style="color:var(--text-color); margin-top:0;">Total Score: 0%</h4>
+            <hr style="border-color:var(--tertiary-background);">
+            
+            <!-- This container will hold the "Question Blocks" -->
+            <div id="modalAnswersContainer" style="max-height: 600px; overflow-y: auto; padding-right:10px;">
+                <!-- Detailed Q&A injected here -->
+            </div>
+
+            <div style="margin-top:20px; text-align:right;">
+                <button onclick="savePointChanges()" id="savePointsBtn" style="background-color:#28a745; font-size:1.1em; padding:10px 20px;">Save Point Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{% static 'js/quizadmin.js' %}"></script>
+</body>
+</html>

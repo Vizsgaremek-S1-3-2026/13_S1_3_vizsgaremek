@@ -10,7 +10,6 @@ function getGroupIdFromUrl() {
     return params.get('groupId');
 }
 
-// Reusing your darkenColor logic for consistent aesthetics
 function darkenColor(color, amount) {
     let usePound = false;
     if (color[0] === "#") {
@@ -35,7 +34,7 @@ function darkenColor(color, amount) {
 
 function formatDatePretty(isoString) {
     const date = new Date(isoString);
-    return date.toLocaleString(); // Uses system locale for nice formatting
+    return date.toLocaleString();
 }
 
 // --- API Calls ---
@@ -66,16 +65,15 @@ async function fetchGroupQuizzes(groupId) {
 
 async function kickMember(groupId, userId) {
     if (!confirm(`Are you sure you want to kick user ID ${userId}?`)) return;
-    
+
     try {
         const response = await fetch(`/api/groups/${groupId}/members/${userId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${getToken()}` }
         });
         if (!response.ok) throw new Error("Failed to kick member.");
-        
+
         alert("Member kicked successfully.");
-        // Reload members
         loadPageData();
     } catch (error) {
         alert(error.message);
@@ -89,16 +87,15 @@ function renderHeader(group) {
     document.getElementById('groupName').textContent = group.name;
     document.getElementById('groupIdDisplay').textContent = group.id;
     document.getElementById('groupInviteCode').textContent = group.invite_code_formatted;
-    
-    document.getElementById('groupAnticheatBadge').innerHTML = group.anticheat 
-        ? '🔒 Anti-Cheat: <b>ON</b> &nbsp;' 
+
+    document.getElementById('groupAnticheatBadge').innerHTML = group.anticheat
+        ? '🔒 Anti-Cheat: <b>ON</b> &nbsp;'
         : '🔓 Anti-Cheat: OFF &nbsp;';
-    
-    document.getElementById('groupKioskBadge').innerHTML = group.kiosk 
-        ? '📱 Kiosk Mode: <b>ON</b>' 
+
+    document.getElementById('groupKioskBadge').innerHTML = group.kiosk
+        ? '📱 Kiosk Mode: <b>ON</b>'
         : '📱 Kiosk Mode: OFF';
 
-    // Apply color gradient
     const darkColor = darkenColor(group.color, 0.4);
     header.style.background = `linear-gradient(to bottom right, ${darkColor}, ${group.color})`;
 }
@@ -119,11 +116,9 @@ function renderMembers(members, currentUserRank) {
     members.forEach(member => {
         const li = document.createElement('li');
         li.className = 'list-item';
-        
-        const isMe = false; // You could decode JWT to check ID if needed, but not strictly required for visual
+
         const isAdmin = currentUserRank === 'ADMIN' || currentUserRank === 'SUPERUSER';
-        
-        // Show Kick button if I am Admin AND target is not Admin
+
         let actionBtn = '';
         if (isAdmin && member.rank !== 'ADMIN') {
             actionBtn = `<button class="delete-btn" onclick="kickMember(${member.group_id}, ${member.user.id})">Kick</button>`;
@@ -143,7 +138,7 @@ function renderMembers(members, currentUserRank) {
     container.appendChild(ul);
 }
 
-function renderQuizzes(quizzes) {
+function renderQuizzes(quizzes, groupRank) {
     const container = document.getElementById('quizzesList');
     container.innerHTML = '';
 
@@ -153,25 +148,33 @@ function renderQuizzes(quizzes) {
     }
 
     const now = new Date();
+    const isTeacher = groupRank === 'ADMIN' || groupRank === 'SUPERUSER';
 
     quizzes.forEach(quiz => {
         const startDate = new Date(quiz.date_start);
         const endDate = new Date(quiz.date_end);
-        
-        let statusHtml = '';
-        let actionBtn = '';
 
+        let statusHtml = '';
+        let startBtnHtml = '';
+        let adminBtnHtml = '';
+
+        // 1. Determine Status
         if (now < startDate) {
             statusHtml = `<span class="quiz-status status-upcoming">Upcoming</span>`;
-            actionBtn = `<button disabled style="opacity:0.5; cursor:not-allowed;">Starts Soon</button>`;
+            // Even if upcoming, admins might want to see the button disabled or maybe enabled for testing?
+            // For now, let's keep standard logic:
+            startBtnHtml = `<button disabled style="opacity:0.5; cursor:not-allowed; border:none; padding:8px 16px; border-radius:5px;">Starts Soon</button>`;
         } else if (now > endDate) {
             statusHtml = `<span class="quiz-status status-ended">Ended</span>`;
-            // Maybe show a "See Results" button here later?
-            actionBtn = `<button disabled style="opacity:0.5; cursor:not-allowed;">Closed</button>`;
+            startBtnHtml = `<button disabled style="opacity:0.5; cursor:not-allowed; border:none; padding:8px 16px; border-radius:5px;">Closed</button>`;
         } else {
             statusHtml = `<span class="quiz-status status-active">Active</span>`;
-            // Redirect to the Quiz Player
-            actionBtn = `<button onclick="window.location.href='/quizplayer/?quizId=${quiz.id}'" style="background-color: #28a745; color: white;">Start Quiz</button>`;
+            startBtnHtml = `<button onclick="window.location.href='/quiz/?quizId=${quiz.id}'" style="background-color: #28a745; color: white; border:none; padding:8px 16px; border-radius:5px; cursor:pointer;">Start Quiz</button>`;
+        }
+
+        // 2. Add Admin Button if applicable
+        if (isTeacher) {
+            adminBtnHtml = `<button onclick="window.location.href='/quizadmin/?quizId=${quiz.id}'" style="background-color: var(--secondary-color); color: var(--primary-background); font-weight:bold; border:none; padding:8px 16px; border-radius:5px; cursor:pointer;">Admin Panel</button>`;
         }
 
         const div = document.createElement('div');
@@ -184,7 +187,10 @@ function renderQuizzes(quizzes) {
             </div>
             <div style="text-align: right;">
                 ${statusHtml}
-                <div style="margin-top: 10px;">${actionBtn}</div>
+                <div style="margin-top: 10px; display: flex; gap: 10px; justify-content: flex-end;">
+                    ${adminBtnHtml}
+                    ${startBtnHtml}
+                </div>
             </div>
         `;
         container.appendChild(div);
@@ -202,17 +208,15 @@ async function loadPageData() {
     }
 
     try {
-        // 1. Get Group Info (to know permissions/colors)
         const group = await fetchGroupDetails(groupId);
         renderHeader(group);
 
-        // 2. Get Members
         const members = await fetchGroupMembers(groupId);
-        renderMembers(members, group.rank); // Pass current user's rank for permission checks
+        renderMembers(members, group.rank);
 
-        // 3. Get Quizzes
         const quizzes = await fetchGroupQuizzes(groupId);
-        renderQuizzes(quizzes);
+        // Pass the rank so renderQuizzes knows whether to show the Admin Panel button
+        renderQuizzes(quizzes, group.rank);
 
     } catch (error) {
         console.error(error);
@@ -220,7 +224,6 @@ async function loadPageData() {
     }
 }
 
-// Make functions globally available for onclick handlers in HTML
 window.kickMember = kickMember;
 
 document.addEventListener('DOMContentLoaded', loadPageData);

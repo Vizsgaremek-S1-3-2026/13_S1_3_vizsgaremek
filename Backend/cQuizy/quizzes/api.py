@@ -22,7 +22,8 @@ from .schemas import (
     SubmissionCreateSchema,
     SubmissionOutSchema,
     SubmissionDetailSchema,
-    PointUpdatePayload
+    PointUpdatePayload,
+    GradeUpdateSchema
 )
 
 from users.auth import JWTAuth
@@ -111,8 +112,7 @@ def start_quiz(request, quiz_id: int):
     if Submission.objects.filter(quiz=quiz, student=current_user).exists():
         raise HttpError(400, "You have already submitted this quiz.")
 
-    # 4. Return the Quiz Object
-    # The Schema resolvers will handle fetching project.blocks and group.anticheat/kiosk
+    # 4. Return the Quiz Object (Schema resolves project blocks and settings)
     return quiz
 
 
@@ -257,8 +257,8 @@ def get_handled_events(request, quiz_id: int):
 @router.post("/submit", response=SubmissionOutSchema, summary="Student: Submit quiz and get grade")
 def submit_quiz(request, payload: SubmissionCreateSchema):
     """
-    Submits a quiz, calculates score using weighted points, saves results, 
-    and creates a Grade entry if applicable.
+    Submits a quiz, calculates score using weighted points from Blueprint, 
+    saves results, and creates a Grade entry if applicable.
     """
     current_user = request.auth
     quiz = get_object_or_404(Quiz, id=payload.quiz_id)
@@ -277,6 +277,7 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
     project = quiz.project
     blocks = project.blocks.prefetch_related('answers')
     
+    # Map student answers by block_id for easy lookup
     student_answers_map = defaultdict(set)
     for ans in payload.answers:
         student_answers_map[ans.block_id].add(ans.answer_text.strip().lower())
@@ -288,7 +289,7 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
     with transaction.atomic():
         # --- A. Calculate Points ---
         for block in blocks:
-            # Calculate Max Points for this block
+            # Calculate Max Points for this block (Positive points only)
             max_block_points = 0
             block_answers = block.answers.all()
             
@@ -313,7 +314,7 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
                     if matched_answer and matched_answer.is_correct:
                         points_for_this_answer = matched_answer.points
                 else: 
-                    # For Checkboxes/Radios, give points if option exists (could be negative)
+                    # For Checkboxes/Radios, give points if option exists (could be negative/penalty)
                     if matched_answer:
                         points_for_this_answer = matched_answer.points
                 
@@ -335,8 +336,8 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
         # Look for a grade range where min <= percentage <= max
         matching_grade_rule = GradePercentage.objects.filter(
             group=quiz.group,
-            min__lte=percentage,
-            max__gte=percentage,
+            min_percentage__lte=percentage,
+            max_percentage__gte=percentage,
             is_active=True
         ).first()
 
@@ -347,7 +348,6 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
                 rank='ADMIN'
             ).first()
 
-            # Ensure we have a teacher to assign (System requirement)
             if not group_admin_member:
                 raise HttpError(500, "Cannot assign grade: Group has no Admin/Teacher.")
 
@@ -442,7 +442,7 @@ def update_submission_points(request, submission_id: int, payload: PointUpdatePa
          raise HttpError(403, "Only teachers can modify grades.")
 
     with transaction.atomic():
-        # 1. Update the points for specific answers
+        # 1. Update specific answers
         total_earned_points = 0
         updates_map = {item.submitted_answer_id: item.new_points for item in payload.updates}
         all_answers = submission.answers.all()
@@ -453,7 +453,7 @@ def update_submission_points(request, submission_id: int, payload: PointUpdatePa
                 ans.save()
             total_earned_points += ans.points_awarded
 
-        # 2. Recalculate Percentage (Re-calculate Max Points for accuracy)
+        # 2. Recalculate Percentage (Recalculate Max Points for accuracy)
         project = submission.quiz.project
         blocks = project.blocks.prefetch_related('answers')
         total_max_points = 0
@@ -472,19 +472,53 @@ def update_submission_points(request, submission_id: int, payload: PointUpdatePa
         submission.percentage = new_percentage
         submission.save()
 
-        # 3. Update the Grade
+        # 3. Update the Grade if exists
         if submission.grade:
             matching_grade_rule = GradePercentage.objects.filter(
                 group=submission.quiz.group,
-                min__lte=new_percentage,
-                max__gte=new_percentage,
+                min_percentage__lte=new_percentage,
+                max_percentage__gte=new_percentage,
                 is_active=True
             ).first()
 
             if matching_grade_rule:
                 submission.grade.value = matching_grade_rule.name
-                submission.grade.teacher = current_user # The teacher manually editing is now responsible
+                submission.grade.teacher = current_user
                 submission.grade.save()
+
+    return submission
+
+#? Update Grade Manually
+@router.post("/submission/{submission_id}/update-grade", response=SubmissionOutSchema, summary="Teacher: Override Grade")
+def update_submission_grade(request, submission_id: int, payload: GradeUpdateSchema):
+    """
+    Manually overwrite the Grade value (e.g. change a '4' to a '5') regardless of percentage.
+    """
+    current_user = request.auth
+    submission = get_object_or_404(Submission, id=submission_id)
+    
+    is_admin = GroupMember.objects.filter(
+        group=submission.quiz.group, 
+        user=current_user, 
+        rank='ADMIN'
+    ).exists()
+
+    if not is_admin and not current_user.is_superuser:
+         raise HttpError(403, "Only teachers can modify grades.")
+
+    if submission.grade:
+        submission.grade.value = payload.new_grade
+        submission.grade.teacher = current_user
+        submission.grade.save()
+    else:
+        # Create new grade if none existed
+        submission.grade = Grade.objects.create(
+            group=submission.quiz.group,
+            student=submission.student,
+            value=payload.new_grade,
+            teacher=current_user
+        )
+        submission.save()
 
     return submission
 

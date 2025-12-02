@@ -369,6 +369,352 @@ input[type="color"]::-webkit-color-swatch {
 
 
 
+/*! QUIZZES ====================================================================================================*/
+/*! QUIZ PLAYER ====================================================================================================*/
+
+/* Main Container to match builder width */
+#quizApp {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: "Comfortaa", sans-serif;
+}
+
+/* --- Header --- */
+#quizHeader {
+    background-color: var(--secondary-background);
+    border-radius: 0 0 25px 25px; /* Rounded bottom only */
+    padding: 20px 30px;
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    color: var(--text-color);
+}
+
+#quizTitle {
+    color: var(--secondary-color);
+    font-size: 1.4em;
+    font-weight: bold;
+}
+
+#quizModeBadge {
+    background-color: var(--tertiary-background);
+    color: var(--secondary-text-color);
+    padding: 5px 10px;
+    border-radius: 10px;
+    font-size: 0.8em;
+    margin-left: 10px;
+}
+
+#timerBadge {
+    background-color: var(--primary-color);
+    color: white; /* Keep white for contrast on primary color */
+    padding: 8px 15px;
+    border-radius: 15px;
+    font-family: monospace;
+    font-size: 1.2em;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+/* --- Question Blocks --- */
+.question-block {
+    background-color: var(--secondary-background);
+    border-radius: 25px; /* Matches builder form radius */
+    padding: 30px;
+    margin-bottom: 30px;
+    border-left: 5px solid var(--secondary-color); /* Matches builder block accent */
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.question-text {
+    color: var(--text-color);
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.subtext {
+    color: var(--secondary-text-color);
+    font-size: 0.95em;
+    margin-bottom: 20px;
+    background-color: var(--tertiary-background);
+    padding: 10px 15px;
+    border-radius: 10px;
+    display: inline-block;
+}
+
+.question-block img {
+    border-radius: 15px;
+    max-width: 100%;
+    margin-bottom: 20px;
+    border: 2px solid var(--tertiary-background);
+}
+
+/* --- Inputs & Textareas --- */
+.quiz-input, 
+textarea.quiz-input {
+    width: 100%;
+    box-sizing: border-box;
+    background-color: var(--tertiary-background);
+    color: var(--text-color);
+    border: 1px solid transparent;
+    border-radius: 15px;
+    padding: 15px;
+    font-family: "Comfortaa", sans-serif;
+    font-size: 16px;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+.quiz-input:focus, 
+textarea.quiz-input:focus {
+    outline: none;
+    border-color: var(--secondary-color);
+}
+
+/* --- Options (Radios & Checkboxes) --- */
+.options-container label {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background-color: var(--tertiary-background); /* Matches answer-item background */
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    border-radius: 15px;
+    cursor: pointer;
+    color: var(--text-color);
+    transition: background-color 0.2s, transform 0.1s;
+    border: 1px solid transparent;
+}
+
+.options-container label:hover {
+    background-color: var(--primary-background); /* Slightly darker/lighter on hover */
+    border-color: var(--secondary-color);
+}
+
+.options-container input[type="radio"],
+.options-container input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--secondary-color); /* Matches theme color */
+    cursor: pointer;
+}
+
+/* --- Buttons --- */
+.submit-container {
+    margin-top: 40px;
+    text-align: right;
+}
+
+#submitQuizBtn {
+    background-color: var(--primary-color) !important;
+    color: white;
+    font-family: "Comfortaa", sans-serif;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 15px 40px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: filter 0.2s, transform 0.1s;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+#submitQuizBtn:hover {
+    filter: brightness(1.1);
+    transform: translateY(-2px);
+}
+
+#submitQuizBtn:active {
+    transform: translateY(0);
+}
+
+/* --- Anti-Cheat Overlay --- */
+#lockOverlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.95); /* Deep dark overlay */
+    z-index: 10000;
+    color: white;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    backdrop-filter: blur(5px);
+}
+
+.lock-icon {
+    font-size: 5em;
+    margin-bottom: 20px;
+    color: var(--primary-color);
+    animation: pulse 2s infinite;
+}
+
+.lock-msg {
+    font-family: "Comfortaa", sans-serif;
+    font-size: 2em;
+    font-weight: bold;
+    margin-bottom: 15px;
+    color: var(--secondary-color);
+}
+
+.lock-sub {
+    font-family: "Comfortaa", sans-serif;
+    font-size: 1.2em;
+    color: #ccc;
+    margin-bottom: 5px;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* --- Loader --- */
+#loadingMessage h2 {
+    color: var(--secondary-color);
+    font-family: "Comfortaa", sans-serif;
+}
+
+
+
+
+
+/*! QUIZ ADMIN DASHBOARD =================================================================================*/
+
+.admin-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Split screen: Events | Submissions */
+    gap: 30px;
+}
+
+@media (max-width: 900px) {
+    .admin-container { grid-template-columns: 1fr; }
+}
+
+.admin-section {
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    padding: 25px;
+    height: fit-content;
+}
+
+.admin-section h2 {
+    color: var(--secondary-color);
+    margin-top: 0;
+    font-family: "Comfortaa", sans-serif;
+    border-bottom: 2px solid var(--tertiary-background);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+/* --- Events Console --- */
+.events-list {
+    max-height: 600px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding-right: 10px;
+}
+
+.event-card {
+    background-color: var(--tertiary-background);
+    padding: 15px;
+    border-radius: 15px;
+    border-left: 5px solid #888;
+    color: var(--text-color);
+    transition: transform 0.2s;
+}
+
+.event-card.status-active {
+    border-left-color: #dc3545; /* Red for Alert */
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.event-card.status-handled {
+    border-left-color: #28a745; /* Green for Resolved */
+    opacity: 0.8;
+}
+
+.event-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.event-time { font-size: 0.8em; color: var(--secondary-text-color); }
+
+.resolve-btn {
+    background-color: #dc3545 !important;
+    color: white !important;
+    font-size: 0.9em !important;
+    padding: 5px 15px !important;
+    margin-top: 10px;
+    width: 100%;
+}
+
+/* --- Submission Table --- */
+.submission-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-color);
+}
+
+.submission-table th {
+    text-align: left;
+    color: var(--secondary-text-color);
+    padding: 10px;
+    border-bottom: 1px solid var(--tertiary-background);
+}
+
+.submission-table td {
+    padding: 10px;
+    border-bottom: 1px solid var(--tertiary-background);
+}
+
+.submission-row:hover {
+    background-color: var(--tertiary-background);
+    cursor: pointer;
+}
+
+.grade-badge {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+/* --- Submission Detail Modal Content --- */
+.detail-block {
+    background-color: var(--primary-background);
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+}
+
+.detail-q { font-weight: bold; margin-bottom: 5px; color: var(--text-color); }
+.detail-a { color: var(--secondary-text-color); margin-bottom: 5px; }
+.detail-pts { font-size: 0.9em; text-align: right; font-weight: bold; }
+.pts-good { color: #28a745; }
+.pts-bad { color: #dc3545; }
+
+
+
+
+
 /*! BUILDER ====================================================================================================*/
 
 /* NEW: Main container to center the form on the page */
