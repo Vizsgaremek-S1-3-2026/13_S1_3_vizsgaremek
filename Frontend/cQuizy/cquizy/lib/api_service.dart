@@ -5,7 +5,7 @@ import 'models/user.dart';
 
 class ApiService {
   // Az API alap URL-je. Győződj meg róla, hogy a szerver ezen a címen fut.
-  static const String _baseUrl = 'https://sr701kx0-8000.euw.devtunnels.ms/api';
+  static const String _baseUrl = 'http://127.0.0.1:8000/api';
 
   // Bejelentkezési funkció
   // Visszatérési érték: A szervertől kapott token, ha sikeres, egyébként null.
@@ -86,6 +86,8 @@ class ApiService {
     if (token == 'test_token') {
       debugPrint('TESZT MÓD: Mock profil adatok visszaadása');
       return User(
+        id: 1,
+        username: 'testuser',
         isSuperuser: true,
         firstName: 'Teszt',
         lastName: 'Elek',
@@ -94,6 +96,7 @@ class ApiService {
         isActive: true,
         dateJoined: DateTime.now().subtract(const Duration(days: 365)),
         nickname: 'Teszter',
+        pfpUrl: 'https://via.placeholder.com/150',
       );
     }
     // -----------------

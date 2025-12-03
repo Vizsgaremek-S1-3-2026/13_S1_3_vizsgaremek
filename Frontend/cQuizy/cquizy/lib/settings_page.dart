@@ -449,16 +449,21 @@ class _SettingsPageState extends State<SettingsPage>
                       child: CircleAvatar(
                         radius: 50,
                         backgroundColor: theme.primaryColor,
-                        child: Text(
-                          user.firstName.isNotEmpty
-                              ? user.firstName[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        backgroundImage: user.pfpUrl != null
+                            ? NetworkImage(user.pfpUrl!)
+                            : null,
+                        child: user.pfpUrl == null
+                            ? Text(
+                                user.firstName.isNotEmpty
+                                    ? user.firstName[0].toUpperCase()
+                                    : '?',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -492,7 +497,7 @@ class _SettingsPageState extends State<SettingsPage>
                         ),
                       ),
                       child: Text(
-                        user.nickname ?? 'Nincs becenév',
+                        '@${user.username}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -500,6 +505,17 @@ class _SettingsPageState extends State<SettingsPage>
                         ),
                       ),
                     ),
+                    if (user.nickname != null && user.nickname!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        user.nickname!,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -1,4 +1,6 @@
 class User {
+  final int id;
+  final String username;
   final bool isSuperuser;
   final String firstName;
   final String lastName;
@@ -7,9 +9,11 @@ class User {
   final bool isActive;
   final DateTime dateJoined;
   final String? nickname;
-  final String? avatar;
+  final String? pfpUrl;
 
   User({
+    required this.id,
+    required this.username,
     required this.isSuperuser,
     required this.firstName,
     required this.lastName,
@@ -18,11 +22,13 @@ class User {
     required this.isActive,
     required this.dateJoined,
     this.nickname,
-    this.avatar,
+    this.pfpUrl,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
+      id: json['id'] ?? 0,
+      username: json['username'] ?? '',
       isSuperuser: json['is_superuser'] ?? false,
       firstName: json['first_name'] ?? '',
       lastName: json['last_name'] ?? '',
@@ -31,12 +37,14 @@ class User {
       isActive: json['is_active'] ?? true,
       dateJoined: DateTime.parse(json['date_joined']),
       nickname: json['nickname'],
-      avatar: json['avatar'],
+      pfpUrl: json['pfp_url'],
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
+      'username': username,
       'is_superuser': isSuperuser,
       'first_name': firstName,
       'last_name': lastName,
@@ -45,11 +53,13 @@ class User {
       'is_active': isActive,
       'date_joined': dateJoined.toIso8601String(),
       'nickname': nickname,
-      'avatar': avatar,
+      'pfp_url': pfpUrl,
     };
   }
 
   User copyWith({
+    int? id,
+    String? username,
     bool? isSuperuser,
     String? firstName,
     String? lastName,
@@ -58,9 +68,11 @@ class User {
     bool? isActive,
     DateTime? dateJoined,
     String? nickname,
-    String? avatar,
+    String? pfpUrl,
   }) {
     return User(
+      id: id ?? this.id,
+      username: username ?? this.username,
       isSuperuser: isSuperuser ?? this.isSuperuser,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
@@ -69,7 +81,7 @@ class User {
       isActive: isActive ?? this.isActive,
       dateJoined: dateJoined ?? this.dateJoined,
       nickname: nickname ?? this.nickname,
-      avatar: avatar ?? this.avatar,
+      pfpUrl: pfpUrl ?? this.pfpUrl,
     );
   }
 }
