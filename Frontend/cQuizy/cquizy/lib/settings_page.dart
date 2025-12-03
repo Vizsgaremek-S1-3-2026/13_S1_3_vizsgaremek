@@ -318,6 +318,85 @@ class _SettingsPageState extends State<SettingsPage>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  // Profile avatar with circular arc - always visible
+                  Consumer<UserProvider>(
+                    builder: (context, userProvider, child) {
+                      final user = userProvider.user;
+                      return SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Circular arc decoration
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: CircularProgressIndicator(
+                                value: 0.75, // 75% arc
+                                strokeWidth: 3,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  theme.primaryColor,
+                                ),
+                                backgroundColor: theme.primaryColor.withValues(
+                                  alpha: 0.2,
+                                ),
+                              ),
+                            ),
+                            // Avatar circle
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: theme.cardColor,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: theme.primaryColor.withValues(
+                                      alpha: 0.2,
+                                    ),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child:
+                                    user?.avatar != null &&
+                                        user!.avatar!.isNotEmpty
+                                    ? Image.network(
+                                        user.avatar!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                              return Container(
+                                                color: theme.primaryColor
+                                                    .withValues(alpha: 0.1),
+                                                child: Icon(
+                                                  Icons.person,
+                                                  color: theme.primaryColor,
+                                                  size: 20,
+                                                ),
+                                              );
+                                            },
+                                      )
+                                    : Container(
+                                        color: theme.primaryColor.withValues(
+                                          alpha: 0.1,
+                                        ),
+                                        child: Icon(
+                                          Icons.person,
+                                          color: theme.primaryColor,
+                                          size: 20,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -551,19 +630,17 @@ class _SettingsPageState extends State<SettingsPage>
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
+                    child: OutlinedButton.icon(
                       onPressed: () => _showEditProfileDialog(context, user),
                       icon: const Icon(Icons.edit, size: 20),
-                      label: const Text('Szerkesztés'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        foregroundColor: Colors.white,
+                      label: const Text('Profil szerkesztése'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: theme.primaryColor,
+                        side: BorderSide(color: theme.primaryColor, width: 2),
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        elevation: 4,
-                        shadowColor: theme.primaryColor.withValues(alpha: 0.4),
                       ),
                     ),
                   ),
@@ -572,7 +649,7 @@ class _SettingsPageState extends State<SettingsPage>
                     child: OutlinedButton.icon(
                       onPressed: () => _showChangePasswordDialog(context),
                       icon: const Icon(Icons.lock_outline, size: 20),
-                      label: const Text('Jelszó'),
+                      label: const Text('Jelszó módosítása'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: theme.primaryColor,
                         side: BorderSide(color: theme.primaryColor, width: 2),
@@ -585,7 +662,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                 ],
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 120),
             ],
           ),
         ),
@@ -941,87 +1018,213 @@ class _SettingsPageState extends State<SettingsPage>
     final lastNameController = TextEditingController(text: user.lastName);
     final nicknameController = TextEditingController(text: user.nickname);
     final emailController = TextEditingController(text: user.email);
+    final theme = Theme.of(context);
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Profil szerkesztése',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              _buildDialogTextField(
-                lastNameController,
-                'Vezetéknév',
-                Icons.person_outline,
-              ),
-              const SizedBox(height: 16),
-              _buildDialogTextField(
-                firstNameController,
-                'Keresztnév',
-                Icons.person_outline,
-              ),
-              const SizedBox(height: 16),
-              _buildDialogTextField(
-                nicknameController,
-                'Becenév',
-                Icons.badge_outlined,
-              ),
-              const SizedBox(height: 16),
-              _buildDialogTextField(
-                emailController,
-                'E-mail',
-                Icons.email_outlined,
-              ),
-            ],
-          ),
-        ),
-        actionsPadding: const EdgeInsets.all(20),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Mégse', style: TextStyle(color: Colors.grey[600])),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final success = await context.read<UserProvider>().updateUser({
-                'first_name': firstNameController.text,
-                'last_name': lastNameController.text,
-                'nickname': nicknameController.text,
-                'email': emailController.text,
-              });
-              if (mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success
-                          ? 'Profil sikeresen frissítve'
-                          : 'Hiba történt a frissítés során',
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, widget) {
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: Dialog(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 500,
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with gradient
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            theme.primaryColor,
+                            theme.primaryColor.withValues(alpha: 0.7),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.edit,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Text(
+                            'Profil szerkesztése',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Content
+                    Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildDialogTextField(
+                                  lastNameController,
+                                  'Vezetéknév',
+                                  Icons.person_outline,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildDialogTextField(
+                                  firstNameController,
+                                  'Keresztnév',
+                                  Icons.person_outline,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          _buildDialogTextField(
+                            nicknameController,
+                            'Becenév',
+                            Icons.badge_outlined,
+                          ),
+                          const SizedBox(height: 24),
+                          _buildDialogTextField(
+                            emailController,
+                            'E-mail',
+                            Icons.email_outlined,
+                          ),
+                          const SizedBox(height: 32),
+
+                          // Actions
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 16,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Mégse',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodyMedium?.color
+                                        ?.withValues(alpha: 0.6),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  final success = await context
+                                      .read<UserProvider>()
+                                      .updateUser({
+                                        'first_name': firstNameController.text,
+                                        'last_name': lastNameController.text,
+                                        'nickname': nicknameController.text,
+                                        'email': emailController.text,
+                                      });
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          success
+                                              ? 'Profil sikeresen frissítve'
+                                              : 'Hiba történt a frissítés során',
+                                        ),
+                                        behavior: SnackBarBehavior.floating,
+                                        backgroundColor: success
+                                            ? Colors.green
+                                            : Colors.red,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 32,
+                                    vertical: 16,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 4,
+                                  shadowColor: theme.primaryColor.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Mentés',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            child: const Text('Mentés'),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1030,103 +1233,223 @@ class _SettingsPageState extends State<SettingsPage>
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    final theme = Theme.of(context);
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Jelszó módosítása',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 8),
-                _buildDialogTextField(
-                  currentPasswordController,
-                  'Jelenlegi jelszó',
-                  Icons.lock_outline,
-                  isPassword: true,
-                  validator: (value) =>
-                      value?.isEmpty ?? true ? 'Kötelező mező' : null,
-                ),
-                const SizedBox(height: 16),
-                _buildDialogTextField(
-                  newPasswordController,
-                  'Új jelszó',
-                  Icons.lock_reset,
-                  isPassword: true,
-                  validator: (value) {
-                    if (value == null || value.length < 8) {
-                      return 'Legalább 8 karakter';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildDialogTextField(
-                  confirmPasswordController,
-                  'Új jelszó megerősítése',
-                  Icons.check_circle_outline,
-                  isPassword: true,
-                  validator: (value) {
-                    if (value != newPasswordController.text) {
-                      return 'A jelszavak nem egyeznek';
-                    }
-                    return null;
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        actionsPadding: const EdgeInsets.all(20),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Mégse', style: TextStyle(color: Colors.grey[600])),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (formKey.currentState?.validate() ?? false) {
-                final success = await context
-                    .read<UserProvider>()
-                    .changePassword(
-                      currentPasswordController.text,
-                      newPasswordController.text,
-                    );
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success
-                            ? 'Jelszó sikeresen módosítva'
-                            : 'Hiba történt a jelszó módosítása során',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, widget) {
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: Dialog(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 500,
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header with gradient
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              theme.primaryColor,
+                              theme.primaryColor.withValues(alpha: 0.7),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.lock_reset,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            const Text(
+                              'Jelszó módosítása',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Content
+                      Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          children: [
+                            _buildDialogTextField(
+                              currentPasswordController,
+                              'Jelenlegi jelszó',
+                              Icons.lock_outline,
+                              isPassword: true,
+                              validator: (value) => value?.isEmpty ?? true
+                                  ? 'Kötelező mező'
+                                  : null,
+                            ),
+                            const SizedBox(height: 24),
+                            _buildDialogTextField(
+                              newPasswordController,
+                              'Új jelszó',
+                              Icons.lock_reset,
+                              isPassword: true,
+                              validator: (value) {
+                                if (value == null || value.length < 8) {
+                                  return 'Legalább 8 karakter';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 24),
+                            _buildDialogTextField(
+                              confirmPasswordController,
+                              'Új jelszó megerősítése',
+                              Icons.check_circle_outline,
+                              isPassword: true,
+                              validator: (value) {
+                                if (value != newPasswordController.text) {
+                                  return 'A jelszavak nem egyeznek';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 32),
+
+                            // Actions
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 16,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Mégse',
+                                    style: TextStyle(
+                                      color: theme.textTheme.bodyMedium?.color
+                                          ?.withValues(alpha: 0.6),
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    if (formKey.currentState?.validate() ??
+                                        false) {
+                                      final success = await context
+                                          .read<UserProvider>()
+                                          .changePassword(
+                                            currentPasswordController.text,
+                                            newPasswordController.text,
+                                          );
+
+                                      if (context.mounted) {
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              success
+                                                  ? 'Jelszó sikeresen módosítva'
+                                                  : 'Hiba történt a módosítás során',
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                            backgroundColor: success
+                                                ? Colors.green
+                                                : Colors.red,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.primaryColor,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 32,
+                                      vertical: 16,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    elevation: 4,
+                                    shadowColor: theme.primaryColor.withValues(
+                                      alpha: 0.4,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Módosítás',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-            child: const Text('Mentés'),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

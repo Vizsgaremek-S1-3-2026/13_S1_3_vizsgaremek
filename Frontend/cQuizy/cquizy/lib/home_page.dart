@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'group_page.dart';
 import 'settings_page.dart';
+import 'create_group_page.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -188,7 +189,14 @@ class _HomePageState extends State<HomePage> {
                                   if (isGroupView) {
                                     // Tag hozzáadása logika
                                   } else {
-                                    // Csoport hozzáadása / Csatlakozás logika
+                                    // Navigate to Create Group Page
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const CreateGroupPage(),
+                                      ),
+                                    );
                                   }
                                 },
                                 customBorder: RoundedRectangleBorder(
@@ -275,7 +283,14 @@ class _HomePageState extends State<HomePage> {
                                       if (isGroupView) {
                                         // Tag hozzáadása
                                       } else {
-                                        // Csoport hozzáadása vagy csatlakozás
+                                        // Navigate to Create Group Page
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const CreateGroupPage(),
+                                          ),
+                                        );
                                       }
                                     },
                                     customBorder: RoundedRectangleBorder(

@@ -7,6 +7,7 @@ class User {
   final bool isActive;
   final DateTime dateJoined;
   final String? nickname;
+  final String? avatar;
 
   User({
     required this.isSuperuser,
@@ -17,6 +18,7 @@ class User {
     required this.isActive,
     required this.dateJoined,
     this.nickname,
+    this.avatar,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class User {
       isActive: json['is_active'] ?? true,
       dateJoined: DateTime.parse(json['date_joined']),
       nickname: json['nickname'],
+      avatar: json['avatar'],
     );
   }
 
@@ -42,6 +45,7 @@ class User {
       'is_active': isActive,
       'date_joined': dateJoined.toIso8601String(),
       'nickname': nickname,
+      'avatar': avatar,
     };
   }
 
@@ -54,6 +58,7 @@ class User {
     bool? isActive,
     DateTime? dateJoined,
     String? nickname,
+    String? avatar,
   }) {
     return User(
       isSuperuser: isSuperuser ?? this.isSuperuser,
@@ -64,6 +69,7 @@ class User {
       isActive: isActive ?? this.isActive,
       dateJoined: dateJoined ?? this.dateJoined,
       nickname: nickname ?? this.nickname,
+      avatar: avatar ?? this.avatar,
     );
   }
 }
