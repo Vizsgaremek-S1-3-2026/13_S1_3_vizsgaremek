@@ -955,7 +955,10 @@ class _SettingsPageState extends State<SettingsPage>
     final lastNameController = TextEditingController(text: user.lastName);
     final nicknameController = TextEditingController(text: user.nickname);
     final emailController = TextEditingController(text: user.email);
+    final pfpUrlController = TextEditingController(text: user.pfpUrl ?? '');
+    final passwordController = TextEditingController();
     final theme = Theme.of(context);
+    final originalEmail = user.email;
 
     showGeneralDialog(
       context: context,
@@ -970,194 +973,296 @@ class _SettingsPageState extends State<SettingsPage>
           scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
           child: FadeTransition(
             opacity: a1,
-            child: Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              child: Container(
-                width: 500,
-                decoration: BoxDecoration(
-                  color: theme.cardColor,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header with gradient
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            theme.primaryColor,
-                            theme.primaryColor.withValues(alpha: 0.7),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(24),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.edit,
-                              color: Colors.white,
-                              size: 28,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          const Text(
-                            'Profil szerkesztése',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                final isEmailChanged = emailController.text != originalEmail;
 
-                    // Content
-                    Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        children: [
-                          Row(
+                return Dialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  elevation: 0,
+                  backgroundColor: Colors.transparent,
+                  child: Container(
+                    width: 500,
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Header with gradient
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                theme.primaryColor,
+                                theme.primaryColor.withValues(alpha: 0.7),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(24),
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              Expanded(
-                                child: _buildDialogTextField(
-                                  lastNameController,
-                                  'Vezetéknév',
-                                  Icons.person_outline,
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.edit,
+                                  color: Colors.white,
+                                  size: 28,
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              Expanded(
-                                child: _buildDialogTextField(
-                                  firstNameController,
-                                  'Keresztnév',
-                                  Icons.person_outline,
+                              const Text(
+                                'Profil szerkesztése',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 24),
-                          _buildDialogTextField(
-                            nicknameController,
-                            'Becenév',
-                            Icons.badge_outlined,
-                          ),
-                          const SizedBox(height: 24),
-                          _buildDialogTextField(
-                            emailController,
-                            'E-mail',
-                            Icons.email_outlined,
-                          ),
-                          const SizedBox(height: 32),
+                        ),
 
-                          // Actions
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                        // Content
+                        Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
                             children: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 16,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildDialogTextField(
+                                      lastNameController,
+                                      'Vezetéknév',
+                                      Icons.person_outline,
+                                    ),
                                   ),
-                                ),
-                                child: Text(
-                                  'Mégse',
-                                  style: TextStyle(
-                                    color: theme.textTheme.bodyMedium?.color
-                                        ?.withValues(alpha: 0.6),
-                                    fontSize: 16,
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _buildDialogTextField(
+                                      firstNameController,
+                                      'Keresztnév',
+                                      Icons.person_outline,
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                              const SizedBox(width: 16),
-                              ElevatedButton(
-                                onPressed: () async {
-                                  final success = await context
-                                      .read<UserProvider>()
-                                      .updateUser({
-                                        'first_name': firstNameController.text,
-                                        'last_name': lastNameController.text,
-                                        'nickname': nicknameController.text,
-                                        'email': emailController.text,
-                                      });
-                                  if (context.mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          success
-                                              ? 'Profil sikeresen frissítve'
-                                              : 'Hiba történt a frissítés során',
-                                        ),
-                                        behavior: SnackBarBehavior.floating,
-                                        backgroundColor: success
-                                            ? Colors.green
-                                            : Colors.red,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: theme.primaryColor,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 32,
-                                    vertical: 16,
+                              const SizedBox(height: 24),
+                              _buildDialogTextField(
+                                nicknameController,
+                                'Becenév',
+                                Icons.badge_outlined,
+                              ),
+                              const SizedBox(height: 24),
+                              TextField(
+                                controller: emailController,
+                                decoration: InputDecoration(
+                                  labelText: 'E-mail',
+                                  prefixIcon: Icon(
+                                    Icons.email_outlined,
+                                    color: theme.primaryColor,
                                   ),
-                                  shape: RoundedRectangleBorder(
+                                  border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  elevation: 4,
-                                  shadowColor: theme.primaryColor.withValues(
-                                    alpha: 0.4,
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: theme.primaryColor,
+                                      width: 2,
+                                    ),
                                   ),
                                 ),
-                                child: const Text(
-                                  'Mentés',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
+                                onChanged: (value) {
+                                  setState(() {});
+                                },
+                              ),
+                              if (isEmailChanged) ...[
+                                const SizedBox(height: 24),
+                                TextField(
+                                  controller: passwordController,
+                                  obscureText: true,
+                                  decoration: InputDecoration(
+                                    labelText: 'Jelszó (megerősítéshez)',
+                                    prefixIcon: Icon(
+                                      Icons.lock_outline,
+                                      color: theme.primaryColor,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(
+                                        color: theme.primaryColor,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    helperText:
+                                        'Az email módosításához szükséges',
                                   ),
+                                  onChanged: (value) {
+                                    setState(() {});
+                                  },
                                 ),
+                              ],
+                              const SizedBox(height: 24),
+                              _buildDialogTextField(
+                                pfpUrlController,
+                                'Profilkép URL',
+                                Icons.image_outlined,
+                              ),
+                              const SizedBox(height: 32),
+
+                              // Actions
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 16,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Mégse',
+                                      style: TextStyle(
+                                        color: theme.textTheme.bodyMedium?.color
+                                            ?.withValues(alpha: 0.6),
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  ElevatedButton(
+                                    // Disable button if email changed but password is empty
+                                    onPressed:
+                                        (isEmailChanged &&
+                                            passwordController.text.isEmpty)
+                                        ? null
+                                        : () async {
+                                            bool success = true;
+
+                                            // If email changed, call changeEmail endpoint
+                                            if (isEmailChanged) {
+                                              success = await context
+                                                  .read<UserProvider>()
+                                                  .changeEmail(
+                                                    emailController.text,
+                                                    passwordController.text,
+                                                  );
+                                            }
+
+                                            // Update other fields
+                                            if (success) {
+                                              final updateData = {
+                                                'first_name':
+                                                    firstNameController.text,
+                                                'last_name':
+                                                    lastNameController.text,
+                                                'nickname':
+                                                    nicknameController.text,
+                                                'pfp_url':
+                                                    pfpUrlController
+                                                        .text
+                                                        .isEmpty
+                                                    ? null
+                                                    : pfpUrlController.text,
+                                              };
+
+                                              success = await context
+                                                  .read<UserProvider>()
+                                                  .updateUser(updateData);
+                                            }
+
+                                            if (context.mounted) {
+                                              // Only close dialog if successful
+                                              if (success) {
+                                                Navigator.pop(context);
+                                              }
+
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    success
+                                                        ? 'Profil sikeresen frissítve'
+                                                        : 'Hiba történt a frissítés során',
+                                                  ),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                  backgroundColor: success
+                                                      ? Colors.green
+                                                      : Colors.red,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10,
+                                                        ),
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: theme.primaryColor,
+                                      foregroundColor: Colors.white,
+                                      disabledBackgroundColor: theme
+                                          .primaryColor
+                                          .withValues(alpha: 0.3),
+                                      disabledForegroundColor: Colors.white
+                                          .withValues(alpha: 0.5),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 32,
+                                        vertical: 16,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 4,
+                                      shadowColor: theme.primaryColor
+                                          .withValues(alpha: 0.4),
+                                    ),
+                                    child: const Text(
+                                      'Mentés',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
           ),
         );

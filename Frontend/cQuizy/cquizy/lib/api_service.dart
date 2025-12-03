@@ -193,12 +193,50 @@ class ApiService {
         return true;
       } else {
         debugPrint(
-          'Jelszó módosítési hiba: ${response.statusCode} - ${response.body}',
+          'Jelszó módosítási hiba: ${response.statusCode} - ${response.body}',
         );
         return false;
       }
     } catch (e) {
       debugPrint('Hálózati hiba a jelszó módosítása során: $e');
+      return false;
+    }
+  }
+
+  // Email cím módosítása
+  Future<bool> changeEmail(
+    String token,
+    String newEmail,
+    String password,
+  ) async {
+    // --- TESZT MÓD ---
+    if (token == 'test_token') {
+      debugPrint('TESZT MÓD: Email módosítás szimulálása');
+      return true;
+    }
+    // -----------------
+
+    final url = Uri.parse('$_baseUrl/users/me/change-email');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'email': newEmail, 'password': password}),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        debugPrint(
+          'Email módosítási hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba az email módosítása során: $e');
       return false;
     }
   }

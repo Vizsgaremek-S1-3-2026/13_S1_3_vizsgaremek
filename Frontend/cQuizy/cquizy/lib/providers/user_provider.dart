@@ -39,7 +39,13 @@ class UserProvider extends ChangeNotifier {
     try {
       final success = await _apiService.updateUserProfile(_token!, data);
       if (success) {
-        await fetchUser(); // Refresh user data
+        await fetchUser(); // Refresh user data immediately
+
+        // Wait a bit and refresh again to ensure server-side changes are reflected
+        Future.delayed(const Duration(seconds: 1), () {
+          fetchUser();
+        });
+
         return true;
       }
     } catch (e) {
@@ -63,5 +69,29 @@ class UserProvider extends ChangeNotifier {
       debugPrint('Error changing password: $e');
       return false;
     }
+  }
+
+  Future<bool> changeEmail(String newEmail, String password) async {
+    if (_token == null) return false;
+    try {
+      final success = await _apiService.changeEmail(
+        _token!,
+        newEmail,
+        password,
+      );
+      if (success) {
+        await fetchUser(); // Refresh user data immediately
+
+        // Wait a bit and refresh again to ensure server-side changes are reflected
+        Future.delayed(const Duration(seconds: 1), () {
+          fetchUser();
+        });
+
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Error changing email: $e');
+    }
+    return false;
   }
 }
