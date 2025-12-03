@@ -23,6 +23,7 @@ class _HomePageState extends State<HomePage> {
 
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
+  bool _isSpeedDialOpen = false;
 
   @override
   void initState() {
@@ -142,6 +143,12 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _toggleSpeedDial() {
+    setState(() {
+      _isSpeedDialOpen = !_isSpeedDialOpen;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -171,7 +178,7 @@ class _HomePageState extends State<HomePage> {
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      // A "+" gomb mindig látható, de animálva eltűnik, ha a tag panel nyitva van
+                      // Speed Dial FAB for desktop
                       Positioned(
                         bottom: 24,
                         right: 24,
@@ -180,42 +187,9 @@ class _HomePageState extends State<HomePage> {
                           opacity: _isMemberPanelOpen ? 0.0 : 1.0,
                           child: IgnorePointer(
                             ignoring: _isMemberPanelOpen,
-                            child: Tooltip(
-                              message: isGroupView
-                                  ? 'Tag hozzáadása'
-                                  : 'Csoport hozzáadása / Csatlakozás',
-                              child: InkWell(
-                                onTap: () {
-                                  if (isGroupView) {
-                                    // Tag hozzáadása logika
-                                  } else {
-                                    // Navigate to Create Group Page
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const CreateGroupPage(),
-                                      ),
-                                    );
-                                  }
-                                },
-                                customBorder: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16.0),
-                                ),
-                                child: Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).primaryColor,
-                                    borderRadius: BorderRadius.circular(16.0),
-                                  ),
-                                  child: Icon(
-                                    Icons.add,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                              ),
+                            child: _buildSpeedDial(
+                              context,
+                              isGroupView: isGroupView,
                             ),
                           ),
                         ),
@@ -274,44 +248,9 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ),
                                 const Spacer(),
-                                Tooltip(
-                                  message: isGroupView
-                                      ? 'Tag hozzáadása'
-                                      : 'Csoport hozzáadása / Csatlakozás',
-                                  child: InkWell(
-                                    onTap: () {
-                                      if (isGroupView) {
-                                        // Tag hozzáadása
-                                      } else {
-                                        // Navigate to Create Group Page
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                const CreateGroupPage(),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    customBorder: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16.0),
-                                    ),
-                                    child: Container(
-                                      width: 56,
-                                      height: 56,
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).primaryColor,
-                                        borderRadius: BorderRadius.circular(
-                                          16.0,
-                                        ),
-                                      ),
-                                      child: const Icon(
-                                        Icons.add,
-                                        color: Colors.white,
-                                        size: 32,
-                                      ),
-                                    ),
-                                  ),
+                                _buildSpeedDial(
+                                  context,
+                                  isGroupView: isGroupView,
                                 ),
                               ],
                             ),
@@ -343,6 +282,194 @@ class _HomePageState extends State<HomePage> {
                 });
               },
             ),
+    );
+  }
+
+  // Speed Dial Widget - Expandable FAB with two action buttons
+  Widget _buildSpeedDial(BuildContext context, {required bool isGroupView}) {
+    final theme = Theme.of(context);
+
+    // If in group view, show simple add member button
+    if (isGroupView) {
+      return InkWell(
+        onTap: () {},
+        customBorder: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.0),
+        ),
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: theme.primaryColor,
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          child: const Icon(Icons.add, color: Colors.white, size: 28),
+        ),
+      );
+    }
+
+    // Otherwise, show speed dial menu
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end, // Keep main FAB right-aligned
+      children: [
+        // Center the action buttons above the main FAB
+        Align(
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Action Button 1: Join Group
+              AnimatedScale(
+                scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 250),
+                  opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                  child: _isSpeedDialOpen
+                      ? Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Tooltip(
+                            message: 'Csatlakozás csoporthoz',
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _isSpeedDialOpen = false;
+                                });
+                                // Navigate to Join Group functionality
+                                // TODO: Implement join group dialog/page
+                              },
+                              customBorder: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: theme.primaryColor.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: theme.primaryColor.withOpacity(
+                                        0.3,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.group_add,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+              // Action Button 2: Create Group
+              AnimatedScale(
+                scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 250),
+                  opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                  child: _isSpeedDialOpen
+                      ? Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Tooltip(
+                            message: 'Csoport létrehozása',
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _isSpeedDialOpen = false;
+                                });
+                                // Navigate to Create Group Page
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const CreateGroupPage(),
+                                  ),
+                                );
+                              },
+                              customBorder: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: theme.primaryColor.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: theme.primaryColor.withOpacity(
+                                        0.3,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.add_circle_outline,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Main FAB
+        Tooltip(
+          message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
+          child: InkWell(
+            onTap: _toggleSpeedDial,
+            customBorder: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: theme.primaryColor,
+                borderRadius: BorderRadius.circular(16.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.primaryColor.withOpacity(0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: AnimatedRotation(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                turns: _isSpeedDialOpen ? 0.125 : 0, // 45 degrees rotation
+                child: Icon(
+                  _isSpeedDialOpen ? Icons.close : Icons.add,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

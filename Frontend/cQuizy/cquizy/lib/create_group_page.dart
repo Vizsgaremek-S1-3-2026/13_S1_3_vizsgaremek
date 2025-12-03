@@ -732,118 +732,72 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Group Card Preview
-          Container(
-            height: 160,
-            decoration: BoxDecoration(
-              gradient: previewGroup.getGradient(context),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: _selectedColor.withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
+          // Group Card Preview matching home_page.dart GroupCard
+          Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Container(
+                constraints: const BoxConstraints(),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: previewGroup.getGradient(context),
+                  borderRadius: BorderRadius.circular(5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _selectedColor.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    groupName,
-                    style: TextStyle(
-                      color: previewGroup.getTextColor(context),
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {}, // Preview only
+                    borderRadius: BorderRadius.circular(5),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 40.0,
+                        vertical: 20.0,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            previewGroup.title,
+                            style: TextStyle(
+                              color: previewGroup.getTextColor(context),
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            previewGroup.subtitle,
+                            style: TextStyle(
+                              color: previewGroup
+                                  .getTextColor(context)
+                                  .withOpacity(0.8),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Oktató: $teacherName',
-                    style: TextStyle(
-                      color: previewGroup
-                          .getTextColor(context)
-                          .withValues(alpha: 0.8),
-                      fontSize: 14,
-                    ),
-                  ),
-                  const Spacer(),
-                  Row(
-                    children: [
-                      if (_kioskMode)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: previewGroup
-                                .getTextColor(context)
-                                .withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.fullscreen,
-                                size: 14,
-                                color: previewGroup.getTextColor(context),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Kiosk',
-                                style: TextStyle(
-                                  color: previewGroup.getTextColor(context),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (_kioskMode && _antiCheat) const SizedBox(width: 8),
-                      if (_antiCheat)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: previewGroup
-                                .getTextColor(context)
-                                .withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.security,
-                                size: 14,
-                                color: previewGroup.getTextColor(context),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Anti Cheat',
-                                style: TextStyle(
-                                  color: previewGroup.getTextColor(context),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
+              // Kiosk mode indicator if enabled (keeping consistent with home page style if it had one,
+              // but home page uses a yellow square for notifications.
+              // Here we might want to show kiosk mode differently or just in the badges below.
+              // The user asked for "exactly the same", so maybe I should NOT add the kiosk icon ON the card
+              // if the home page card doesn't have it (it only has notification dot).
+              // However, the previous preview had it. I'll stick to the badges below for extra info
+              // and keep the card clean like home page.)
+            ],
           ),
           const SizedBox(height: 16),
           // Info badges
