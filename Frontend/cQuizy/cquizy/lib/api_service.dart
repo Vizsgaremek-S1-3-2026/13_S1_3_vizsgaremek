@@ -175,7 +175,7 @@ class ApiService {
     }
     // -----------------
 
-    final url = Uri.parse('$_baseUrl/users/me/password');
+    final url = Uri.parse('$_baseUrl/users/me/change-password');
     try {
       final response = await http.post(
         url,
@@ -184,7 +184,7 @@ class ApiService {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'current_password': currentPassword,
+          'old_password': currentPassword,
           'new_password': newPassword,
         }),
       );
@@ -199,6 +199,40 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('Hálózati hiba a jelszó módosítása során: $e');
+      return false;
+    }
+  }
+
+  // Fiók törlése
+  Future<bool> deleteAccount(String token, String password) async {
+    // --- TESZT MÓD ---
+    if (token == 'test_token') {
+      debugPrint('TESZT MÓD: Fiók törlése szimulálása');
+      return true;
+    }
+    // -----------------
+
+    final url = Uri.parse('$_baseUrl/users/me');
+    try {
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'password': password}),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        debugPrint(
+          'Fiók törlési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba a fiók törlése során: $e');
       return false;
     }
   }

@@ -94,4 +94,18 @@ class UserProvider extends ChangeNotifier {
     }
     return false;
   }
+
+  Future<bool> deleteAccount(String password) async {
+    if (_token == null) return false;
+    try {
+      final success = await _apiService.deleteAccount(_token!, password);
+      if (success) {
+        setToken(null); // Logout user
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Error deleting account: $e');
+    }
+    return false;
+  }
 }
