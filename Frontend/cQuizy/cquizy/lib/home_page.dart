@@ -58,7 +58,13 @@ class _HomePageState extends State<HomePage> {
     if (token == null) return;
 
     final apiService = ApiService();
-    final groupsData = await apiService.getUserGroups(token);
+    List<dynamic> groupsData;
+    try {
+      groupsData = await apiService.getUserGroups(token);
+    } catch (e) {
+      debugPrint('Error fetching groups: $e');
+      return;
+    }
 
     // Fetch admin names for groups where I am not the admin
     final Map<int, String> groupAdminNames = {};
@@ -111,7 +117,7 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     setState(() {
-      _myGroups = groupsData.map((json) {
+      final allGroups = groupsData.map((json) {
         // Parse color from hex string
         Color groupColor = Colors.blue;
         if (json['color'] != null) {
@@ -175,6 +181,10 @@ class _HomePageState extends State<HomePage> {
           rank: json['rank'],
         );
       }).toList();
+
+      // Split groups based on admin status
+      _myGroups = allGroups.where((g) => g.rank == 'ADMIN').toList();
+      _otherGroups = allGroups.where((g) => g.rank != 'ADMIN').toList();
 
       _cleanupExpiredNotifications();
       _activeTests = _getActiveTests();
@@ -376,6 +386,10 @@ class _HomePageState extends State<HomePage> {
                 setState(() {
                   _isMemberPanelOpen = isOpen;
                 });
+              },
+              onAdminTransferred: () async {
+                _unselectGroup();
+                await _fetchGroups();
               },
             ),
     );

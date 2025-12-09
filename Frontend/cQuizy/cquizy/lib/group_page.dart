@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
 import 'package:intl/intl.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:provider/provider.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
@@ -100,12 +99,14 @@ class GroupPage extends StatefulWidget {
   final Group group;
   final Function(Group) onTestExpired;
   final ValueChanged<bool>? onMemberPanelToggle;
+  final VoidCallback? onAdminTransferred;
 
   const GroupPage({
     super.key,
     required this.group,
     required this.onTestExpired,
     this.onMemberPanelToggle,
+    this.onAdminTransferred,
   });
 
   @override
@@ -117,6 +118,7 @@ class _GroupPageState extends State<GroupPage> {
   late List<Map<String, String>> _pastTests;
   List<Map<String, dynamic>> _members = [];
   bool _isLoadingMembers = false;
+  int? _expandedMemberId;
 
   @override
   void initState() {
@@ -177,7 +179,10 @@ class _GroupPageState extends State<GroupPage> {
               if (_isMembersPanelVisible)
                 GestureDetector(
                   onTap: () {
-                    setState(() => _isMembersPanelVisible = false);
+                    setState(() {
+                      _expandedMemberId = null;
+                      _isMembersPanelVisible = false;
+                    });
                     widget.onMemberPanelToggle?.call(false);
                   },
                   child: Container(color: Colors.black.withOpacity(0.5)),
@@ -532,42 +537,33 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  Future<void> _showDeleteConfirmation(
+  void _showDeleteConfirmation(
     BuildContext context,
-    String memberName,
-  ) async {
-    return showDialog<void>(
+    String userName,
+    int userId,
+  ) {
+    showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Tag törlése'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                Text('Biztosan törölni szeretnéd $memberName felhasználót?'),
-                const Text('Ez a művelet nem vonható vissza.'),
-              ],
-            ),
+          title: Text('Tag eltávolítása: $userName'),
+          content: Text(
+            'Biztosan el akarod távolítani $userName-t a csoportból?',
           ),
-          actions: <Widget>[
+          actions: [
             TextButton(
-              child: const Text('Mégse'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Mégsem'),
             ),
             TextButton(
-              child: const Text('Törlés', style: TextStyle(color: Colors.red)),
               onPressed: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('$memberName törölve.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
+                _removeMember(userId);
               },
+              child: const Text(
+                'Eltávolítás',
+                style: TextStyle(color: Colors.red),
+              ),
             ),
           ],
         );
@@ -575,49 +571,109 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  Future<void> _showAdminTransferConfirmation(
+  Future<void> _removeMember(int userId) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    setState(() => _isLoadingMembers = true);
+
+    final apiService = ApiService();
+    final success = await apiService.removeMember(
+      token,
+      widget.group.id!,
+      userId,
+    );
+
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tag sikeresen eltávolítva'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      _fetchMembers();
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba a tag eltávolításakor'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() => _isLoadingMembers = false);
+    }
+  }
+
+  void _showAdminTransferConfirmation(
     BuildContext context,
-    String memberName,
-  ) async {
-    return showDialog<void>(
+    String userName,
+    int userId,
+  ) {
+    showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Admin jog átadása'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                Text(
-                  'Biztosan át szeretnéd adni az admin jogot $memberName felhasználónak?',
-                ),
-                const Text('Ezzel te elveszíted az admin jogosultságot.'),
-              ],
-            ),
+          title: Text('Admin jog átadása: $userName'),
+          content: Text(
+            'Biztosan átadod az admin jogot $userName-nak? Ezzel elveszíted a csoport feletti adminisztrátori jogodat.',
           ),
-          actions: <Widget>[
+          actions: [
             TextButton(
-              child: const Text('Mégse'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Mégsem'),
             ),
             TextButton(
-              child: const Text('Átadás'),
               onPressed: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Admin jog átadva $memberName részére.'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                _transferAdmin(userId);
               },
+              child: const Text(
+                'Átadás',
+                style: TextStyle(color: Colors.orange),
+              ),
             ),
           ],
         );
       },
     );
+  }
+
+  Future<void> _transferAdmin(int userId) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    final apiService = ApiService();
+    final success = await apiService.transferAdmin(
+      token,
+      widget.group.id!,
+      userId,
+    );
+
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Admin jog sikeresen átadva'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        widget.onAdminTransferred?.call();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba az admin jog átadásakor'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildMembersPanel() {
@@ -671,7 +727,10 @@ class _GroupPageState extends State<GroupPage> {
                       color: theme.iconTheme.color?.withOpacity(0.7),
                     ),
                     onPressed: () {
-                      setState(() => _isMembersPanelVisible = false);
+                      setState(() {
+                        _expandedMemberId = null;
+                        _isMembersPanelVisible = false;
+                      });
                       widget.onMemberPanelToggle?.call(false);
                     },
                   ),
@@ -714,10 +773,12 @@ class _GroupPageState extends State<GroupPage> {
   Widget _buildMemberTile(Map<String, dynamic> member, {bool isAdmin = false}) {
     final theme = Theme.of(context);
     final user = member['user'] as Map<String, dynamic>?;
+    final userId = user?['id'] as int?;
     final nickname = user?['nickname'] as String? ?? '';
     final firstName = user?['first_name'] as String? ?? '';
     final lastName = user?['last_name'] as String? ?? '';
     final username = user?['username'] as String? ?? 'Felhasználó';
+    final pfpUrl = user?['pfp_url'] as String?;
 
     final displayName = nickname.isNotEmpty
         ? nickname
@@ -725,29 +786,166 @@ class _GroupPageState extends State<GroupPage> {
               ? '$lastName $firstName'.trim()
               : username);
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: isAdmin ? const Color(0xFFed2f5b) : theme.primaryColor,
-        child: Icon(isAdmin ? Icons.star : Icons.person, color: Colors.white),
+    final currentUser = Provider.of<UserProvider>(context, listen: false).user;
+    final isMe = currentUser?.id == userId;
+    final amIAdmin = widget.group.rank == 'ADMIN';
+    final canManage = amIAdmin && !isMe && !isAdmin;
+
+    final isExpanded = _expandedMemberId == userId;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isExpanded ? theme.cardColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: isExpanded ? Border.all(color: theme.dividerColor) : null,
       ),
-      title: Text(
-        displayName,
-        style: TextStyle(
-          color: theme.textTheme.bodyLarge?.color,
-          fontWeight: isAdmin ? FontWeight.bold : FontWeight.normal,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Main tile - always visible
+          ListTile(
+            onTap: canManage && userId != null
+                ? () {
+                    setState(() {
+                      _expandedMemberId = isExpanded ? null : userId;
+                    });
+                  }
+                : null,
+            leading: CircleAvatar(
+              backgroundColor: isAdmin
+                  ? const Color(0xFFed2f5b)
+                  : theme.primaryColor,
+              backgroundImage: pfpUrl != null && pfpUrl.isNotEmpty
+                  ? NetworkImage(pfpUrl)
+                  : null,
+              child: pfpUrl == null || pfpUrl.isEmpty
+                  ? Icon(
+                      isAdmin ? Icons.star : Icons.person,
+                      color: Colors.white,
+                    )
+                  : null,
+            ),
+            title: Text(
+              displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontWeight: isAdmin ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            subtitle: Text(
+              isAdmin ? 'Admin' : 'Tag',
+              style: TextStyle(
+                color: isAdmin
+                    ? const Color(0xFFED2F5B)
+                    : theme.textTheme.bodySmall?.color,
+              ),
+            ),
+            trailing: isAdmin
+                ? const Icon(Icons.workspace_premium, color: Color(0xFFed2f5b))
+                : (canManage
+                      ? AnimatedRotation(
+                          turns: isExpanded ? 0.25 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(
+                            Icons.keyboard_arrow_down,
+                            size: 24,
+                            color: theme.iconTheme.color?.withOpacity(0.5),
+                          ),
+                        )
+                      : null),
+          ),
+          // Action buttons - animated expand/collapse
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: isExpanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionButton(
+                            icon: Icons.admin_panel_settings,
+                            label: 'Admin átadása',
+                            color: Colors.orange,
+                            onTap: () {
+                              setState(() => _expandedMemberId = null);
+                              if (userId != null) {
+                                _showAdminTransferConfirmation(
+                                  context,
+                                  displayName,
+                                  userId,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildActionButton(
+                            icon: Icons.person_remove,
+                            label: 'Kidobás',
+                            color: Colors.red,
+                            onTap: () {
+                              setState(() => _expandedMemberId = null);
+                              if (userId != null) {
+                                _showDeleteConfirmation(
+                                  context,
+                                  displayName,
+                                  userId,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: color.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
-      subtitle: Text(
-        isAdmin ? 'Admin' : 'Tag',
-        style: TextStyle(
-          color: isAdmin
-              ? const Color(0xFFED2F5B)
-              : theme.textTheme.bodySmall?.color,
-        ),
-      ),
-      trailing: isAdmin
-          ? const Icon(Icons.workspace_premium, color: Color(0xFFed2f5b))
-          : null,
     );
   }
 

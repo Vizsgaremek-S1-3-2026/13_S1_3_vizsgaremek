@@ -362,7 +362,7 @@ class ApiService {
 
   // Admin jog átadása
   Future<bool> transferAdmin(String token, int groupId, int userId) async {
-    final url = Uri.parse('$_baseUrl/groups/$groupId/transfer_admin');
+    final url = Uri.parse('$_baseUrl/groups/$groupId/transfer');
     try {
       final response = await http.post(
         url,
@@ -370,7 +370,7 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'new_admin_id': userId}),
+        body: jsonEncode({'user_id': userId}),
       );
 
       if (response.statusCode == 200) {
