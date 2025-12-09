@@ -249,6 +249,90 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _showJoinGroupDialog() async {
+    final inviteCodeController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Csatlakozás csoporthoz'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Add meg a csoport meghívó kódját:',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: inviteCodeController,
+              decoration: InputDecoration(
+                labelText: 'Meghívó kód',
+                hintText: 'pl. ABC123',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                prefixIcon: const Icon(Icons.vpn_key),
+              ),
+              textCapitalization: TextCapitalization.characters,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Mégse'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Csatlakozás'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && inviteCodeController.text.isNotEmpty) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final token = userProvider.token;
+
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Hiba: Nincs bejelentkezve')),
+        );
+        return;
+      }
+
+      final apiService = ApiService();
+      final groupData = await apiService.joinGroup(
+        token,
+        inviteCodeController.text.trim(),
+      );
+
+      if (groupData != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sikeresen csatlakoztál a csoporthoz: ${groupData['name'] ?? 'Csoport'}',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Refresh group list
+        await _fetchGroups();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba: Érvénytelen meghívó kód'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+
+    inviteCodeController.dispose();
+  }
+
   void _toggleSpeedDial() {
     setState(() {
       _isSpeedDialOpen = !_isSpeedDialOpen;
@@ -399,21 +483,35 @@ class _HomePageState extends State<HomePage> {
   Widget _buildSpeedDial(BuildContext context, {required bool isGroupView}) {
     final theme = Theme.of(context);
 
-    // If in group view, show simple add member button
+    // If in group view, show simple add member button (only if admin)
     if (isGroupView) {
-      return InkWell(
-        onTap: () {},
-        customBorder: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16.0),
-        ),
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: theme.primaryColor,
-            borderRadius: BorderRadius.circular(16.0),
+      final isAdmin = _selectedGroup?.rank == 'ADMIN';
+
+      return AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: isAdmin ? 1.0 : 0.0,
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 300),
+          scale: isAdmin ? 1.0 : 0.0,
+          curve: Curves.easeInOut,
+          child: IgnorePointer(
+            ignoring: !isAdmin,
+            child: InkWell(
+              onTap: () {},
+              customBorder: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: BorderRadius.circular(16.0),
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
+              ),
+            ),
           ),
-          child: const Icon(Icons.add, color: Colors.white, size: 28),
         ),
       );
     }
@@ -447,8 +545,7 @@ class _HomePageState extends State<HomePage> {
                                 setState(() {
                                   _isSpeedDialOpen = false;
                                 });
-                                // Navigate to Join Group functionality
-                                // TODO: Implement join group dialog/page
+                                _showJoinGroupDialog();
                               },
                               customBorder: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12.0),

@@ -386,4 +386,34 @@ class ApiService {
       return false;
     }
   }
+
+  // Join a group using invite code
+  Future<Map<String, dynamic>?> joinGroup(
+    String token,
+    String inviteCode,
+  ) async {
+    final url = Uri.parse('$_baseUrl/groups/join');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'invite_code': inviteCode}),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        debugPrint(
+          'Csoporthoz csatlakozás hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba csoporthoz csatlakozás során: $e');
+      return null;
+    }
+  }
 }
