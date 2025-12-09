@@ -5,7 +5,9 @@ import 'models/user.dart';
 
 class ApiService {
   // Az API alap URL-je. Győződj meg róla, hogy a szerver ezen a címen fut.
-  static const String _baseUrl = 'http://127.0.0.1:8000/api';
+  //static const String _baseUrl = 'http://127.0.0.1:8000/api';
+  static const String _baseUrl =
+      'https://one3-s1-3-vizsgaremek.onrender.com/api';
 
   // Bejelentkezési funkció
   // Visszatérési érték: A szervertől kapott token, ha sikeres, egyébként null.
@@ -271,6 +273,116 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('Hálózati hiba az email módosítása során: $e');
+      return false;
+    }
+  }
+
+  // Csoportok lekérése
+  Future<List<Map<String, dynamic>>> getUserGroups(String token) async {
+    final url = Uri.parse('$_baseUrl/groups/');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint(
+          'Csoportok lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba a csoportok lekérése során: $e');
+      return [];
+    }
+  }
+
+  // Csoport tagjainak lekérése
+  Future<List<Map<String, dynamic>>> getGroupMembers(
+    String token,
+    int groupId,
+  ) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/members');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint(
+          'Csoport tagok lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba a csoport tagok lekérése során: $e');
+      return [];
+    }
+  }
+
+  // Tag eltávolítása
+  Future<bool> removeMember(String token, int groupId, int userId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/members/$userId');
+    try {
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return true;
+      } else {
+        debugPrint(
+          'Tag eltávolítási hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba a tag eltávolítása során: $e');
+      return false;
+    }
+  }
+
+  // Admin jog átadása
+  Future<bool> transferAdmin(String token, int groupId, int userId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/transfer_admin');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'new_admin_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        debugPrint(
+          'Admin átadási hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba az admin jog átadása során: $e');
       return false;
     }
   }

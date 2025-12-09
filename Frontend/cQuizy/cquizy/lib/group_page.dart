@@ -5,9 +5,13 @@ import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:provider/provider.dart';
+import 'api_service.dart';
+import 'providers/user_provider.dart';
 
 // --- MEOSZTOTT MODELL ---
 class Group {
+  final int? id;
   final String title;
   final String subtitle;
   final Color color;
@@ -15,8 +19,12 @@ class Group {
   final DateTime? testExpiryDate;
   final String? activeTestTitle;
   final String? activeTestDescription;
+  final String? inviteCode;
+  final String? inviteCodeFormatted;
+  final String? rank; // ADMIN = teacher/admin
 
   Group({
+    this.id,
     required this.title,
     required this.subtitle,
     required this.color,
@@ -24,6 +32,9 @@ class Group {
     this.testExpiryDate,
     this.activeTestTitle,
     this.activeTestDescription,
+    this.inviteCode,
+    this.inviteCodeFormatted,
+    this.rank,
   });
 
   Group copyWith({
@@ -104,6 +115,8 @@ class GroupPage extends StatefulWidget {
 class _GroupPageState extends State<GroupPage> {
   bool _isMembersPanelVisible = false;
   late List<Map<String, String>> _pastTests;
+  List<Map<String, dynamic>> _members = [];
+  bool _isLoadingMembers = false;
 
   @override
   void initState() {
@@ -113,6 +126,28 @@ class _GroupPageState extends State<GroupPage> {
       {'title': 'Számelmélet Dolgozat', 'detail': '4'},
       {'title': 'Félévi Felmérő', 'detail': '-'},
     ];
+    _fetchMembers();
+  }
+
+  Future<void> _fetchMembers() async {
+    if (widget.group.id == null) return;
+
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    setState(() => _isLoadingMembers = true);
+
+    final apiService = ApiService();
+    final membersData = await apiService.getGroupMembers(
+      token,
+      widget.group.id!,
+    );
+
+    setState(() {
+      _members = membersData;
+      _isLoadingMembers = false;
+    });
   }
 
   @override
@@ -623,7 +658,7 @@ class _GroupPageState extends State<GroupPage> {
                 children: [
                   Icon(Icons.group, color: theme.iconTheme.color, size: 24),
                   Text(
-                    'Csoport Tagjai (24)',
+                    'Csoport Tagjai (${_members.length})',
                     style: TextStyle(
                       color: theme.textTheme.bodyLarge?.color,
                       fontSize: 18,
@@ -646,111 +681,73 @@ class _GroupPageState extends State<GroupPage> {
             Divider(color: theme.dividerColor, height: 1),
             _buildInviteCodeCard(),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
-                children: [
-                  _buildSectionHeader('ADMIN'),
-                  Divider(color: theme.dividerColor, height: 1),
-
-                  ListTile(
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFFed2f5b),
-                      child: Icon(Icons.star, color: Colors.white),
-                    ),
-                    title: Text(
-                      'Admin Neve 1',
-                      style: TextStyle(
-                        color: theme.textTheme.bodyLarge?.color,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    subtitle: const Text(
-                      'Admin',
-                      style: TextStyle(color: Color(0xFFED2F5B)),
-                    ),
-                    trailing: const Icon(
-                      Icons.workspace_premium, // Korona ikon
-                      color: Color(0xFFed2f5b),
-                    ),
-                  ),
-                  _buildSectionHeader('TAGOK (23)'),
-                  Divider(color: theme.dividerColor, height: 1),
-
-                  ...List.generate(23, (index) {
-                    final memberIndex = index + 1;
-                    return Slidable(
-                      key: ValueKey(memberIndex),
-                      endActionPane: ActionPane(
-                        motion: const ScrollMotion(),
-                        extentRatio: 0.6,
-                        children: [
-                          SlidableAction(
-                            onPressed: (context) {
-                              _showAdminTransferConfirmation(
-                                context,
-                                'Tag Neve $memberIndex',
-                              );
-                            },
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                            icon: Icons.admin_panel_settings,
-                            label: 'Admin',
+              child: _isLoadingMembers
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                      children: [
+                        // Admins (rank == 'ADMIN')
+                        ..._members
+                            .where((m) => m['rank'] == 'ADMIN')
+                            .map((m) => _buildMemberTile(m, isAdmin: true))
+                            .toList(),
+                        if (_members.any((m) => m['rank'] != 'ADMIN')) ...[
+                          _buildSectionHeader(
+                            'TAGOK (${_members.where((m) => m['rank'] != 'ADMIN').length})',
                           ),
-                          SlidableAction(
-                            onPressed: (context) {
-                              _showDeleteConfirmation(
-                                context,
-                                'Tag Neve $memberIndex',
-                              );
-                            },
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            icon: Icons.delete,
-                            label: 'Törlés',
-                          ),
+                          Divider(color: theme.dividerColor, height: 1),
                         ],
-                      ),
-                      child: ListTile(
-                        leading: const CircleAvatar(
-                          backgroundColor: Colors.deepPurple,
-                          child: Icon(Icons.person, color: Colors.white),
-                        ),
-                        title: Text(
-                          'Tag Neve $memberIndex',
-                          style: TextStyle(
-                            color: theme.textTheme.bodyLarge?.color,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Felhasználónév$memberIndex',
-                          style: TextStyle(
-                            color: theme.textTheme.bodyMedium?.color,
-                          ),
-                        ),
-                        trailing: Builder(
-                          builder: (context) {
-                            return IconButton(
-                              icon: Icon(
-                                Icons.more_vert,
-                                color: theme.iconTheme.color?.withOpacity(0.5),
-                              ),
-                              onPressed: () {
-                                final slidable = Slidable.of(context);
-                                slidable?.openEndActionPane();
-                              },
-                              tooltip: 'Műveletek',
-                            );
-                          },
-                        ),
-                      ),
-                    );
-                  }),
-                ],
-              ),
+                        // Regular members
+                        ..._members
+                            .where((m) => m['rank'] != 'ADMIN')
+                            .map((m) => _buildMemberTile(m, isAdmin: false))
+                            .toList(),
+                      ],
+                    ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMemberTile(Map<String, dynamic> member, {bool isAdmin = false}) {
+    final theme = Theme.of(context);
+    final user = member['user'] as Map<String, dynamic>?;
+    final nickname = user?['nickname'] as String? ?? '';
+    final firstName = user?['first_name'] as String? ?? '';
+    final lastName = user?['last_name'] as String? ?? '';
+    final username = user?['username'] as String? ?? 'Felhasználó';
+
+    final displayName = nickname.isNotEmpty
+        ? nickname
+        : (firstName.isNotEmpty || lastName.isNotEmpty
+              ? '$lastName $firstName'.trim()
+              : username);
+
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: isAdmin ? const Color(0xFFed2f5b) : theme.primaryColor,
+        child: Icon(isAdmin ? Icons.star : Icons.person, color: Colors.white),
+      ),
+      title: Text(
+        displayName,
+        style: TextStyle(
+          color: theme.textTheme.bodyLarge?.color,
+          fontWeight: isAdmin ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      subtitle: Text(
+        isAdmin ? 'Admin' : 'Tag',
+        style: TextStyle(
+          color: isAdmin
+              ? const Color(0xFFED2F5B)
+              : theme.textTheme.bodySmall?.color,
+        ),
+      ),
+      trailing: isAdmin
+          ? const Icon(Icons.workspace_premium, color: Color(0xFFed2f5b))
+          : null,
     );
   }
 
@@ -771,7 +768,8 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   Widget _buildInviteCodeCard() {
-    const inviteCode = 'X7B2-K9P5';
+    final inviteCode =
+        widget.group.inviteCodeFormatted ?? widget.group.inviteCode ?? 'N/A';
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -833,7 +831,7 @@ class _GroupPageState extends State<GroupPage> {
                 ),
                 tooltip: 'Kód másolása',
                 onPressed: () {
-                  Clipboard.setData(const ClipboardData(text: inviteCode));
+                  Clipboard.setData(ClipboardData(text: inviteCode));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Meghívókód a vágólapra másolva!'),

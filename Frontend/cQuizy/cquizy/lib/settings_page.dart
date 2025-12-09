@@ -17,6 +17,94 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage>
     with SingleTickerProviderStateMixin {
+  // Avatarok listája (megegyezik a login_page.dart-tal)
+  static const List<Map<String, dynamic>> _avatars = [
+    {
+      'id': 'avatar_1',
+      'category': 'Figurák',
+      'icon': Icons.person_outline,
+      'color': Colors.blueGrey,
+    },
+    {
+      'id': 'avatar_2',
+      'category': 'Figurák',
+      'icon': Icons.face,
+      'color': Colors.cyan,
+    },
+    {
+      'id': 'avatar_3',
+      'category': 'Figurák',
+      'icon': Icons.smart_toy_outlined,
+      'color': Colors.orangeAccent,
+    },
+    {
+      'id': 'avatar_4',
+      'category': 'Figurák',
+      'icon': Icons.child_care,
+      'color': Colors.pinkAccent,
+    },
+    {
+      'id': 'avatar_5',
+      'category': 'Figurák',
+      'icon': Icons.catching_pokemon,
+      'color': Colors.red,
+    },
+    {
+      'id': 'avatar_6',
+      'category': 'Figurák',
+      'icon': Icons.eco_outlined,
+      'color': Colors.lightGreen,
+    },
+    {
+      'id': 'avatar_7',
+      'category': 'Figurák',
+      'icon': Icons.park_outlined,
+      'color': Colors.green,
+    },
+    {
+      'id': 'avatar_11',
+      'category': 'Szimbólumok',
+      'icon': Icons.science_outlined,
+      'color': Colors.purple,
+    },
+    {
+      'id': 'avatar_12',
+      'category': 'Szimbólumok',
+      'icon': Icons.sports_esports_outlined,
+      'color': Colors.teal,
+    },
+    {
+      'id': 'avatar_13',
+      'category': 'Szimbólumok',
+      'icon': Icons.rocket_launch_outlined,
+      'color': Colors.deepOrange,
+    },
+    {
+      'id': 'avatar_14',
+      'category': 'Szimbólumok',
+      'icon': Icons.music_note_outlined,
+      'color': Colors.lightBlue,
+    },
+    {
+      'id': 'avatar_15',
+      'category': 'Szimbólumok',
+      'icon': Icons.brush_outlined,
+      'color': Colors.deepPurpleAccent,
+    },
+    {
+      'id': 'avatar_16',
+      'category': 'Szimbólumok',
+      'icon': Icons.shield_outlined,
+      'color': Colors.blue,
+    },
+    {
+      'id': 'avatar_17',
+      'category': 'Szimbólumok',
+      'icon': Icons.favorite_border,
+      'color': Colors.redAccent,
+    },
+  ];
+
   String _selectedSection = 'Profil';
   late AnimationController _waveController;
 
@@ -972,7 +1060,7 @@ class _SettingsPageState extends State<SettingsPage>
     final lastNameController = TextEditingController(text: user.lastName);
     final nicknameController = TextEditingController(text: user.nickname);
     final emailController = TextEditingController(text: user.email);
-    final pfpUrlController = TextEditingController(text: user.pfpUrl ?? '');
+    String selectedAvatarId = user.pfpUrl ?? 'avatar_1';
     final passwordController = TextEditingController();
     final theme = Theme.of(context);
     final originalEmail = user.email;
@@ -1143,10 +1231,39 @@ class _SettingsPageState extends State<SettingsPage>
                                 ),
                               ],
                               const SizedBox(height: 24),
-                              _buildDialogTextField(
-                                pfpUrlController,
-                                'Profilkép URL',
-                                Icons.image_outlined,
+                              // Avatar picker button
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final result = await _showAvatarPickerDialog(
+                                    context,
+                                    selectedAvatarId,
+                                  );
+                                  if (result != null) {
+                                    setState(() {
+                                      selectedAvatarId = result;
+                                    });
+                                  }
+                                },
+                                icon: Icon(
+                                  _avatars.firstWhere(
+                                        (a) => a['id'] == selectedAvatarId,
+                                        orElse: () => _avatars.first,
+                                      )['icon']
+                                      as IconData,
+                                  color: theme.primaryColor,
+                                ),
+                                label: const Text('Profilkép módosítása'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: theme.primaryColor,
+                                  side: BorderSide(color: theme.primaryColor),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                    horizontal: 24,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 32),
 
@@ -1200,12 +1317,7 @@ class _SettingsPageState extends State<SettingsPage>
                                                     lastNameController.text,
                                                 'nickname':
                                                     nicknameController.text,
-                                                'pfp_url':
-                                                    pfpUrlController
-                                                        .text
-                                                        .isEmpty
-                                                    ? null
-                                                    : pfpUrlController.text,
+                                                'pfp_url': selectedAvatarId,
                                               };
 
                                               success = await context
@@ -1282,6 +1394,154 @@ class _SettingsPageState extends State<SettingsPage>
               },
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _showAvatarPickerDialog(
+    BuildContext context,
+    String currentAvatarId,
+  ) async {
+    final theme = Theme.of(context);
+    String selectedId = currentAvatarId;
+    final categories = _avatars
+        .map((a) => a['category'] as String)
+        .toSet()
+        .toList();
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Container(
+                width: 400,
+                height: 500,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Text(
+                      'Válassz profilképet',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: theme.textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Category buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: categories.map((category) {
+                        final isFirst = category == categories.first;
+                        return Padding(
+                          padding: EdgeInsets.only(left: isFirst ? 0 : 8),
+                          child: TextButton(
+                            onPressed: () {},
+                            child: Text(
+                              category,
+                              style: TextStyle(
+                                color: theme.primaryColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    // Avatar grid
+                    Expanded(
+                      child: GridView.builder(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                            ),
+                        itemCount: _avatars.length,
+                        itemBuilder: (context, index) {
+                          final avatar = _avatars[index];
+                          final isSelected = selectedId == avatar['id'];
+                          return GestureDetector(
+                            onTap: () {
+                              setState(
+                                () => selectedId = avatar['id'] as String,
+                              );
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? theme.primaryColor
+                                      : Colors.transparent,
+                                  width: 3,
+                                ),
+                                boxShadow: isSelected
+                                    ? [
+                                        BoxShadow(
+                                          color: theme.primaryColor.withOpacity(
+                                            0.4,
+                                          ),
+                                          blurRadius: 8,
+                                        ),
+                                      ]
+                                    : [],
+                              ),
+                              child: CircleAvatar(
+                                backgroundColor: avatar['color'] as Color,
+                                child: Icon(
+                                  avatar['icon'] as IconData,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Actions
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(
+                            'Mégse',
+                            style: TextStyle(
+                              color: theme.textTheme.bodyMedium?.color
+                                  ?.withOpacity(0.6),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context, selectedId),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: theme.primaryColor,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Kiválasztás'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );

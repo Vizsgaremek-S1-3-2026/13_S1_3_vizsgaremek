@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:provider/provider.dart';
 import 'group_page.dart';
 import 'settings_page.dart';
 import 'create_group_page.dart';
+import 'api_service.dart';
+import 'providers/user_provider.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -43,46 +46,55 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _initializeGroups() {
-    _myGroups = [
-      Group(
-        title: 'Matematika 8.A',
-        subtitle: 'Toszt Elek',
-        color: const Color.fromARGB(255, 255, 0, 8),
-      ),
-    ];
-    _otherGroups = [
-      Group(
-        title: 'Földrajz 7.C',
-        subtitle: 'Csillagos Klára',
-        color: const Color.fromARGB(255, 255, 170, 0),
-        hasNotification: false,
-      ),
-      Group(
-        title: 'Programozás alapjai 10.A',
-        subtitle: 'Kód Elek',
-        color: const Color.fromARGB(255, 206, 0, 233),
-        hasNotification: true,
-        testExpiryDate: DateTime.now().add(const Duration(seconds: 45)),
-        activeTestTitle: 'Algoritmusok I. Témazáró',
-        activeTestDescription:
-            'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
-      ),
-      Group(
-        title: 'Angol Haladó 11.B',
-        subtitle: 'Fordító Ágnes',
-        color: const Color.fromARGB(255, 0, 240, 196),
-        hasNotification: true,
-        testExpiryDate: DateTime.now().add(
-          const Duration(hours: 8, minutes: 30),
-        ),
-        activeTestTitle: 'Present Perfect Szódolgozat',
-        activeTestDescription:
-            'Rövid, 10 perces szódolgozat a legutóbbi órán vett szavakból.',
-      ),
-    ];
+    _myGroups = [];
+    _otherGroups = [];
+    _activeTests = [];
+    _fetchGroups();
+  }
 
-    _cleanupExpiredNotifications();
-    _activeTests = _getActiveTests();
+  Future<void> _fetchGroups() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final apiService = ApiService();
+    final groupsData = await apiService.getUserGroups(token);
+
+    setState(() {
+      _myGroups = groupsData.map((json) {
+        // Parse color from hex string
+        Color groupColor = Colors.blue;
+        if (json['color'] != null) {
+          try {
+            String colorStr = json['color'].toString();
+            if (colorStr.startsWith('#')) {
+              colorStr = colorStr.substring(1);
+            }
+            if (colorStr.length == 6) {
+              groupColor = Color(int.parse('FF$colorStr', radix: 16));
+            }
+          } catch (e) {
+            debugPrint('Color parsing error: $e');
+          }
+        }
+
+        // ADMIN rank means teacher/admin
+        final isAdmin = json['rank'] == 'ADMIN';
+
+        return Group(
+          id: json['id'],
+          title: json['name'] ?? 'Névtelen csoport',
+          subtitle: isAdmin ? 'Te vagy az admin' : 'Tag',
+          color: groupColor,
+          inviteCode: json['invite_code'],
+          inviteCodeFormatted: json['invite_code_formatted'],
+          rank: json['rank'],
+        );
+      }).toList();
+
+      _cleanupExpiredNotifications();
+      _activeTests = _getActiveTests();
+    });
   }
 
   void _cleanupExpiredNotifications() {
