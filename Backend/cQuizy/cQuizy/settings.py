@@ -18,6 +18,8 @@ from urllib.parse import urlparse, parse_qsl
 
 load_dotenv()
 
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-CHANGE_ME_LOCALLY')
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -56,6 +58,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # Whitenoise middleware for serving static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',

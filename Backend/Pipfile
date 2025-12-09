@@ -13,6 +13,7 @@ pydantic = {extras = ["email"], version = "*"}
 django-ninja = "*"
 django-colorfield = "*"
 django-cors-headers = "*"
+whitenoise = "*"
 
 [dev-packages]
 
