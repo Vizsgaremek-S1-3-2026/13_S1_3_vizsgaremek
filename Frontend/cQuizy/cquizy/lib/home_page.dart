@@ -60,6 +60,56 @@ class _HomePageState extends State<HomePage> {
     final apiService = ApiService();
     final groupsData = await apiService.getUserGroups(token);
 
+    // Fetch admin names for groups where I am not the admin
+    final Map<int, String> groupAdminNames = {};
+    final List<Future<void>> adminNameFutures = [];
+
+    for (var json in groupsData) {
+      if (json['rank'] != 'ADMIN') {
+        final groupId = json['id'];
+        if (groupId != null) {
+          adminNameFutures.add(() async {
+            try {
+              final members = await apiService.getGroupMembers(token, groupId);
+              final adminMember = members.firstWhere(
+                (m) => m['rank'] == 'ADMIN',
+                orElse: () => <String, dynamic>{},
+              );
+
+              if (adminMember.isNotEmpty && adminMember['user'] != null) {
+                final user = adminMember['user'] as Map<String, dynamic>;
+                final nickname = user['nickname']?.toString();
+                final firstName = user['first_name']?.toString();
+                final lastName = user['last_name']?.toString();
+                final username = user['username']?.toString();
+
+                String displayName = 'Admin';
+                if (nickname != null && nickname.isNotEmpty) {
+                  displayName = nickname;
+                } else if (firstName != null &&
+                    firstName.isNotEmpty &&
+                    lastName != null &&
+                    lastName.isNotEmpty) {
+                  displayName = '$lastName $firstName'.trim();
+                } else if (username != null && username.isNotEmpty) {
+                  displayName = username;
+                }
+                groupAdminNames[groupId] = displayName;
+              }
+            } catch (e) {
+              debugPrint('Error fetching admin for group $groupId: $e');
+            }
+          }());
+        }
+      }
+    }
+
+    if (adminNameFutures.isNotEmpty) {
+      await Future.wait(adminNameFutures);
+    }
+
+    if (!mounted) return;
+
     setState(() {
       _myGroups = groupsData.map((json) {
         // Parse color from hex string
@@ -80,11 +130,45 @@ class _HomePageState extends State<HomePage> {
 
         // ADMIN rank means teacher/admin
         final isAdmin = json['rank'] == 'ADMIN';
+        final groupId = json['id'];
 
         return Group(
-          id: json['id'],
+          id: groupId,
           title: json['name'] ?? 'Névtelen csoport',
-          subtitle: isAdmin ? 'Te vagy az admin' : 'Tag',
+          subtitle: () {
+            if (isAdmin) {
+              return 'Te vagy az admin';
+            }
+
+            // 1. Try fetched admin name
+            if (groupId != null && groupAdminNames.containsKey(groupId)) {
+              return groupAdminNames[groupId]!;
+            }
+
+            // Try to find admin name from API response
+            if (json['owner_name'] != null &&
+                json['owner_name'].toString().isNotEmpty) {
+              return json['owner_name'].toString();
+            }
+
+            if (json['owner'] != null && json['owner'] is Map) {
+              final owner = json['owner'];
+              final nickname = owner['nickname']?.toString();
+              if (nickname != null && nickname.isNotEmpty) return nickname;
+
+              final firstName = owner['first_name']?.toString();
+              final lastName = owner['last_name']?.toString();
+              if (firstName != null && firstName.isNotEmpty ||
+                  lastName != null && lastName.isNotEmpty) {
+                return '${lastName ?? ''} ${firstName ?? ''}'.trim();
+              }
+
+              final username = owner['username']?.toString();
+              if (username != null && username.isNotEmpty) return username;
+            }
+
+            return 'Admin'; // Fallback
+          }(),
           color: groupColor,
           inviteCode: json['invite_code'],
           inviteCodeFormatted: json['invite_code_formatted'],
