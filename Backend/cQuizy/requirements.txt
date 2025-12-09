@@ -1,0 +1,9 @@
+django
+dotenv
+psycopg
+pyjwt
+psycopg2-binary
+pydantic[email]
+django-ninja
+django-colorfield
+django-cors-headers
