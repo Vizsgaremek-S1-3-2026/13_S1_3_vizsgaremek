@@ -475,6 +475,21 @@ class _HomePageState extends State<HomePage> {
                 _unselectGroup();
                 await _fetchGroups();
               },
+              onGroupUpdated: () async {
+                final currentGroupId = _selectedGroup?.id;
+                await _fetchGroups();
+                if (currentGroupId != null) {
+                  // Find the updated group in both lists
+                  final allGroups = [..._myGroups, ..._otherGroups];
+                  final updatedGroup = allGroups.firstWhere(
+                    (g) => g.id == currentGroupId,
+                    orElse: () => _selectedGroup!,
+                  );
+                  setState(() {
+                    _selectedGroup = updatedGroup;
+                  });
+                }
+              },
             ),
     );
   }

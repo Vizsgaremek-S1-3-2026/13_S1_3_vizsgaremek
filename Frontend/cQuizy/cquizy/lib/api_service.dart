@@ -416,4 +416,45 @@ class ApiService {
       return null;
     }
   }
+
+  // Update group settings (name, color, anticheat, kiosk)
+  Future<bool> updateGroup(
+    String token,
+    int groupId, {
+    String? name,
+    String? color,
+    bool? anticheat,
+    bool? kiosk,
+  }) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId');
+
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (color != null) body['color'] = color;
+    if (anticheat != null) body['anticheat'] = anticheat;
+    if (kiosk != null) body['kiosk'] = kiosk;
+
+    try {
+      final response = await http.patch(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        debugPrint(
+          'Csoport frissítés hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba csoport frissítése során: $e');
+      return false;
+    }
+  }
 }
