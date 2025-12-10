@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
 import 'group_page.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'api_service.dart';
 
 class CreateGroupPage extends StatefulWidget {
@@ -292,12 +293,12 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 shadowColor: theme.primaryColor.withValues(alpha: 0.4),
               ),
               child: _isCreating
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(
+                      child: LoadingAnimationWidget.newtonCradle(
                         color: Colors.white,
-                        strokeWidth: 2,
+                        size: 24,
                       ),
                     )
                   : const Row(

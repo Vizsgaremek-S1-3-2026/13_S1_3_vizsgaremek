@@ -1,6 +1,7 @@
 // lib/group_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
 import 'package:intl/intl.dart';
@@ -237,153 +238,244 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(gradient: widget.group.getGradient(context)),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.group.title,
-                      style: TextStyle(
-                        color: widget.group.getTextColor(context),
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        shadows: [
-                          Shadow(
-                            blurRadius: 2,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.black38
-                                : Colors.white38,
-                            offset: const Offset(1, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Oktató: ${widget.group.subtitle}',
-                      style: TextStyle(
-                        color: widget.group
-                            .getTextColor(context)
-                            .withOpacity(0.9),
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: widget.group.getGradient(context),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 16 : 24,
+                isMobile ? 12 : 16,
+                isMobile ? 16 : 24,
+                isMobile ? 16 : 24,
               ),
-              Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (widget.group.rank == 'ADMIN') ...[
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _isCustomizePanelVisible = !_isCustomizePanelVisible;
-                          if (_isCustomizePanelVisible) {
-                            _isMembersPanelVisible = false;
-                          }
-                        });
-                        widget.onMemberPanelToggle?.call(
-                          _isCustomizePanelVisible || _isMembersPanelVisible,
-                        );
-                      },
-                      icon: Icon(
-                        Icons.settings,
-                        color: widget.group.getTextColor(context),
-                      ),
-                      label: Text(
-                        'Beállítások',
-                        style: TextStyle(
-                          color: widget.group.getTextColor(context),
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: widget.group
-                              .getTextColor(context)
-                              .withOpacity(0.7),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ] else ...[
-                    OutlinedButton.icon(
-                      onPressed: () => _showLeaveGroupConfirmation(context),
-                      icon: Icon(
-                        Icons.exit_to_app,
-                        color: widget.group.getTextColor(context),
-                      ),
-                      label: Text(
-                        'Csoport elhagyása',
-                        style: TextStyle(
-                          color: widget.group.getTextColor(context),
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: widget.group
-                              .getTextColor(context)
-                              .withOpacity(0.7),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _isMembersPanelVisible = !_isMembersPanelVisible;
-                        if (_isMembersPanelVisible) {
-                          _isCustomizePanelVisible = false;
-                        }
-                      });
-                      widget.onMemberPanelToggle?.call(
-                        _isMembersPanelVisible || _isCustomizePanelVisible,
-                      );
-                    },
-                    icon: Icon(
-                      Icons.people_outline,
+                  // Csoport neve
+                  Text(
+                    widget.group.title,
+                    style: TextStyle(
                       color: widget.group.getTextColor(context),
-                    ),
-                    label: Text(
-                      'Tagok',
-                      style: TextStyle(
-                        color: widget.group.getTextColor(context),
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: widget.group
-                            .getTextColor(context)
-                            .withOpacity(0.7),
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      fontSize: isMobile ? 22 : 32,
+                      fontWeight: FontWeight.bold,
+                      shadows: [
+                        Shadow(
+                          blurRadius: 2,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.black38
+                              : Colors.white38,
+                          offset: const Offset(1, 1),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  // Oktató neve
+                  Text(
+                    'Oktató: ${widget.group.subtitle}',
+                    style: TextStyle(
+                      color: widget.group
+                          .getTextColor(context)
+                          .withOpacity(0.9),
+                      fontSize: isMobile ? 13 : 18,
+                    ),
+                  ),
+                  SizedBox(height: isMobile ? 12 : 16),
+                  // Gombok
+                  if (isMobile)
+                    // Mobil nézet: csak ikonok
+                    Row(
+                      children: [
+                        if (widget.group.rank == 'ADMIN')
+                          _buildIconButton(
+                            icon: Icons.settings,
+                            tooltip: 'Beállítások',
+                            onPressed: () {
+                              setState(() {
+                                _isCustomizePanelVisible =
+                                    !_isCustomizePanelVisible;
+                                if (_isCustomizePanelVisible) {
+                                  _isMembersPanelVisible = false;
+                                }
+                              });
+                              widget.onMemberPanelToggle?.call(
+                                _isCustomizePanelVisible ||
+                                    _isMembersPanelVisible,
+                              );
+                            },
+                          )
+                        else
+                          _buildIconButton(
+                            icon: Icons.exit_to_app,
+                            tooltip: 'Csoport elhagyása',
+                            onPressed: () =>
+                                _showLeaveGroupConfirmation(context),
+                          ),
+                        const SizedBox(width: 8),
+                        _buildIconButton(
+                          icon: Icons.people_outline,
+                          tooltip: 'Tagok',
+                          onPressed: () {
+                            setState(() {
+                              _isMembersPanelVisible = !_isMembersPanelVisible;
+                              if (_isMembersPanelVisible) {
+                                _isCustomizePanelVisible = false;
+                              }
+                            });
+                            widget.onMemberPanelToggle?.call(
+                              _isMembersPanelVisible ||
+                                  _isCustomizePanelVisible,
+                            );
+                          },
+                        ),
+                      ],
+                    )
+                  else
+                    // Desktop nézet: teljes gombok
+                    Row(
+                      children: [
+                        if (widget.group.rank == 'ADMIN') ...[
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _isCustomizePanelVisible =
+                                    !_isCustomizePanelVisible;
+                                if (_isCustomizePanelVisible) {
+                                  _isMembersPanelVisible = false;
+                                }
+                              });
+                              widget.onMemberPanelToggle?.call(
+                                _isCustomizePanelVisible ||
+                                    _isMembersPanelVisible,
+                              );
+                            },
+                            icon: Icon(
+                              Icons.settings,
+                              color: widget.group.getTextColor(context),
+                            ),
+                            label: Text(
+                              'Beállítások',
+                              style: TextStyle(
+                                color: widget.group.getTextColor(context),
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: widget.group
+                                    .getTextColor(context)
+                                    .withOpacity(0.7),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ] else ...[
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                _showLeaveGroupConfirmation(context),
+                            icon: Icon(
+                              Icons.exit_to_app,
+                              color: widget.group.getTextColor(context),
+                            ),
+                            label: Text(
+                              'Csoport elhagyása',
+                              style: TextStyle(
+                                color: widget.group.getTextColor(context),
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: widget.group
+                                    .getTextColor(context)
+                                    .withOpacity(0.7),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _isMembersPanelVisible = !_isMembersPanelVisible;
+                              if (_isMembersPanelVisible) {
+                                _isCustomizePanelVisible = false;
+                              }
+                            });
+                            widget.onMemberPanelToggle?.call(
+                              _isMembersPanelVisible ||
+                                  _isCustomizePanelVisible,
+                            );
+                          },
+                          icon: Icon(
+                            Icons.people_outline,
+                            color: widget.group.getTextColor(context),
+                          ),
+                          label: Text(
+                            'Tagok',
+                            style: TextStyle(
+                              color: widget.group.getTextColor(context),
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: widget.group
+                                  .getTextColor(context)
+                                  .withOpacity(0.7),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
-            ],
+            ),
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: widget.group.getTextColor(context).withOpacity(0.5),
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            color: widget.group.getTextColor(context),
+            size: 20,
+          ),
+        ),
       ),
     );
   }
@@ -1413,7 +1505,12 @@ class _GroupPageState extends State<GroupPage> {
             if (widget.group.rank == 'ADMIN') _buildInviteCodeCard(),
             Expanded(
               child: _isLoadingMembers
-                  ? const Center(child: CircularProgressIndicator())
+                  ? Center(
+                      child: LoadingAnimationWidget.newtonCradle(
+                        color: theme.primaryColor,
+                        size: 200,
+                      ),
+                    )
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
                       children: [
@@ -1679,10 +1776,13 @@ class _GroupPageState extends State<GroupPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _isRegeneratingCode
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: LoadingAnimationWidget.newtonCradle(
+                        color: theme.primaryColor,
+                        size: 24,
+                      ),
                     )
                   : IconButton(
                       icon: Icon(

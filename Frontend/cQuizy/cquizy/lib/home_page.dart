@@ -143,7 +143,7 @@ class _HomePageState extends State<HomePage> {
           title: json['name'] ?? 'Névtelen csoport',
           subtitle: () {
             if (isAdmin) {
-              return 'Te vagy az admin';
+              return '';
             }
 
             // 1. Try fetched admin name
@@ -250,64 +250,28 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _showJoinGroupDialog() async {
-    final inviteCodeController = TextEditingController();
-
-    final result = await showDialog<bool>(
+    final inviteCode = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Csatlakozás csoporthoz'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Add meg a csoport meghívó kódját:',
-              style: TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: inviteCodeController,
-              decoration: InputDecoration(
-                labelText: 'Meghívó kód',
-                hintText: 'pl. ABC123',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                prefixIcon: const Icon(Icons.vpn_key),
-              ),
-              textCapitalization: TextCapitalization.characters,
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Mégse'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Csatlakozás'),
-          ),
-        ],
-      ),
+      builder: (context) => const _JoinGroupDialog(),
     );
 
-    if (result == true && inviteCodeController.text.isNotEmpty) {
+    if (inviteCode != null && inviteCode.isNotEmpty) {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       final token = userProvider.token;
 
       if (token == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Hiba: Nincs bejelentkezve')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Hiba: Nincs bejelentkezve')),
+          );
+        }
         return;
       }
 
       final apiService = ApiService();
-      final groupData = await apiService.joinGroup(
-        token,
-        inviteCodeController.text.trim(),
-      );
+      final groupData = await apiService.joinGroup(token, inviteCode.trim());
+
+      if (!mounted) return;
 
       if (groupData != null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -329,8 +293,6 @@ class _HomePageState extends State<HomePage> {
         );
       }
     }
-
-    inviteCodeController.dispose();
   }
 
   void _toggleSpeedDial() {
@@ -418,6 +380,7 @@ class _HomePageState extends State<HomePage> {
                               vertical: 8.0,
                             ),
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Builder(
                                   builder: (context) => _buildMenuButton(
@@ -733,33 +696,41 @@ class _HomePageState extends State<HomePage> {
 
   // A csoportlista
   Widget _buildGroupList() {
-    return ListView(
-      key: const ValueKey('group_list'),
-      padding: const EdgeInsets.symmetric(vertical: 40.0),
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 40.0),
-          child: HeaderWithDivider(title: 'Saját Csoportok'),
-        ),
-        const SizedBox(height: 20),
-        ..._myGroups
-            .map(
-              (group) => GroupCard(group: group, onGroupSelected: _selectGroup),
-            )
-            .toList(),
-        const SizedBox(height: 30),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 40.0),
-          child: HeaderWithDivider(title: 'További Csoportok'),
-        ),
-        const SizedBox(height: 20),
-        ..._otherGroups
-            .map(
-              (group) => GroupCard(group: group, onGroupSelected: _selectGroup),
-            )
-            .toList(),
-        const SizedBox(height: 80),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        return ListView(
+          key: const ValueKey('group_list'),
+          padding: EdgeInsets.symmetric(vertical: isMobile ? 20.0 : 40.0),
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 20.0 : 40.0),
+              child: const HeaderWithDivider(title: 'Saját Csoportok'),
+            ),
+            SizedBox(height: isMobile ? 12 : 20),
+            ..._myGroups
+                .map(
+                  (group) =>
+                      GroupCard(group: group, onGroupSelected: _selectGroup),
+                )
+                .toList(),
+            SizedBox(height: isMobile ? 20 : 30),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 20.0 : 40.0),
+              child: const HeaderWithDivider(title: 'További Csoportok'),
+            ),
+            SizedBox(height: isMobile ? 12 : 20),
+            ..._otherGroups
+                .map(
+                  (group) =>
+                      GroupCard(group: group, onGroupSelected: _selectGroup),
+                )
+                .toList(),
+            const SizedBox(height: 80),
+          ],
+        );
+      },
     );
   }
 
@@ -1203,69 +1174,78 @@ class GroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.centerLeft,
-      children: [
-        Container(
-          constraints: const BoxConstraints(),
-          margin: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: group.getGradient(context),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => onGroupSelected(group),
-              borderRadius: BorderRadius.circular(5),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 40.0,
-                  vertical: 20.0,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
 
-                  children: [
-                    Text(
-                      group.title,
-                      style: TextStyle(
-                        color: group.getTextColor(context),
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+        return Stack(
+          alignment: Alignment.centerLeft,
+          children: [
+            Container(
+              constraints: const BoxConstraints(),
+              margin: EdgeInsets.only(
+                bottom: isMobile ? 12.0 : 16.0,
+                left: isMobile ? 12.0 : 16.0,
+                right: isMobile ? 12.0 : 16.0,
+              ),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: group.getGradient(context),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => onGroupSelected(group),
+                  borderRadius: BorderRadius.circular(5),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isMobile ? 20.0 : 40.0,
+                      vertical: isMobile ? 14.0 : 20.0,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      group.subtitle,
-                      style: TextStyle(
-                        color: group.getTextColor(context).withOpacity(0.8),
-                        fontSize: 14,
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.title,
+                          style: TextStyle(
+                            color: group.getTextColor(context),
+                            fontSize: isMobile ? 18 : 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: isMobile ? 2 : 4),
+                        Text(
+                          group.subtitle,
+                          style: TextStyle(
+                            color: group.getTextColor(context).withOpacity(0.8),
+                            fontSize: isMobile ? 12 : 14,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-        if (group.hasNotification)
-          Positioned(
-            right: 25,
-            bottom: 25,
-            child: Container(
-              width: 18,
-              height: 18,
-              decoration: const BoxDecoration(
-                color: Color(0xfffdd835),
-                shape: BoxShape.rectangle,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
+            if (group.hasNotification)
+              Positioned(
+                right: isMobile ? 20 : 25,
+                bottom: isMobile ? 20 : 25,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: const BoxDecoration(
+                    color: Color(0xfffdd835),
+                    shape: BoxShape.rectangle,
+                    borderRadius: BorderRadius.all(Radius.circular(5)),
+                  ),
+                ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -1289,6 +1269,69 @@ class HeaderWithDivider extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Container(height: 1, color: theme.dividerColor),
+      ],
+    );
+  }
+}
+
+class _JoinGroupDialog extends StatefulWidget {
+  const _JoinGroupDialog();
+
+  @override
+  State<_JoinGroupDialog> createState() => _JoinGroupDialogState();
+}
+
+class _JoinGroupDialogState extends State<_JoinGroupDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Csatlakozás csoporthoz'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Add meg a csoport meghívó kódját:',
+            style: TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            decoration: InputDecoration(
+              labelText: 'Meghívó kód',
+              hintText: 'pl. ABC123',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              prefixIcon: const Icon(Icons.vpn_key),
+            ),
+            textCapitalization: TextCapitalization.characters,
+            autofocus: true,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('Mégse'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Csatlakozás'),
+        ),
       ],
     );
   }

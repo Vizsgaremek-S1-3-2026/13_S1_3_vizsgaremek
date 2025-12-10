@@ -1,6 +1,7 @@
 // lib/main.dart
 
 import 'package:flutter/material.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'login_page.dart';
 import 'home_page.dart';
 
@@ -99,7 +100,10 @@ class _AuthGateState extends State<AuthGate> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(color: theme.primaryColor),
+              LoadingAnimationWidget.newtonCradle(
+                color: theme.primaryColor,
+                size: 200,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Bejelentkezés...',

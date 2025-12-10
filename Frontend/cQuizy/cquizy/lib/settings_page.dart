@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:flutter/material.dart';
+
 import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
 import 'theme.dart';
@@ -508,7 +510,12 @@ class _SettingsPageState extends State<SettingsPage>
     final user = userProvider.user;
 
     if (user == null) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: LoadingAnimationWidget.newtonCradle(
+          color: theme.primaryColor,
+          size: 200,
+        ),
+      );
     }
 
     return ListView(
