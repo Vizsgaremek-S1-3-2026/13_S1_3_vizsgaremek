@@ -490,6 +490,10 @@ class _HomePageState extends State<HomePage> {
                   });
                 }
               },
+              onGroupLeft: () async {
+                _unselectGroup();
+                await _fetchGroups();
+              },
             ),
     );
   }
@@ -607,18 +611,21 @@ class _HomePageState extends State<HomePage> {
                           child: Tooltip(
                             message: 'Csoport létrehozása',
                             child: InkWell(
-                              onTap: () {
+                              onTap: () async {
                                 setState(() {
                                   _isSpeedDialOpen = false;
                                 });
-                                // Navigate to Create Group Page
-                                Navigator.push(
+                                // Navigate to Create Group Page and refresh if group created
+                                final result = await Navigator.push<bool>(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) =>
                                         const CreateGroupPage(),
                                   ),
                                 );
+                                if (result == true) {
+                                  _fetchGroups();
+                                }
                               },
                               customBorder: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12.0),

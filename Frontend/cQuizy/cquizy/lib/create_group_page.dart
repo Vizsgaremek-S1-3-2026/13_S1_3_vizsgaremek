@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
 import 'group_page.dart';
+import 'api_service.dart';
 
 class CreateGroupPage extends StatefulWidget {
   const CreateGroupPage({super.key});
@@ -17,6 +18,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   Color _selectedColor = const Color(0xFFE57373); // Default red
   bool _kioskMode = false;
   bool _antiCheat = true;
+  bool _isCreating = false;
 
   // HSL color picker state
   double _hue = 0.0; // 0-360
@@ -278,7 +280,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _createGroup,
+              onPressed: _isCreating ? null : _createGroup,
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
                 foregroundColor: Colors.white,
@@ -289,17 +291,29 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 elevation: 4,
                 shadowColor: theme.primaryColor.withValues(alpha: 0.4),
               ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add_circle_outline, size: 24),
-                  SizedBox(width: 12),
-                  Text(
-                    'Csoport Létrehozása',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
+              child: _isCreating
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_circle_outline, size: 24),
+                        SizedBox(width: 12),
+                        Text(
+                          'Csoport Létrehozása',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ],
@@ -858,22 +872,67 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}.';
   }
 
-  void _createGroup() {
+  Future<void> _createGroup() async {
     if (_formKey.currentState!.validate()) {
-      // TODO: API call to create group
-      // For now, just show success message and navigate back
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Csoport "${_groupNameController.text}" létrehozva!'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: _selectedColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+      setState(() => _isCreating = true);
+
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final token = userProvider.token;
+
+      if (token == null) {
+        setState(() => _isCreating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba: Nincs bejelentkezve'),
+            backgroundColor: Colors.red,
           ),
-        ),
+        );
+        return;
+      }
+
+      // Convert color to hex string (without alpha)
+      final colorHex = _selectedColor.value
+          .toRadixString(16)
+          .substring(2)
+          .toUpperCase();
+
+      final apiService = ApiService();
+      final result = await apiService.createGroup(
+        token,
+        _groupNameController.text.trim(),
+        colorHex,
       );
 
-      Navigator.pop(context);
+      if (!mounted) return;
+
+      setState(() => _isCreating = false);
+
+      if (result != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Csoport "${_groupNameController.text}" sikeresen létrehozva!',
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.green,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+        Navigator.pop(context, true); // Return true to indicate success
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Hiba a csoport létrehozásakor'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
     }
   }
 }

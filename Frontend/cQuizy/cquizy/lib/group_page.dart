@@ -101,6 +101,7 @@ class GroupPage extends StatefulWidget {
   final ValueChanged<bool>? onMemberPanelToggle;
   final VoidCallback? onAdminTransferred;
   final VoidCallback? onGroupUpdated;
+  final VoidCallback? onGroupLeft;
 
   const GroupPage({
     super.key,
@@ -109,6 +110,7 @@ class GroupPage extends StatefulWidget {
     this.onMemberPanelToggle,
     this.onAdminTransferred,
     this.onGroupUpdated,
+    this.onGroupLeft,
   });
 
   @override
@@ -135,6 +137,10 @@ class _GroupPageState extends State<GroupPage> {
   double _lightness = 0.6;
   bool _showCustomColorPicker = false;
 
+  // Invite Code State
+  String? _currentInviteCode;
+  bool _isRegeneratingCode = false;
+
   @override
   void initState() {
     super.initState();
@@ -152,6 +158,10 @@ class _GroupPageState extends State<GroupPage> {
     _hue = hsl.hue;
     _saturation = hsl.saturation;
     _lightness = hsl.lightness;
+
+    // Initialize invite code
+    _currentInviteCode =
+        widget.group.inviteCodeFormatted ?? widget.group.inviteCode;
   }
 
   @override
@@ -294,6 +304,31 @@ class _GroupPageState extends State<GroupPage> {
                       ),
                       label: Text(
                         'Beállítások',
+                        style: TextStyle(
+                          color: widget.group.getTextColor(context),
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: widget.group
+                              .getTextColor(context)
+                              .withOpacity(0.7),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ] else ...[
+                    OutlinedButton.icon(
+                      onPressed: () => _showLeaveGroupConfirmation(context),
+                      icon: Icon(
+                        Icons.exit_to_app,
+                        color: widget.group.getTextColor(context),
+                      ),
+                      label: Text(
+                        'Csoport elhagyása',
                         style: TextStyle(
                           color: widget.group.getTextColor(context),
                         ),
@@ -753,6 +788,107 @@ class _GroupPageState extends State<GroupPage> {
           ),
         );
       }
+    }
+  }
+
+  void _showLeaveGroupConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Csoport elhagyása'),
+          content: Text(
+            'Biztosan elhagyod a "${widget.group.title}" csoportot?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Mégsem'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _leaveGroup();
+              },
+              child: const Text(
+                'Elhagyás',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _leaveGroup() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    final apiService = ApiService();
+    final success = await apiService.leaveGroup(token, widget.group.id!);
+
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sikeresen elhagytad a "${widget.group.title}" csoportot',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        widget.onGroupLeft?.call();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba a csoport elhagyásakor'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _regenerateInviteCode() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    setState(() => _isRegeneratingCode = true);
+
+    final apiService = ApiService();
+    final result = await apiService.regenerateInviteCode(
+      token,
+      widget.group.id!,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _isRegeneratingCode = false);
+
+    if (result != null) {
+      setState(() {
+        _currentInviteCode =
+            result['invite_code_formatted'] ?? result['invite_code'];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Új meghívókód sikeresen generálva!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      widget.onGroupUpdated?.call();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hiba az új meghívókód generálásakor'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -1274,7 +1410,7 @@ class _GroupPageState extends State<GroupPage> {
               ),
             ),
             Divider(color: theme.dividerColor, height: 1),
-            _buildInviteCodeCard(),
+            if (widget.group.rank == 'ADMIN') _buildInviteCodeCard(),
             Expanded(
               child: _isLoadingMembers
                   ? const Center(child: CircularProgressIndicator())
@@ -1502,8 +1638,7 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   Widget _buildInviteCodeCard() {
-    final inviteCode =
-        widget.group.inviteCodeFormatted ?? widget.group.inviteCode ?? 'N/A';
+    final inviteCode = _currentInviteCode ?? 'N/A';
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -1543,21 +1678,20 @@ class _GroupPageState extends State<GroupPage> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                icon: Icon(
-                  Icons.refresh,
-                  color: theme.iconTheme.color?.withOpacity(0.7),
-                ),
-                tooltip: 'Új kód generálása',
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Új meghívókód generálása...'),
-                      backgroundColor: Colors.blue,
+              _isRegeneratingCode
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : IconButton(
+                      icon: Icon(
+                        Icons.refresh,
+                        color: theme.iconTheme.color?.withOpacity(0.7),
+                      ),
+                      tooltip: 'Új kód generálása',
+                      onPressed: _regenerateInviteCode,
                     ),
-                  );
-                },
-              ),
               IconButton(
                 icon: Icon(
                   Icons.copy_outlined,

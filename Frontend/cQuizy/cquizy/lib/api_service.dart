@@ -417,6 +417,63 @@ class ApiService {
     }
   }
 
+  // Create a new group
+  Future<Map<String, dynamic>?> createGroup(
+    String token,
+    String name,
+    String color,
+  ) async {
+    final url = Uri.parse('$_baseUrl/groups/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'name': name, 'color': color}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Csoport létrehozási hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba csoport létrehozása során: $e');
+      return null;
+    }
+  }
+
+  // Leave a group
+  Future<bool> leaveGroup(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/leave');
+    try {
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return true;
+      } else {
+        debugPrint(
+          'Csoport elhagyási hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba a csoport elhagyása során: $e');
+      return false;
+    }
+  }
+
   // Update group settings (name, color, anticheat, kiosk)
   Future<bool> updateGroup(
     String token,
@@ -455,6 +512,35 @@ class ApiService {
     } catch (e) {
       debugPrint('Hálózati hiba csoport frissítése során: $e');
       return false;
+    }
+  }
+
+  // Regenerate invite code for a group
+  Future<Map<String, dynamic>?> regenerateInviteCode(
+    String token,
+    int groupId,
+  ) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/regenerate-invite');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Meghívókód generálás hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba meghívókód generálása során: $e');
+      return null;
     }
   }
 }
