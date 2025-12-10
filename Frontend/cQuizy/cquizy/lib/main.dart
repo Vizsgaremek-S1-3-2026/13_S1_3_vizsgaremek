@@ -59,6 +59,15 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
+  @override
+  void initState() {
+    super.initState();
+    // Try auto-login when app starts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<UserProvider>().tryAutoLogin();
+    });
+  }
+
   // Ezt a metódust hívjuk meg, amikor a bejelentkezés sikeres.
   void _handleLogin(String token) {
     context.read<UserProvider>().setToken(token);
@@ -66,12 +75,36 @@ class _AuthGateState extends State<AuthGate> {
 
   // Ezt a metódust hívjuk meg, amikor a felhasználó kijelentkezik.
   void _handleLogout() {
-    context.read<UserProvider>().setToken(null);
+    context.read<UserProvider>().logout();
   }
 
   @override
   Widget build(BuildContext context) {
     final userProvider = context.watch<UserProvider>();
+    final theme = Theme.of(context);
+
+    // Show loading indicator while checking for stored token
+    if (userProvider.isLoading) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: theme.primaryColor),
+              const SizedBox(height: 24),
+              Text(
+                'Bejelentkezés...',
+                style: TextStyle(
+                  color: theme.textTheme.bodyLarge?.color,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     if (userProvider.isLoggedIn) {
       return HomePage(onLogout: _handleLogout);
