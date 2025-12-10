@@ -38,10 +38,18 @@ class _MainAppState extends State<MainApp> {
           return MaterialApp(
             title: 'cQuizy',
             themeMode: _themeProvider.themeMode,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
+            theme: _themeProvider.getLightTheme(),
+            darkTheme: _themeProvider.getDarkTheme(),
             debugShowCheckedModeBanner: false,
             home: const AuthGate(),
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(_themeProvider.fontScale),
+                ),
+                child: child!,
+              );
+            },
           );
         },
       ),

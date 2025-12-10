@@ -19,6 +19,22 @@ class AppTheme {
   static const Color _darkSubtext = Color(0xFF9E9E9E);
   static const Color _darkDivider = Color(0xFF333333);
 
+  // --- High Contrast Light Theme Colors ---
+  static const Color _hcLightPrimary = Color(0xFFD41E47);
+  static const Color _hcLightBackground = Color(0xFFFFFFFF);
+  static const Color _hcLightSurface = Color(0xFFFFFFFF);
+  static const Color _hcLightText = Color(0xFF000000);
+  static const Color _hcLightSubtext = Color(0xFF333333);
+  static const Color _hcLightDivider = Color(0xFF000000);
+
+  // --- High Contrast Dark Theme Colors ---
+  static const Color _hcDarkPrimary = Color(0xFFFF4D73);
+  static const Color _hcDarkBackground = Color(0xFF000000);
+  static const Color _hcDarkSurface = Color(0xFF0A0A0A);
+  static const Color _hcDarkText = Color(0xFFFFFFFF);
+  static const Color _hcDarkSubtext = Color(0xFFCCCCCC);
+  static const Color _hcDarkDivider = Color(0xFFFFFFFF);
+
   static final ThemeData lightTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
@@ -70,27 +86,118 @@ class AppTheme {
     ),
     iconTheme: const IconThemeData(color: _darkText),
   );
+
+  // High Contrast Light Theme
+  static final ThemeData highContrastLightTheme = ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.light,
+    primaryColor: _hcLightPrimary,
+    scaffoldBackgroundColor: _hcLightBackground,
+    cardColor: _hcLightSurface,
+    dividerColor: _hcLightDivider,
+    colorScheme: const ColorScheme.light(
+      primary: _hcLightPrimary,
+      surface: _hcLightSurface,
+      onSurface: _hcLightText,
+      secondary: _hcLightPrimary,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: _hcLightBackground,
+      foregroundColor: _hcLightText,
+      elevation: 0,
+    ),
+    textTheme: const TextTheme(
+      bodyLarge: TextStyle(color: _hcLightText, fontWeight: FontWeight.w500),
+      bodyMedium: TextStyle(color: _hcLightText, fontWeight: FontWeight.w500),
+      titleMedium: TextStyle(
+        color: _hcLightSubtext,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+    iconTheme: const IconThemeData(color: _hcLightText),
+  );
+
+  // High Contrast Dark Theme
+  static final ThemeData highContrastDarkTheme = ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    primaryColor: _hcDarkPrimary,
+    scaffoldBackgroundColor: _hcDarkBackground,
+    cardColor: _hcDarkSurface,
+    dividerColor: _hcDarkDivider,
+    colorScheme: const ColorScheme.dark(
+      primary: _hcDarkPrimary,
+      surface: _hcDarkSurface,
+      onSurface: _hcDarkText,
+      secondary: _hcDarkPrimary,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: _hcDarkBackground,
+      foregroundColor: _hcDarkText,
+      elevation: 0,
+    ),
+    textTheme: const TextTheme(
+      bodyLarge: TextStyle(color: _hcDarkText, fontWeight: FontWeight.w500),
+      bodyMedium: TextStyle(color: _hcDarkText, fontWeight: FontWeight.w500),
+      titleMedium: TextStyle(
+        color: _hcDarkSubtext,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+    iconTheme: const IconThemeData(color: _hcDarkText),
+  );
 }
 
 class ThemeProvider with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
+  double _fontScale = 1.0;
+  bool _highContrast = false;
 
   ThemeMode get themeMode => _themeMode;
+  double get fontScale => _fontScale;
+  bool get highContrast => _highContrast;
 
   bool get isDarkMode {
-    if (_themeMode == ThemeMode.system) {
-      // This is a bit tricky without context, but usually we can default to dark or light
-      // For now, let's assume system default.
-      // To properly return bool, we might need BuildContext, but for the switch state
-      // we can check if it's explicitly dark.
-      return _themeMode == ThemeMode.dark;
-    }
     return _themeMode == ThemeMode.dark;
+  }
+
+  bool get isSystemMode {
+    return _themeMode == ThemeMode.system;
+  }
+
+  bool get isLightMode {
+    return _themeMode == ThemeMode.light;
   }
 
   void toggleTheme(bool isDark) {
     _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
     notifyListeners();
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
+    notifyListeners();
+  }
+
+  void setFontScale(double scale) {
+    _fontScale = scale.clamp(0.8, 1.5);
+    notifyListeners();
+  }
+
+  void setHighContrast(bool value) {
+    _highContrast = value;
+    notifyListeners();
+  }
+
+  // Get the appropriate theme based on high contrast setting
+  ThemeData getLightTheme() {
+    return _highContrast
+        ? AppTheme.highContrastLightTheme
+        : AppTheme.lightTheme;
+  }
+
+  ThemeData getDarkTheme() {
+    return _highContrast ? AppTheme.highContrastDarkTheme : AppTheme.darkTheme;
   }
 }
 

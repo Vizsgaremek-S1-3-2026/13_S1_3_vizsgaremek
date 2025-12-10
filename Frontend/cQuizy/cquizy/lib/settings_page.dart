@@ -715,7 +715,6 @@ class _SettingsPageState extends State<SettingsPage>
   Widget _buildAppearanceSettings(BuildContext context) {
     final theme = Theme.of(context);
     final themeProvider = ThemeInherited.of(context);
-    final isDark = themeProvider.isDarkMode;
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
@@ -754,22 +753,22 @@ class _SettingsPageState extends State<SettingsPage>
                   _buildThemeOption(
                     context,
                     title: 'Sötét',
-                    isSelected: isDark,
-                    onTap: () => themeProvider.toggleTheme(true),
+                    isSelected: themeProvider.isDarkMode,
+                    onTap: () => themeProvider.setThemeMode(ThemeMode.dark),
                   ),
                   const SizedBox(height: 12),
                   _buildThemeOption(
                     context,
                     title: 'Világos',
-                    isSelected: !isDark,
-                    onTap: () => themeProvider.toggleTheme(false),
+                    isSelected: themeProvider.isLightMode,
+                    onTap: () => themeProvider.setThemeMode(ThemeMode.light),
                   ),
                   const SizedBox(height: 12),
                   _buildThemeOption(
                     context,
                     title: 'Rendszer téma',
-                    isSelected: false,
-                    onTap: () {},
+                    isSelected: themeProvider.isSystemMode,
+                    onTap: () => themeProvider.setThemeMode(ThemeMode.system),
                   ),
                 ],
               );
@@ -781,8 +780,8 @@ class _SettingsPageState extends State<SettingsPage>
                     child: _buildThemeOption(
                       context,
                       title: 'Sötét',
-                      isSelected: isDark,
-                      onTap: () => themeProvider.toggleTheme(true),
+                      isSelected: themeProvider.isDarkMode,
+                      onTap: () => themeProvider.setThemeMode(ThemeMode.dark),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -790,8 +789,8 @@ class _SettingsPageState extends State<SettingsPage>
                     child: _buildThemeOption(
                       context,
                       title: 'Világos',
-                      isSelected: !isDark,
-                      onTap: () => themeProvider.toggleTheme(false),
+                      isSelected: themeProvider.isLightMode,
+                      onTap: () => themeProvider.setThemeMode(ThemeMode.light),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -799,8 +798,8 @@ class _SettingsPageState extends State<SettingsPage>
                     child: _buildThemeOption(
                       context,
                       title: 'Rendszer téma',
-                      isSelected: false,
-                      onTap: () {},
+                      isSelected: themeProvider.isSystemMode,
+                      onTap: () => themeProvider.setThemeMode(ThemeMode.system),
                     ),
                   ),
                 ],
@@ -809,6 +808,171 @@ class _SettingsPageState extends State<SettingsPage>
           },
         ),
         const SizedBox(height: 32),
+        // Font Size Section
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Text(
+            'BETŰMÉRET',
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Szöveg mérete',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyLarge?.color,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${(themeProvider.fontScale * 100).round()}%',
+                      style: TextStyle(
+                        color: theme.primaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Text(
+                    'A',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
+                        alpha: 0.5,
+                      ),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        activeTrackColor: theme.primaryColor,
+                        inactiveTrackColor: theme.primaryColor.withValues(
+                          alpha: 0.2,
+                        ),
+                        thumbColor: theme.primaryColor,
+                        overlayColor: theme.primaryColor.withValues(alpha: 0.2),
+                        trackHeight: 6,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 10,
+                        ),
+                      ),
+                      child: Slider(
+                        value: themeProvider.fontScale,
+                        min: 0.8,
+                        max: 1.5,
+                        divisions: 7,
+                        onChanged: (value) => themeProvider.setFontScale(value),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'A',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
+                        alpha: 0.5,
+                      ),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.dividerColor),
+                ),
+                child: Text(
+                  'Előnézet: Ez egy példa szöveg a betűméret beállításához.',
+                  style: TextStyle(
+                    color: theme.textTheme.bodyLarge?.color,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+        // High Contrast Section
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Text(
+            'LÁTHATÓSÁG',
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'Magas kontraszt',
+          subtitle: 'Növelt láthatóság és kontrasztosabb színek',
+          trailing: Switch(
+            value: themeProvider.highContrast,
+            activeColor: theme.primaryColor,
+            onChanged: (val) => themeProvider.setHighContrast(val),
+            thumbColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return theme.colorScheme.outline;
+            }),
+            trackColor: WidgetStateProperty.resolveWith<Color>((
+              Set<WidgetState> states,
+            ) {
+              if (states.contains(WidgetState.selected)) {
+                return theme.primaryColor;
+              }
+              return theme.colorScheme.surfaceContainerHighest;
+            }),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+          ),
+        ),
+        const SizedBox(height: 32),
+        // Feedback Section
         Padding(
           padding: const EdgeInsets.only(left: 8.0),
           child: Text(
@@ -968,24 +1132,155 @@ class _SettingsPageState extends State<SettingsPage>
 
   Widget _buildAccessibilitySettings(BuildContext context) {
     final theme = Theme.of(context);
+    final themeProvider = ThemeInherited.of(context);
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
       children: [
-        _buildSettingsCard(
-          context,
-          title: 'Betűméret',
-          subtitle: 'Szöveg méretének beállítása',
-          onTap: () {},
+        // Font Size Section
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Text(
+            'BETŰMÉRET',
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Szöveg mérete',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyLarge?.color,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${(themeProvider.fontScale * 100).round()}%',
+                      style: TextStyle(
+                        color: theme.primaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Text(
+                    'A',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
+                        alpha: 0.5,
+                      ),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        activeTrackColor: theme.primaryColor,
+                        inactiveTrackColor: theme.primaryColor.withValues(
+                          alpha: 0.2,
+                        ),
+                        thumbColor: theme.primaryColor,
+                        overlayColor: theme.primaryColor.withValues(alpha: 0.2),
+                        trackHeight: 6,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 10,
+                        ),
+                      ),
+                      child: Slider(
+                        value: themeProvider.fontScale,
+                        min: 0.8,
+                        max: 1.5,
+                        divisions: 7,
+                        onChanged: (value) => themeProvider.setFontScale(value),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'A',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
+                        alpha: 0.5,
+                      ),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.dividerColor),
+                ),
+                child: Text(
+                  'Előnézet: Ez egy példa szöveg a betűméret beállításához.',
+                  style: TextStyle(
+                    color: theme.textTheme.bodyLarge?.color,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        // High Contrast Section
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Text(
+            'LÁTHATÓSÁG',
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         _buildSettingsCard(
           context,
           title: 'Magas kontraszt',
-          subtitle: 'Jobb láthatóság',
+          subtitle: 'Növelt láthatóság és kontrasztosabb színek',
           trailing: Switch(
-            value: false,
+            value: themeProvider.highContrast,
             activeColor: theme.primaryColor,
-            onChanged: (val) {},
+            onChanged: (val) => themeProvider.setHighContrast(val),
             thumbColor: WidgetStateProperty.resolveWith<Color>((
               Set<WidgetState> states,
             ) {
