@@ -1,6 +1,7 @@
 // lib/login_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
@@ -12,7 +13,7 @@ import 'api_service.dart'; // Importáljuk az API szolgáltatást
 enum PasswordStrength { none, weak, medium, strong }
 
 class LoginPage extends StatefulWidget {
-  final VoidCallback
+  final Function(String)
   onLoginSuccess; // Callback a sikeres bejelentkezés jelzésére
 
   const LoginPage({super.key, required this.onLoginSuccess});
@@ -181,7 +182,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     if (mounted) {
       setState(() => _isLoading = false);
       if (token != null) {
-        widget.onLoginSuccess(); // Sikeres bejelentkezés jelzésére
+        widget.onLoginSuccess(token); // Sikeres bejelentkezés jelzésére
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -572,12 +573,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   ),
                   onPressed: _isLoading ? null : _handleLogin,
                   child: _isLoading
-                      ? const SizedBox(
+                      ? SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(
+                          child: LoadingAnimationWidget.newtonCradle(
                             color: Colors.white,
-                            strokeWidth: 3,
+                            size: 20,
                           ),
                         )
                       : const Text(
@@ -830,12 +831,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       ? (_isRegisterButtonEnabled ? _nextPage : null)
                       : _nextPage,
                   child: _isLoading && _currentPage == pages.length - 1
-                      ? const SizedBox(
+                      ? SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(
+                          child: LoadingAnimationWidget.newtonCradle(
                             color: Colors.white,
-                            strokeWidth: 3,
+                            size: 20,
                           ),
                         )
                       : Text(

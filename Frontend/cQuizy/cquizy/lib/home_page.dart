@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:provider/provider.dart';
 import 'group_page.dart';
 import 'settings_page.dart';
+import 'create_group_page.dart';
+import 'api_service.dart';
+import 'providers/user_provider.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -22,6 +26,7 @@ class _HomePageState extends State<HomePage> {
 
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
+  bool _isSpeedDialOpen = false;
 
   @override
   void initState() {
@@ -41,46 +46,175 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _initializeGroups() {
-    _myGroups = [
-      Group(
-        title: 'Matematika 8.A',
-        subtitle: 'Toszt Elek',
-        color: const Color.fromARGB(255, 255, 0, 8),
-      ),
-    ];
-    _otherGroups = [
-      Group(
-        title: 'Földrajz 7.C',
-        subtitle: 'Csillagos Klára',
-        color: const Color.fromARGB(255, 255, 170, 0),
-        hasNotification: false,
-      ),
-      Group(
-        title: 'Programozás alapjai 10.A',
-        subtitle: 'Kód Elek',
-        color: const Color.fromARGB(255, 206, 0, 233),
-        hasNotification: true,
-        testExpiryDate: DateTime.now().add(const Duration(seconds: 45)),
-        activeTestTitle: 'Algoritmusok I. Témazáró',
-        activeTestDescription:
-            'Ez a teszt a tanév első felében tanult alapvető algoritmusokat (sorbarendezés, keresés) kéri számon. A teszt 45 perces.',
-      ),
-      Group(
-        title: 'Angol Haladó 11.B',
-        subtitle: 'Fordító Ágnes',
-        color: const Color.fromARGB(255, 0, 240, 196),
-        hasNotification: true,
-        testExpiryDate: DateTime.now().add(
-          const Duration(hours: 8, minutes: 30),
-        ),
-        activeTestTitle: 'Present Perfect Szódolgozat',
-        activeTestDescription:
-            'Rövid, 10 perces szódolgozat a legutóbbi órán vett szavakból.',
-      ),
-    ];
+    _myGroups = [];
+    _otherGroups = [];
+    _activeTests = [];
+    _fetchGroups();
+  }
 
-    _cleanupExpiredNotifications();
-    _activeTests = _getActiveTests();
+  Future<void> _fetchGroups() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final apiService = ApiService();
+    List<dynamic> groupsData;
+    try {
+      groupsData = await apiService.getUserGroups(token);
+    } catch (e) {
+      debugPrint('Error fetching groups: $e');
+      return;
+    }
+
+    final Map<int, String> groupAdminNames = {};
+    final Map<int, String> groupAdminFirstNames = {};
+    final Map<int, String> groupAdminLastNames = {};
+    final List<Future<void>> adminNameFutures = [];
+
+    for (var json in groupsData) {
+      if (json['rank'] != 'ADMIN') {
+        final groupId = json['id'];
+        if (groupId != null) {
+          adminNameFutures.add(() async {
+            try {
+              final members = await apiService.getGroupMembers(token, groupId);
+              final adminMember = members.firstWhere(
+                (m) => m['rank'] == 'ADMIN',
+                orElse: () => <String, dynamic>{},
+              );
+
+              if (adminMember.isNotEmpty && adminMember['user'] != null) {
+                final user = adminMember['user'] as Map<String, dynamic>;
+                final firstName = user['first_name']?.toString() ?? '';
+                final lastName = user['last_name']?.toString() ?? '';
+                final nickname = user['nickname']?.toString() ?? '';
+                final username = user['username']?.toString() ?? '';
+
+                // Store first and last name separately
+                groupAdminFirstNames[groupId] = firstName;
+                groupAdminLastNames[groupId] = lastName;
+
+                // Prioritize full name over nickname
+                String displayName = 'Admin';
+                if (firstName.isNotEmpty || lastName.isNotEmpty) {
+                  displayName = '$lastName $firstName'.trim();
+                } else if (nickname.isNotEmpty) {
+                  displayName = nickname;
+                } else if (username.isNotEmpty) {
+                  displayName = username;
+                }
+                groupAdminNames[groupId] = displayName;
+              }
+            } catch (e) {
+              debugPrint('Error fetching admin for group $groupId: $e');
+            }
+          }());
+        }
+      }
+    }
+
+    if (adminNameFutures.isNotEmpty) {
+      await Future.wait(adminNameFutures);
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      final allGroups = groupsData.map((json) {
+        // Parse color from hex string
+        Color groupColor = Colors.blue;
+        if (json['color'] != null) {
+          try {
+            String colorStr = json['color'].toString();
+            if (colorStr.startsWith('#')) {
+              colorStr = colorStr.substring(1);
+            }
+            if (colorStr.length == 6) {
+              groupColor = Color(int.parse('FF$colorStr', radix: 16));
+            }
+          } catch (e) {
+            debugPrint('Color parsing error: $e');
+          }
+        }
+
+        // ADMIN rank means teacher/admin
+        final isAdmin = json['rank'] == 'ADMIN';
+        final groupId = json['id'];
+
+        // Extract instructor first and last name separately
+        String instructorFirstName = '';
+        String instructorLastName = '';
+
+        if (isAdmin) {
+          // If I am admin, use my name from UserProvider
+          final user = userProvider.user;
+          if (user != null) {
+            instructorFirstName = user.firstName;
+            instructorLastName = user.lastName;
+          }
+        } else {
+          // First try to get from members API lookup
+          if (groupId != null && groupAdminFirstNames.containsKey(groupId)) {
+            instructorFirstName = groupAdminFirstNames[groupId]!;
+            instructorLastName = groupAdminLastNames[groupId] ?? '';
+          }
+          // Fall back to owner object in API response
+          else if (json['owner'] != null && json['owner'] is Map) {
+            final owner = json['owner'];
+            instructorFirstName = owner['first_name']?.toString() ?? '';
+            instructorLastName = owner['last_name']?.toString() ?? '';
+          }
+        }
+
+        // Resolve owner name (Teacher's Full Name) for display
+        String ownerName = (() {
+          if (isAdmin) {
+            final user = userProvider.user;
+            if (user != null &&
+                (user.firstName.isNotEmpty || user.lastName.isNotEmpty)) {
+              return '${user.lastName} ${user.firstName}'.trim();
+            }
+            return user?.username ?? 'Én';
+          }
+
+          // 1. Try fetched admin name (from group members lookup)
+          if (groupId != null && groupAdminNames.containsKey(groupId)) {
+            return groupAdminNames[groupId]!;
+          }
+
+          // 2. Try owner_name field (API provided name)
+          if (json['owner_name'] != null &&
+              json['owner_name'].toString().isNotEmpty) {
+            return json['owner_name'].toString();
+          }
+
+          if (instructorFirstName.isNotEmpty || instructorLastName.isNotEmpty) {
+            return '$instructorLastName $instructorFirstName'.trim();
+          }
+
+          return 'Admin'; 
+        })();
+
+        return Group(
+          id: groupId,
+          title: json['name'] ?? 'Névtelen csoport',
+          ownerName: ownerName,
+          instructorFirstName: instructorFirstName,
+          instructorLastName: instructorLastName,
+          subtitle: isAdmin ? '' : ownerName, // Logic for Home Page Card
+          color: groupColor,
+          inviteCode: json['invite_code'],
+          inviteCodeFormatted: json['invite_code_formatted'],
+          rank: json['rank'],
+        );
+      }).toList();
+
+      _myGroups = allGroups.where((g) => g.rank == 'ADMIN').toList();
+      _otherGroups = allGroups.where((g) => g.rank != 'ADMIN').toList();
+
+      _cleanupExpiredNotifications();
+      _activeTests = _getActiveTests();
+    });
   }
 
   void _cleanupExpiredNotifications() {
@@ -141,6 +275,57 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _showJoinGroupDialog() async {
+    final inviteCode = await showDialog<String>(
+      context: context,
+      builder: (context) => const _JoinGroupDialog(),
+    );
+
+    if (inviteCode != null && inviteCode.isNotEmpty) {
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final token = userProvider.token;
+
+      if (token == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Hiba: Nincs bejelentkezve')),
+          );
+        }
+        return;
+      }
+
+      final apiService = ApiService();
+      final groupData = await apiService.joinGroup(token, inviteCode.trim());
+
+      if (!mounted) return;
+
+      if (groupData != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sikeresen csatlakoztál a csoporthoz: ${groupData['name'] ?? 'Csoport'}',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _fetchGroups();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba: Érvénytelen meghívó kód'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _toggleSpeedDial() {
+    setState(() {
+      _isSpeedDialOpen = !_isSpeedDialOpen;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -170,7 +355,6 @@ class _HomePageState extends State<HomePage> {
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      // A "+" gomb mindig látható, de animálva eltűnik, ha a tag panel nyitva van
                       Positioned(
                         bottom: 24,
                         right: 24,
@@ -179,35 +363,9 @@ class _HomePageState extends State<HomePage> {
                           opacity: _isMemberPanelOpen ? 0.0 : 1.0,
                           child: IgnorePointer(
                             ignoring: _isMemberPanelOpen,
-                            child: Tooltip(
-                              message: isGroupView
-                                  ? 'Tag hozzáadása'
-                                  : 'Csoport hozzáadása / Csatlakozás',
-                              child: InkWell(
-                                onTap: () {
-                                  if (isGroupView) {
-                                    // Tag hozzáadása logika
-                                  } else {
-                                    // Csoport hozzáadása / Csatlakozás logika
-                                  }
-                                },
-                                customBorder: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16.0),
-                                ),
-                                child: Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).primaryColor,
-                                    borderRadius: BorderRadius.circular(16.0),
-                                  ),
-                                  child: Icon(
-                                    Icons.add,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                              ),
+                            child: _buildSpeedDial(
+                              context,
+                              isGroupView: isGroupView,
                             ),
                           ),
                         ),
@@ -246,6 +404,7 @@ class _HomePageState extends State<HomePage> {
                               vertical: 8.0,
                             ),
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Builder(
                                   builder: (context) => _buildMenuButton(
@@ -266,37 +425,9 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ),
                                 const Spacer(),
-                                Tooltip(
-                                  message: isGroupView
-                                      ? 'Tag hozzáadása'
-                                      : 'Csoport hozzáadása / Csatlakozás',
-                                  child: InkWell(
-                                    onTap: () {
-                                      if (isGroupView) {
-                                        // Tag hozzáadása
-                                      } else {
-                                        // Csoport hozzáadása vagy csatlakozás
-                                      }
-                                    },
-                                    customBorder: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16.0),
-                                    ),
-                                    child: Container(
-                                      width: 56,
-                                      height: 56,
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).primaryColor,
-                                        borderRadius: BorderRadius.circular(
-                                          16.0,
-                                        ),
-                                      ),
-                                      child: const Icon(
-                                        Icons.add,
-                                        color: Colors.white,
-                                        size: 32,
-                                      ),
-                                    ),
-                                  ),
+                                _buildSpeedDial(
+                                  context,
+                                  isGroupView: isGroupView,
                                 ),
                               ],
                             ),
@@ -327,7 +458,226 @@ class _HomePageState extends State<HomePage> {
                   _isMemberPanelOpen = isOpen;
                 });
               },
+              onAdminTransferred: () async {
+                _unselectGroup();
+                await _fetchGroups();
+              },
+              onGroupUpdated: () async {
+                final currentGroupId = _selectedGroup?.id;
+                await _fetchGroups();
+                if (currentGroupId != null) {
+                  final allGroups = [..._myGroups, ..._otherGroups];
+                  final updatedGroup = allGroups.firstWhere(
+                    (g) => g.id == currentGroupId,
+                    orElse: () => _selectedGroup!,
+                  );
+                  setState(() {
+                    _selectedGroup = updatedGroup;
+                  });
+                }
+              },
+              onGroupLeft: () async {
+                _unselectGroup();
+                await _fetchGroups();
+              },
             ),
+    );
+  }
+
+  Widget _buildSpeedDial(BuildContext context, {required bool isGroupView}) {
+    final theme = Theme.of(context);
+
+    if (isGroupView) {
+      final isAdmin = _selectedGroup?.rank == 'ADMIN';
+
+      return AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: isAdmin ? 1.0 : 0.0,
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 300),
+          scale: isAdmin ? 1.0 : 0.0,
+          curve: Curves.easeInOut,
+          child: IgnorePointer(
+            ignoring: !isAdmin,
+            child: InkWell(
+              onTap: () {},
+              customBorder: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: BorderRadius.circular(16.0),
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end, 
+      children: [
+        Align(
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScale(
+                scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 250),
+                  opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                  child: _isSpeedDialOpen
+                      ? Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Tooltip(
+                            message: 'Csatlakozás csoporthoz',
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _isSpeedDialOpen = false;
+                                });
+                                _showJoinGroupDialog();
+                              },
+                              customBorder: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: theme.primaryColor.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: theme.primaryColor.withOpacity(
+                                        0.3,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.group_add,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+              AnimatedScale(
+                scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 250),
+                  opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                  child: _isSpeedDialOpen
+                      ? Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Tooltip(
+                            message: 'Csoport létrehozása',
+                            child: InkWell(
+                              onTap: () async {
+                                setState(() {
+                                  _isSpeedDialOpen = false;
+                                });
+                                final result = await Navigator.push<bool>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const CreateGroupPage(),
+                                  ),
+                                );
+                                if (result == true) {
+                                  _fetchGroups();
+                                }
+                              },
+                              customBorder: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: theme.primaryColor.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: theme.primaryColor.withOpacity(
+                                        0.3,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.add_circle_outline,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Main 
+        Tooltip(
+          message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
+          child: InkWell(
+            onTap: _toggleSpeedDial,
+            customBorder: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: theme.primaryColor,
+                borderRadius: BorderRadius.circular(16.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.primaryColor.withOpacity(0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: AnimatedRotation(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                turns: _isSpeedDialOpen ? 0.125 : 0, // 45 degrees rotation
+                child: Icon(
+                  _isSpeedDialOpen ? Icons.close : Icons.add,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -362,33 +712,41 @@ class _HomePageState extends State<HomePage> {
 
   // A csoportlista
   Widget _buildGroupList() {
-    return ListView(
-      key: const ValueKey('group_list'),
-      padding: const EdgeInsets.symmetric(vertical: 40.0),
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 40.0),
-          child: HeaderWithDivider(title: 'Saját Csoportok'),
-        ),
-        const SizedBox(height: 20),
-        ..._myGroups
-            .map(
-              (group) => GroupCard(group: group, onGroupSelected: _selectGroup),
-            )
-            .toList(),
-        const SizedBox(height: 30),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 40.0),
-          child: HeaderWithDivider(title: 'További Csoportok'),
-        ),
-        const SizedBox(height: 20),
-        ..._otherGroups
-            .map(
-              (group) => GroupCard(group: group, onGroupSelected: _selectGroup),
-            )
-            .toList(),
-        const SizedBox(height: 80),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        return ListView(
+          key: const ValueKey('group_list'),
+          padding: EdgeInsets.symmetric(vertical: isMobile ? 20.0 : 40.0),
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 20.0 : 40.0),
+              child: const HeaderWithDivider(title: 'Saját Csoportok'),
+            ),
+            SizedBox(height: isMobile ? 12 : 20),
+            ..._myGroups
+                .map(
+                  (group) =>
+                      GroupCard(group: group, onGroupSelected: _selectGroup),
+                )
+                .toList(),
+            SizedBox(height: isMobile ? 20 : 30),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 20.0 : 40.0),
+              child: const HeaderWithDivider(title: 'További Csoportok'),
+            ),
+            SizedBox(height: isMobile ? 12 : 20),
+            ..._otherGroups
+                .map(
+                  (group) =>
+                      GroupCard(group: group, onGroupSelected: _selectGroup),
+                )
+                .toList(),
+            const SizedBox(height: 80),
+          ],
+        );
+      },
     );
   }
 
@@ -397,7 +755,13 @@ class _HomePageState extends State<HomePage> {
     final theme = Theme.of(context);
     final navContent = Container(
       width: 280,
-      color: theme.cardColor,
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
       padding: const EdgeInsets.all(20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -444,13 +808,58 @@ class _HomePageState extends State<HomePage> {
             ),
           const SizedBox(height: 24),
           const SizedBox(height: 16),
-          SideNavItem(
-            label: 'Profil & Beállítások',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SettingsPage(onLogout: widget.onLogout),
+          // Profil & Beállítások with profile picture
+          Consumer<UserProvider>(
+            builder: (context, userProvider, child) {
+              final user = userProvider.user;
+              final pfpUrl = user?.pfpUrl;
+
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          SettingsPage(onLogout: widget.onLogout),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundColor: theme.primaryColor,
+                        backgroundImage: pfpUrl != null && pfpUrl.isNotEmpty
+                            ? NetworkImage(pfpUrl)
+                            : null,
+                        child: pfpUrl == null || pfpUrl.isEmpty
+                            ? const Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 14,
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Profil & Beállítások',
+                        style: TextStyle(
+                          color: theme.textTheme.bodyLarge?.color,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -826,69 +1235,78 @@ class GroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.centerLeft,
-      children: [
-        Container(
-          constraints: const BoxConstraints(),
-          margin: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: group.getGradient(context),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => onGroupSelected(group),
-              borderRadius: BorderRadius.circular(5),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 40.0,
-                  vertical: 20.0,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
 
-                  children: [
-                    Text(
-                      group.title,
-                      style: TextStyle(
-                        color: group.getTextColor(context),
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+        return Stack(
+          alignment: Alignment.centerLeft,
+          children: [
+            Container(
+              constraints: const BoxConstraints(),
+              margin: EdgeInsets.only(
+                bottom: isMobile ? 12.0 : 16.0,
+                left: isMobile ? 12.0 : 16.0,
+                right: isMobile ? 12.0 : 16.0,
+              ),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: group.getGradient(context),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => onGroupSelected(group),
+                  borderRadius: BorderRadius.circular(5),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isMobile ? 20.0 : 40.0,
+                      vertical: isMobile ? 14.0 : 20.0,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      group.subtitle,
-                      style: TextStyle(
-                        color: group.getTextColor(context).withOpacity(0.8),
-                        fontSize: 14,
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.title,
+                          style: TextStyle(
+                            color: group.getTextColor(context),
+                            fontSize: isMobile ? 18 : 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: isMobile ? 2 : 4),
+                        Text(
+                          group.subtitle,
+                          style: TextStyle(
+                            color: group.getTextColor(context).withOpacity(0.8),
+                            fontSize: isMobile ? 12 : 14,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-        if (group.hasNotification)
-          Positioned(
-            right: 25,
-            bottom: 25,
-            child: Container(
-              width: 18,
-              height: 18,
-              decoration: const BoxDecoration(
-                color: Color(0xfffdd835),
-                shape: BoxShape.rectangle,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
+            if (group.hasNotification)
+              Positioned(
+                right: isMobile ? 20 : 25,
+                bottom: isMobile ? 20 : 25,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: const BoxDecoration(
+                    color: Color(0xfffdd835),
+                    shape: BoxShape.rectangle,
+                    borderRadius: BorderRadius.all(Radius.circular(5)),
+                  ),
+                ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -912,6 +1330,69 @@ class HeaderWithDivider extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Container(height: 1, color: theme.dividerColor),
+      ],
+    );
+  }
+}
+
+class _JoinGroupDialog extends StatefulWidget {
+  const _JoinGroupDialog();
+
+  @override
+  State<_JoinGroupDialog> createState() => _JoinGroupDialogState();
+}
+
+class _JoinGroupDialogState extends State<_JoinGroupDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Csatlakozás csoporthoz'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Add meg a csoport meghívó kódját:',
+            style: TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            decoration: InputDecoration(
+              labelText: 'Meghívó kód',
+              hintText: 'pl. ABC123',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              prefixIcon: const Icon(Icons.vpn_key),
+            ),
+            textCapitalization: TextCapitalization.characters,
+            autofocus: true,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('Mégse'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Csatlakozás'),
+        ),
       ],
     );
   }

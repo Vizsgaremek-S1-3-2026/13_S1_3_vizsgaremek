@@ -1,13 +1,22 @@
 // lib/main.dart
 
 import 'package:flutter/material.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'login_page.dart';
 import 'home_page.dart';
 
 import 'theme.dart';
 
+import 'package:provider/provider.dart';
+import 'providers/user_provider.dart';
+
 void main() {
-  runApp(const MainApp());
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => UserProvider())],
+      child: const MainApp(),
+    ),
+  );
 }
 
 class MainApp extends StatefulWidget {
@@ -30,10 +39,18 @@ class _MainAppState extends State<MainApp> {
           return MaterialApp(
             title: 'cQuizy',
             themeMode: _themeProvider.themeMode,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
+            theme: _themeProvider.getLightTheme(),
+            darkTheme: _themeProvider.getDarkTheme(),
             debugShowCheckedModeBanner: false,
             home: const AuthGate(),
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(_themeProvider.fontScale),
+                ),
+                child: child!,
+              );
+            },
           );
         },
       ),
@@ -51,27 +68,57 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  bool _isLoggedIn = true; // Kezdet
+  @override
+  void initState() {
+    super.initState();
+    // Try auto-login when app starts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<UserProvider>().tryAutoLogin();
+    });
+  }
 
   // Ezt a metódust hívjuk meg, amikor a bejelentkezés sikeres.
-  void _handleLogin() {
-    setState(() {
-      _isLoggedIn = true;
-    });
+  void _handleLogin(String token) {
+    context.read<UserProvider>().setToken(token);
   }
 
   // Ezt a metódust hívjuk meg, amikor a felhasználó kijelentkezik.
   void _handleLogout() {
-    setState(() {
-      _isLoggedIn = false;
-    });
+    context.read<UserProvider>().logout();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Ha a felhasználó be van jelentkezve, a HomePage-t mutatjuk.
-    // Ha nincs, akkor a LoginPage-t.
-    if (_isLoggedIn) {
+    final userProvider = context.watch<UserProvider>();
+    final theme = Theme.of(context);
+
+    // Show loading indicator while checking for stored token
+    if (userProvider.isLoading) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              LoadingAnimationWidget.newtonCradle(
+                color: theme.primaryColor,
+                size: 200,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Bejelentkezés...',
+                style: TextStyle(
+                  color: theme.textTheme.bodyLarge?.color,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (userProvider.isLoggedIn) {
       return HomePage(onLogout: _handleLogout);
     } else {
       return LoginPage(onLoginSuccess: _handleLogin);

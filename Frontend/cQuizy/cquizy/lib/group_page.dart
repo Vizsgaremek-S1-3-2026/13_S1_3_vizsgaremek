@@ -1,13 +1,17 @@
 // lib/group_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
 import 'package:intl/intl.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:provider/provider.dart';
+import 'api_service.dart';
+import 'providers/user_provider.dart';
 
 // --- MEOSZTOTT MODELL ---
 class Group {
+  final int? id;
   final String title;
   final String subtitle;
   final Color color;
@@ -15,8 +19,15 @@ class Group {
   final DateTime? testExpiryDate;
   final String? activeTestTitle;
   final String? activeTestDescription;
+  final String? inviteCode;
+  final String? inviteCodeFormatted;
+  final String? rank; // ADMIN = teacher/admin
+  final String ownerName;
+  final String instructorFirstName;
+  final String instructorLastName;
 
   Group({
+    this.id,
     required this.title,
     required this.subtitle,
     required this.color,
@@ -24,6 +35,12 @@ class Group {
     this.testExpiryDate,
     this.activeTestTitle,
     this.activeTestDescription,
+    this.inviteCode,
+    this.inviteCodeFormatted,
+    this.rank,
+    required this.ownerName,
+    this.instructorFirstName = '',
+    this.instructorLastName = '',
   });
 
   Group copyWith({
@@ -34,6 +51,9 @@ class Group {
     DateTime? testExpiryDate,
     String? activeTestTitle,
     String? activeTestDescription,
+    String? ownerName,
+    String? instructorFirstName,
+    String? instructorLastName,
   }) {
     return Group(
       title: title ?? this.title,
@@ -44,6 +64,13 @@ class Group {
       activeTestTitle: activeTestTitle ?? this.activeTestTitle,
       activeTestDescription:
           activeTestDescription ?? this.activeTestDescription,
+      ownerName: ownerName ?? this.ownerName,
+      instructorFirstName: instructorFirstName ?? this.instructorFirstName,
+      instructorLastName: instructorLastName ?? this.instructorLastName,
+      inviteCode: inviteCode,
+      inviteCodeFormatted: inviteCodeFormatted,
+      rank: rank,
+      id: id,
     );
   }
 
@@ -89,12 +116,18 @@ class GroupPage extends StatefulWidget {
   final Group group;
   final Function(Group) onTestExpired;
   final ValueChanged<bool>? onMemberPanelToggle;
+  final VoidCallback? onAdminTransferred;
+  final VoidCallback? onGroupUpdated;
+  final VoidCallback? onGroupLeft;
 
   const GroupPage({
     super.key,
     required this.group,
     required this.onTestExpired,
     this.onMemberPanelToggle,
+    this.onAdminTransferred,
+    this.onGroupUpdated,
+    this.onGroupLeft,
   });
 
   @override
@@ -104,6 +137,26 @@ class GroupPage extends StatefulWidget {
 class _GroupPageState extends State<GroupPage> {
   bool _isMembersPanelVisible = false;
   late List<Map<String, String>> _pastTests;
+  List<Map<String, dynamic>> _members = [];
+  bool _isLoadingMembers = false;
+  int? _expandedMemberId;
+
+  // Customize Panel State
+  bool _isCustomizePanelVisible = false;
+  late TextEditingController _groupNameController;
+  late Color _selectedColor;
+  bool _kioskMode = false;
+  bool _antiCheat = false;
+
+  // HSL Color State
+  double _hue = 0.0;
+  double _saturation = 0.7;
+  double _lightness = 0.6;
+  bool _showCustomColorPicker = false;
+
+  // Invite Code State
+  String? _currentInviteCode;
+  bool _isRegeneratingCode = false;
 
   @override
   void initState() {
@@ -113,6 +166,46 @@ class _GroupPageState extends State<GroupPage> {
       {'title': 'Számelmélet Dolgozat', 'detail': '4'},
       {'title': 'Félévi Felmérő', 'detail': '-'},
     ];
+    _fetchMembers();
+
+    // Init customize state
+    _groupNameController = TextEditingController(text: widget.group.title);
+    _selectedColor = widget.group.color;
+    final hsl = HSLColor.fromColor(_selectedColor);
+    _hue = hsl.hue;
+    _saturation = hsl.saturation;
+    _lightness = hsl.lightness;
+
+    // Initialize invite code
+    _currentInviteCode =
+        widget.group.inviteCodeFormatted ?? widget.group.inviteCode;
+  }
+
+  @override
+  void dispose() {
+    _groupNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchMembers() async {
+    if (widget.group.id == null) return;
+
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    setState(() => _isLoadingMembers = true);
+
+    final apiService = ApiService();
+    final membersData = await apiService.getGroupMembers(
+      token,
+      widget.group.id!,
+    );
+
+    setState(() {
+      _members = membersData;
+      _isLoadingMembers = false;
+    });
   }
 
   @override
@@ -139,15 +232,20 @@ class _GroupPageState extends State<GroupPage> {
           child: Stack(
             children: [
               _buildTestContent(),
-              if (_isMembersPanelVisible)
+              if (_isMembersPanelVisible || _isCustomizePanelVisible)
                 GestureDetector(
                   onTap: () {
-                    setState(() => _isMembersPanelVisible = false);
+                    setState(() {
+                      _expandedMemberId = null;
+                      _isMembersPanelVisible = false;
+                      _isCustomizePanelVisible = false;
+                    });
                     widget.onMemberPanelToggle?.call(false);
                   },
                   child: Container(color: Colors.black.withOpacity(0.5)),
                 ),
               _buildMembersPanel(),
+              _buildCustomizePanel(),
             ],
           ),
         ),
@@ -156,79 +254,244 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(gradient: widget.group.getGradient(context)),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.group.title,
-                      style: TextStyle(
-                        color: widget.group.getTextColor(context),
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        shadows: [
-                          Shadow(
-                            blurRadius: 2,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.black38
-                                : Colors.white38,
-                            offset: const Offset(1, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Oktató: ${widget.group.subtitle}',
-                      style: TextStyle(
-                        color: widget.group
-                            .getTextColor(context)
-                            .withOpacity(0.9),
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _isMembersPanelVisible = !_isMembersPanelVisible;
-                  });
-                  widget.onMemberPanelToggle?.call(_isMembersPanelVisible);
-                },
-                icon: Icon(
-                  Icons.people_outline,
-                  color: widget.group.getTextColor(context),
-                ),
-                label: Text(
-                  'Tagok',
-                  style: TextStyle(color: widget.group.getTextColor(context)),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(
-                    color: widget.group.getTextColor(context).withOpacity(0.7),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: widget.group.getGradient(context),
           ),
-        ],
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 16 : 24,
+                isMobile ? 12 : 16,
+                isMobile ? 16 : 24,
+                isMobile ? 16 : 24,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Csoport neve
+                  Text(
+                    widget.group.title,
+                    style: TextStyle(
+                      color: widget.group.getTextColor(context),
+                      fontSize: isMobile ? 22 : 32,
+                      fontWeight: FontWeight.bold,
+                      shadows: [
+                        Shadow(
+                          blurRadius: 2,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.black38
+                              : Colors.white38,
+                          offset: const Offset(1, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Oktató neve
+                  Text(
+                    'Oktató: ${widget.group.instructorLastName} ${widget.group.instructorFirstName}',
+                    style: TextStyle(
+                      color: widget.group
+                          .getTextColor(context)
+                          .withOpacity(0.9),
+                      fontSize: isMobile ? 13 : 18,
+                    ),
+                  ),
+                  SizedBox(height: isMobile ? 12 : 16),
+                  // Gombok
+                  if (isMobile)
+                    // Mobil nézet: csak ikonok
+                    Row(
+                      children: [
+                        if (widget.group.rank == 'ADMIN')
+                          _buildIconButton(
+                            icon: Icons.settings,
+                            tooltip: 'Beállítások',
+                            onPressed: () {
+                              setState(() {
+                                _isCustomizePanelVisible =
+                                    !_isCustomizePanelVisible;
+                                if (_isCustomizePanelVisible) {
+                                  _isMembersPanelVisible = false;
+                                }
+                              });
+                              widget.onMemberPanelToggle?.call(
+                                _isCustomizePanelVisible ||
+                                    _isMembersPanelVisible,
+                              );
+                            },
+                          )
+                        else
+                          _buildIconButton(
+                            icon: Icons.exit_to_app,
+                            tooltip: 'Csoport elhagyása',
+                            onPressed: () =>
+                                _showLeaveGroupConfirmation(context),
+                          ),
+                        const SizedBox(width: 8),
+                        _buildIconButton(
+                          icon: Icons.people_outline,
+                          tooltip: 'Tagok',
+                          onPressed: () {
+                            setState(() {
+                              _isMembersPanelVisible = !_isMembersPanelVisible;
+                              if (_isMembersPanelVisible) {
+                                _isCustomizePanelVisible = false;
+                              }
+                            });
+                            widget.onMemberPanelToggle?.call(
+                              _isMembersPanelVisible ||
+                                  _isCustomizePanelVisible,
+                            );
+                          },
+                        ),
+                      ],
+                    )
+                  else
+                    // Desktop nézet: teljes gombok
+                    Row(
+                      children: [
+                        if (widget.group.rank == 'ADMIN') ...[
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _isCustomizePanelVisible =
+                                    !_isCustomizePanelVisible;
+                                if (_isCustomizePanelVisible) {
+                                  _isMembersPanelVisible = false;
+                                }
+                              });
+                              widget.onMemberPanelToggle?.call(
+                                _isCustomizePanelVisible ||
+                                    _isMembersPanelVisible,
+                              );
+                            },
+                            icon: Icon(
+                              Icons.settings,
+                              color: widget.group.getTextColor(context),
+                            ),
+                            label: Text(
+                              'Beállítások',
+                              style: TextStyle(
+                                color: widget.group.getTextColor(context),
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: widget.group
+                                    .getTextColor(context)
+                                    .withOpacity(0.7),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ] else ...[
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                _showLeaveGroupConfirmation(context),
+                            icon: Icon(
+                              Icons.exit_to_app,
+                              color: widget.group.getTextColor(context),
+                            ),
+                            label: Text(
+                              'Csoport elhagyása',
+                              style: TextStyle(
+                                color: widget.group.getTextColor(context),
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: widget.group
+                                    .getTextColor(context)
+                                    .withOpacity(0.7),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _isMembersPanelVisible = !_isMembersPanelVisible;
+                              if (_isMembersPanelVisible) {
+                                _isCustomizePanelVisible = false;
+                              }
+                            });
+                            widget.onMemberPanelToggle?.call(
+                              _isMembersPanelVisible ||
+                                  _isCustomizePanelVisible,
+                            );
+                          },
+                          icon: Icon(
+                            Icons.people_outline,
+                            color: widget.group.getTextColor(context),
+                          ),
+                          label: Text(
+                            'Tagok',
+                            style: TextStyle(
+                              color: widget.group.getTextColor(context),
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: widget.group
+                                  .getTextColor(context)
+                                  .withOpacity(0.7),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: widget.group.getTextColor(context).withOpacity(0.5),
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            color: widget.group.getTextColor(context),
+            size: 20,
+          ),
+        ),
       ),
     );
   }
@@ -497,42 +760,33 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  Future<void> _showDeleteConfirmation(
+  void _showDeleteConfirmation(
     BuildContext context,
-    String memberName,
-  ) async {
-    return showDialog<void>(
+    String userName,
+    int userId,
+  ) {
+    showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Tag törlése'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                Text('Biztosan törölni szeretnéd $memberName felhasználót?'),
-                const Text('Ez a művelet nem vonható vissza.'),
-              ],
-            ),
+          title: Text('Tag eltávolítása: $userName'),
+          content: Text(
+            'Biztosan el akarod távolítani $userName-t a csoportból?',
           ),
-          actions: <Widget>[
+          actions: [
             TextButton(
-              child: const Text('Mégse'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Mégsem'),
             ),
             TextButton(
-              child: const Text('Törlés', style: TextStyle(color: Colors.red)),
               onPressed: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('$memberName törölve.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
+                _removeMember(userId);
               },
+              child: const Text(
+                'Eltávolítás',
+                style: TextStyle(color: Colors.red),
+              ),
             ),
           ],
         );
@@ -540,48 +794,818 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  Future<void> _showAdminTransferConfirmation(
+  Future<void> _removeMember(int userId) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    setState(() => _isLoadingMembers = true);
+
+    final apiService = ApiService();
+    final success = await apiService.removeMember(
+      token,
+      widget.group.id!,
+      userId,
+    );
+
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tag sikeresen eltávolítva'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      _fetchMembers();
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba a tag eltávolításakor'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() => _isLoadingMembers = false);
+    }
+  }
+
+  void _showAdminTransferConfirmation(
     BuildContext context,
-    String memberName,
-  ) async {
-    return showDialog<void>(
+    String userName,
+    int userId,
+  ) {
+    showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Admin jog átadása'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                Text(
-                  'Biztosan át szeretnéd adni az admin jogot $memberName felhasználónak?',
-                ),
-                const Text('Ezzel te elveszíted az admin jogosultságot.'),
-              ],
-            ),
+          title: Text('Admin jog átadása: $userName'),
+          content: Text(
+            'Biztosan átadod az admin jogot $userName-nak? Ezzel elveszíted a csoport feletti adminisztrátori jogodat.',
           ),
-          actions: <Widget>[
+          actions: [
             TextButton(
-              child: const Text('Mégse'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Mégsem'),
             ),
             TextButton(
-              child: const Text('Átadás'),
               onPressed: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Admin jog átadva $memberName részére.'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                _transferAdmin(userId);
               },
+              child: const Text(
+                'Átadás',
+                style: TextStyle(color: Colors.orange),
+              ),
             ),
           ],
         );
       },
+    );
+  }
+
+  Future<void> _transferAdmin(int userId) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    final apiService = ApiService();
+    final success = await apiService.transferAdmin(
+      token,
+      widget.group.id!,
+      userId,
+    );
+
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Admin jog sikeresen átadva'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        widget.onAdminTransferred?.call();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba az admin jog átadásakor'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showDeleteGroupDialog(BuildContext context) {
+    final passwordController = TextEditingController();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(Icons.warning, color: Colors.red),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Csoport Törlése',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Biztosan törölni szeretnéd a "${widget.group.title}" csoportot?',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ez a művelet nem vonható vissza! A csoport és minden tagsága törlésre kerül.',
+                    style: TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Jelszó megerősítés',
+                      hintText: 'Add meg a jelszavadat',
+                      prefixIcon: Icon(Icons.lock),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          passwordController.dispose();
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text('Mégsem'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (passwordController.text.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Kérlek add meg a jelszavadat!'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isLoading = true);
+
+                          final success = await _deleteGroup(
+                            passwordController.text,
+                          );
+
+                          if (!mounted) return;
+                          passwordController.dispose();
+                          Navigator.of(dialogContext).pop();
+
+                          if (success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Csoport sikeresen törölve'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            widget.onGroupLeft?.call();
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Hiba a csoport törlésekor. Ellenőrizd a jelszót!',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Törlés'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<bool> _deleteGroup(String password) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return false;
+
+    final apiService = ApiService();
+    return await apiService.deleteGroup(token, widget.group.id!, password);
+  }
+
+  void _showLeaveGroupConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Csoport elhagyása'),
+          content: Text(
+            'Biztosan elhagyod a "${widget.group.title}" csoportot?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Mégsem'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _leaveGroup();
+              },
+              child: const Text(
+                'Elhagyás',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _leaveGroup() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    final apiService = ApiService();
+    final success = await apiService.leaveGroup(token, widget.group.id!);
+
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sikeresen elhagytad a "${widget.group.title}" csoportot',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        widget.onGroupLeft?.call();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba a csoport elhagyásakor'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _regenerateInviteCode() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return;
+
+    setState(() => _isRegeneratingCode = true);
+
+    final apiService = ApiService();
+    final result = await apiService.regenerateInviteCode(
+      token,
+      widget.group.id!,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _isRegeneratingCode = false);
+
+    if (result != null) {
+      setState(() {
+        _currentInviteCode =
+            result['invite_code_formatted'] ?? result['invite_code'];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Új meghívókód sikeresen generálva!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      widget.onGroupUpdated?.call();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hiba az új meghívókód generálásakor'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveGroupChanges() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+
+    if (token == null || widget.group.id == null) return;
+
+    final colorHex = _selectedColor.value
+        .toRadixString(16)
+        .substring(2)
+        .toUpperCase();
+
+    final success = await ApiService().updateGroup(
+      token,
+      widget.group.id!,
+      name: _groupNameController.text,
+      color: colorHex,
+      anticheat: _antiCheat,
+      kiosk: _kioskMode,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Csoport beállítások frissítve'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      setState(() => _isCustomizePanelVisible = false);
+      widget.onMemberPanelToggle?.call(false);
+      widget.onGroupUpdated?.call();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hiba a frissítés során'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildCustomizePanel() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final panelWidth = (screenWidth > 500) ? 320.0 : screenWidth * 0.85;
+    final theme = Theme.of(context);
+
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      top: -10,
+      bottom: 0,
+      right: _isCustomizePanelVisible ? 0 : -panelWidth,
+      width: panelWidth,
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(24),
+            bottomLeft: Radius.circular(24),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(
+                theme.brightness == Brightness.dark ? 0.5 : 0.1,
+              ),
+              blurRadius: 15,
+              offset: const Offset(-5, 0),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Icon(Icons.settings, color: theme.iconTheme.color, size: 24),
+                  Text(
+                    'Beállítások',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyLarge?.color,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.close,
+                      color: theme.iconTheme.color?.withOpacity(0.7),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isCustomizePanelVisible = false;
+                      });
+                      widget.onMemberPanelToggle?.call(false);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Divider(color: theme.dividerColor, height: 1),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildSectionLabel('CSOPORT NEVE', theme),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _groupNameController,
+                    style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+                    decoration: _buildInputDecoration(
+                      theme,
+                      'pl. Matematika 9.A',
+                      Icons.groups_outlined,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'A csoport neve kötelező';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSectionLabel('CSOPORT SZÍNE', theme),
+                  const SizedBox(height: 16),
+                  _buildColorPicker(theme),
+                  const SizedBox(height: 24),
+                  _buildSectionLabel('BEÁLLÍTÁSOK', theme),
+                  const SizedBox(height: 16),
+                  _buildSettingTile(
+                    theme: theme,
+                    title: 'Kiosk Mód',
+                    subtitle: 'Teljes képernyős mód',
+                    value: _kioskMode,
+                    onChanged: (val) => setState(() => _kioskMode = val),
+                    icon: Icons.fullscreen,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildSettingTile(
+                    theme: theme,
+                    title: 'Anti Cheat',
+                    subtitle: 'Csalásmegelőzés',
+                    value: _antiCheat,
+                    onChanged: (val) => setState(() => _antiCheat = val),
+                    icon: Icons.security,
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _saveGroupChanges,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Mentés'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  // Danger Zone: Delete Group
+                  _buildSectionLabel('VESZÉLYES ZÓNA', theme),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showDeleteGroupDialog(context),
+                      icon: const Icon(Icons.delete_forever, color: Colors.red),
+                      label: const Text('Csoport Törlése'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(String text, ThemeData theme) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  InputDecoration _buildInputDecoration(
+    ThemeData theme,
+    String hint,
+    IconData icon,
+  ) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon, color: theme.iconTheme.color?.withOpacity(0.6)),
+      filled: true,
+      fillColor: theme.cardColor,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: theme.dividerColor, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: theme.primaryColor, width: 2),
+      ),
+    );
+  }
+
+  Widget _buildColorPicker(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () =>
+              setState(() => _showCustomColorPicker = !_showCustomColorPicker),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _showCustomColorPicker
+                    ? theme.primaryColor
+                    : theme.dividerColor,
+                width: _showCustomColorPicker ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _showCustomColorPicker
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                  color: theme.iconTheme.color,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Színkezelő',
+                  style: TextStyle(
+                    color: theme.textTheme.bodyLarge?.color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: _selectedColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: theme.dividerColor, width: 2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_showCustomColorPicker) ...[
+          const SizedBox(height: 16),
+          _buildHSLSliders(theme),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHSLSliders(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.dividerColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildColorSlider(
+            theme: theme,
+            label: 'Árnyalat',
+            value: _hue,
+            max: 360,
+            divisions: 72,
+            gradientColors: [
+              const Color(0xFFFF0000),
+              const Color(0xFFFFFF00),
+              const Color(0xFF00FF00),
+              const Color(0xFF00FFFF),
+              const Color(0xFF0000FF),
+              const Color(0xFFFF00FF),
+              const Color(0xFFFF0000),
+            ],
+            onChanged: (val) {
+              setState(() {
+                _hue = val;
+                _selectedColor = HSLColor.fromAHSL(
+                  1.0,
+                  _hue,
+                  _saturation,
+                  _lightness,
+                ).toColor();
+              });
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildColorSlider(
+            theme: theme,
+            label: 'Telítettség',
+            value: _saturation,
+            max: 1,
+            divisions: 100,
+            gradientColors: [
+              HSLColor.fromAHSL(1.0, _hue, 0, _lightness).toColor(),
+              HSLColor.fromAHSL(1.0, _hue, 1, _lightness).toColor(),
+            ],
+            onChanged: (val) {
+              setState(() {
+                _saturation = val;
+                _selectedColor = HSLColor.fromAHSL(
+                  1.0,
+                  _hue,
+                  _saturation,
+                  _lightness,
+                ).toColor();
+              });
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildColorSlider(
+            theme: theme,
+            label: 'Világosság',
+            value: _lightness,
+            max: 1,
+            divisions: 100,
+            gradientColors: [
+              const Color(0xFF000000),
+              HSLColor.fromAHSL(1.0, _hue, _saturation, 0.5).toColor(),
+              const Color(0xFFFFFFFF),
+            ],
+            onChanged: (val) {
+              setState(() {
+                _lightness = val;
+                _selectedColor = HSLColor.fromAHSL(
+                  1.0,
+                  _hue,
+                  _saturation,
+                  _lightness,
+                ).toColor();
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildColorSlider({
+    required ThemeData theme,
+    required String label,
+    required double value,
+    required double max,
+    required int divisions,
+    required List<Color> gradientColors,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: theme.textTheme.bodyMedium?.color,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 32,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: gradientColors),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.dividerColor, width: 1),
+          ),
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: Colors.transparent,
+              inactiveTrackColor: Colors.transparent,
+              thumbColor: Colors.white,
+              overlayColor: Colors.white.withOpacity(0.2),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+              trackHeight: 32,
+            ),
+            child: Slider(
+              value: value,
+              max: max,
+              divisions: divisions,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSettingTile({
+    required ThemeData theme,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required IconData icon,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.dividerColor, width: 1),
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: theme.primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: theme.primaryColor, size: 24),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: theme.textTheme.bodyLarge?.color,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+            fontSize: 13,
+          ),
+        ),
+        trailing: Switch(
+          value: value,
+          activeColor: theme.primaryColor,
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 
@@ -600,6 +1624,10 @@ class _GroupPageState extends State<GroupPage> {
       child: Container(
         decoration: BoxDecoration(
           color: theme.cardColor,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(24),
+            bottomLeft: Radius.circular(24),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(
@@ -619,7 +1647,7 @@ class _GroupPageState extends State<GroupPage> {
                 children: [
                   Icon(Icons.group, color: theme.iconTheme.color, size: 24),
                   Text(
-                    'Csoport Tagjai (24)',
+                    'Csoport Tagjai (${_members.length})',
                     style: TextStyle(
                       color: theme.textTheme.bodyLarge?.color,
                       fontSize: 18,
@@ -632,7 +1660,10 @@ class _GroupPageState extends State<GroupPage> {
                       color: theme.iconTheme.color?.withOpacity(0.7),
                     ),
                     onPressed: () {
-                      setState(() => _isMembersPanelVisible = false);
+                      setState(() {
+                        _expandedMemberId = null;
+                        _isMembersPanelVisible = false;
+                      });
                       widget.onMemberPanelToggle?.call(false);
                     },
                   ),
@@ -640,111 +1671,215 @@ class _GroupPageState extends State<GroupPage> {
               ),
             ),
             Divider(color: theme.dividerColor, height: 1),
-            _buildInviteCodeCard(),
+            if (widget.group.rank == 'ADMIN') _buildInviteCodeCard(),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
-                children: [
-                  _buildSectionHeader('ADMIN'),
-                  Divider(color: theme.dividerColor, height: 1),
-
-                  ListTile(
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFFed2f5b),
-                      child: Icon(Icons.star, color: Colors.white),
-                    ),
-                    title: Text(
-                      'Admin Neve 1',
-                      style: TextStyle(
-                        color: theme.textTheme.bodyLarge?.color,
-                        fontWeight: FontWeight.bold,
+              child: _isLoadingMembers
+                  ? Center(
+                      child: LoadingAnimationWidget.newtonCradle(
+                        color: theme.primaryColor,
+                        size: 200,
                       ),
-                    ),
-                    subtitle: const Text(
-                      'Admin',
-                      style: TextStyle(color: Color(0xFFED2F5B)),
-                    ),
-                    trailing: const Icon(
-                      Icons.workspace_premium, // Korona ikon
-                      color: Color(0xFFed2f5b),
-                    ),
-                  ),
-                  _buildSectionHeader('TAGOK (23)'),
-                  Divider(color: theme.dividerColor, height: 1),
-
-                  ...List.generate(23, (index) {
-                    final memberIndex = index + 1;
-                    return Slidable(
-                      key: ValueKey(memberIndex),
-                      endActionPane: ActionPane(
-                        motion: const ScrollMotion(),
-                        extentRatio: 0.6,
-                        children: [
-                          SlidableAction(
-                            onPressed: (context) {
-                              _showAdminTransferConfirmation(
-                                context,
-                                'Tag Neve $memberIndex',
-                              );
-                            },
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                            icon: Icons.admin_panel_settings,
-                            label: 'Admin',
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                      children: [
+                        // Admins (rank == 'ADMIN')
+                        ..._members
+                            .where((m) => m['rank'] == 'ADMIN')
+                            .map((m) => _buildMemberTile(m, isAdmin: true))
+                            .toList(),
+                        if (_members.any((m) => m['rank'] != 'ADMIN')) ...[
+                          _buildSectionHeader(
+                            'TAGOK (${_members.where((m) => m['rank'] != 'ADMIN').length})',
                           ),
-                          SlidableAction(
-                            onPressed: (context) {
-                              _showDeleteConfirmation(
-                                context,
-                                'Tag Neve $memberIndex',
-                              );
-                            },
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            icon: Icons.delete,
-                            label: 'Törlés',
-                          ),
+                          Divider(color: theme.dividerColor, height: 1),
                         ],
-                      ),
-                      child: ListTile(
-                        leading: const CircleAvatar(
-                          backgroundColor: Colors.deepPurple,
-                          child: Icon(Icons.person, color: Colors.white),
-                        ),
-                        title: Text(
-                          'Tag Neve $memberIndex',
-                          style: TextStyle(
-                            color: theme.textTheme.bodyLarge?.color,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Felhasználónév$memberIndex',
-                          style: TextStyle(
-                            color: theme.textTheme.bodyMedium?.color,
-                          ),
-                        ),
-                        trailing: Builder(
-                          builder: (context) {
-                            return IconButton(
-                              icon: Icon(
-                                Icons.more_vert,
-                                color: theme.iconTheme.color?.withOpacity(0.5),
-                              ),
-                              onPressed: () {
-                                final slidable = Slidable.of(context);
-                                slidable?.openEndActionPane();
-                              },
-                              tooltip: 'Műveletek',
-                            );
-                          },
-                        ),
-                      ),
-                    );
-                  }),
-                ],
-              ),
+                        // Regular members
+                        ..._members
+                            .where((m) => m['rank'] != 'ADMIN')
+                            .map((m) => _buildMemberTile(m, isAdmin: false))
+                            .toList(),
+                      ],
+                    ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemberTile(Map<String, dynamic> member, {bool isAdmin = false}) {
+    final theme = Theme.of(context);
+    final user = member['user'] as Map<String, dynamic>?;
+    final userId = user?['id'] as int?;
+    final nickname = user?['nickname'] as String? ?? '';
+    final firstName = user?['first_name'] as String? ?? '';
+    final lastName = user?['last_name'] as String? ?? '';
+    final username = user?['username'] as String? ?? 'Felhasználó';
+    final pfpUrl = user?['pfp_url'] as String?;
+
+    final displayName = (firstName.isNotEmpty || lastName.isNotEmpty)
+        ? '$lastName $firstName'.trim()
+        : (nickname.isNotEmpty ? nickname : username);
+
+    final currentUser = Provider.of<UserProvider>(context, listen: false).user;
+    final isMe = currentUser?.id == userId;
+    final amIAdmin = widget.group.rank == 'ADMIN';
+    final canManage = amIAdmin && !isMe && !isAdmin;
+
+    final isExpanded = _expandedMemberId == userId;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isExpanded ? theme.cardColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: isExpanded ? Border.all(color: theme.dividerColor) : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Main tile - always visible
+          ListTile(
+            onTap: canManage && userId != null
+                ? () {
+                    setState(() {
+                      _expandedMemberId = isExpanded ? null : userId;
+                    });
+                  }
+                : null,
+            leading: CircleAvatar(
+              backgroundColor: isAdmin
+                  ? const Color(0xFFed2f5b)
+                  : theme.primaryColor,
+              backgroundImage: pfpUrl != null && pfpUrl.isNotEmpty
+                  ? NetworkImage(pfpUrl)
+                  : null,
+              child: pfpUrl == null || pfpUrl.isEmpty
+                  ? Icon(
+                      isAdmin ? Icons.star : Icons.person,
+                      color: Colors.white,
+                    )
+                  : null,
+            ),
+            title: Text(
+              displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontWeight: isAdmin ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            subtitle: Text(
+              isAdmin ? 'Admin' : 'Tag',
+              style: TextStyle(
+                color: isAdmin
+                    ? const Color(0xFFED2F5B)
+                    : theme.textTheme.bodySmall?.color,
+              ),
+            ),
+            trailing: isAdmin
+                ? const Icon(Icons.workspace_premium, color: Color(0xFFed2f5b))
+                : (canManage
+                      ? AnimatedRotation(
+                          turns: isExpanded ? 0.25 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(
+                            Icons.keyboard_arrow_down,
+                            size: 24,
+                            color: theme.iconTheme.color?.withOpacity(0.5),
+                          ),
+                        )
+                      : null),
+          ),
+          // Action buttons - animated expand/collapse
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: isExpanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionButton(
+                            icon: Icons.admin_panel_settings,
+                            label: 'Admin átadása',
+                            color: Colors.orange,
+                            onTap: () {
+                              setState(() => _expandedMemberId = null);
+                              if (userId != null) {
+                                _showAdminTransferConfirmation(
+                                  context,
+                                  displayName,
+                                  userId,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildActionButton(
+                            icon: Icons.person_remove,
+                            label: 'Kidobás',
+                            color: Colors.red,
+                            onTap: () {
+                              setState(() => _expandedMemberId = null);
+                              if (userId != null) {
+                                _showDeleteConfirmation(
+                                  context,
+                                  displayName,
+                                  userId,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: color.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -767,7 +1902,7 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   Widget _buildInviteCodeCard() {
-    const inviteCode = 'X7B2-K9P5';
+    final inviteCode = _currentInviteCode ?? 'N/A';
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -807,21 +1942,23 @@ class _GroupPageState extends State<GroupPage> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                icon: Icon(
-                  Icons.refresh,
-                  color: theme.iconTheme.color?.withOpacity(0.7),
-                ),
-                tooltip: 'Új kód generálása',
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Új meghívókód generálása...'),
-                      backgroundColor: Colors.blue,
+              _isRegeneratingCode
+                  ? SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: LoadingAnimationWidget.newtonCradle(
+                        color: theme.primaryColor,
+                        size: 24,
+                      ),
+                    )
+                  : IconButton(
+                      icon: Icon(
+                        Icons.refresh,
+                        color: theme.iconTheme.color?.withOpacity(0.7),
+                      ),
+                      tooltip: 'Új kód generálása',
+                      onPressed: _regenerateInviteCode,
                     ),
-                  );
-                },
-              ),
               IconButton(
                 icon: Icon(
                   Icons.copy_outlined,
@@ -829,7 +1966,7 @@ class _GroupPageState extends State<GroupPage> {
                 ),
                 tooltip: 'Kód másolása',
                 onPressed: () {
-                  Clipboard.setData(const ClipboardData(text: inviteCode));
+                  Clipboard.setData(ClipboardData(text: inviteCode));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Meghívókód a vágólapra másolva!'),
