@@ -543,4 +543,32 @@ class ApiService {
       return null;
     }
   }
+
+  // Delete a group (soft delete)
+  // Requires the user to be an ADMIN of the group
+  Future<bool> deleteGroup(String token, int groupId, String password) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId');
+    try {
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'password': password}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return true;
+      } else {
+        debugPrint(
+          'Csoport törlési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba a csoport törlése során: $e');
+      return false;
+    }
+  }
 }

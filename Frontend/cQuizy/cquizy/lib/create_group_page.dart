@@ -735,10 +735,16 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         ? 'Csoport Neve'
         : _groupNameController.text;
 
+    // Get user for instructor names
+    final user = context.read<UserProvider>().user;
+
     // Create a temporary Group for preview
     final previewGroup = Group(
       title: groupName,
       subtitle: 'Oktató: $teacherName',
+      ownerName: teacherName,
+      instructorFirstName: user?.firstName ?? '',
+      instructorLastName: user?.lastName ?? '',
       color: _selectedColor,
     );
 

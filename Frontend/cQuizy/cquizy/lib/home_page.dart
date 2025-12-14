@@ -66,8 +66,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // Fetch admin names for groups where I am not the admin
     final Map<int, String> groupAdminNames = {};
+    final Map<int, String> groupAdminFirstNames = {};
+    final Map<int, String> groupAdminLastNames = {};
     final List<Future<void>> adminNameFutures = [];
 
     for (var json in groupsData) {
@@ -84,20 +85,22 @@ class _HomePageState extends State<HomePage> {
 
               if (adminMember.isNotEmpty && adminMember['user'] != null) {
                 final user = adminMember['user'] as Map<String, dynamic>;
-                final nickname = user['nickname']?.toString();
-                final firstName = user['first_name']?.toString();
-                final lastName = user['last_name']?.toString();
-                final username = user['username']?.toString();
+                final firstName = user['first_name']?.toString() ?? '';
+                final lastName = user['last_name']?.toString() ?? '';
+                final nickname = user['nickname']?.toString() ?? '';
+                final username = user['username']?.toString() ?? '';
 
+                // Store first and last name separately
+                groupAdminFirstNames[groupId] = firstName;
+                groupAdminLastNames[groupId] = lastName;
+
+                // Prioritize full name over nickname
                 String displayName = 'Admin';
-                if (nickname != null && nickname.isNotEmpty) {
-                  displayName = nickname;
-                } else if (firstName != null &&
-                    firstName.isNotEmpty &&
-                    lastName != null &&
-                    lastName.isNotEmpty) {
+                if (firstName.isNotEmpty || lastName.isNotEmpty) {
                   displayName = '$lastName $firstName'.trim();
-                } else if (username != null && username.isNotEmpty) {
+                } else if (nickname.isNotEmpty) {
+                  displayName = nickname;
+                } else if (username.isNotEmpty) {
                   displayName = username;
                 }
                 groupAdminNames[groupId] = displayName;
@@ -138,43 +141,67 @@ class _HomePageState extends State<HomePage> {
         final isAdmin = json['rank'] == 'ADMIN';
         final groupId = json['id'];
 
+        // Extract instructor first and last name separately
+        String instructorFirstName = '';
+        String instructorLastName = '';
+
+        if (isAdmin) {
+          // If I am admin, use my name from UserProvider
+          final user = userProvider.user;
+          if (user != null) {
+            instructorFirstName = user.firstName;
+            instructorLastName = user.lastName;
+          }
+        } else {
+          // First try to get from members API lookup
+          if (groupId != null && groupAdminFirstNames.containsKey(groupId)) {
+            instructorFirstName = groupAdminFirstNames[groupId]!;
+            instructorLastName = groupAdminLastNames[groupId] ?? '';
+          }
+          // Fall back to owner object in API response
+          else if (json['owner'] != null && json['owner'] is Map) {
+            final owner = json['owner'];
+            instructorFirstName = owner['first_name']?.toString() ?? '';
+            instructorLastName = owner['last_name']?.toString() ?? '';
+          }
+        }
+
+        // Resolve owner name (Teacher's Full Name) for display
+        String ownerName = (() {
+          if (isAdmin) {
+            final user = userProvider.user;
+            if (user != null &&
+                (user.firstName.isNotEmpty || user.lastName.isNotEmpty)) {
+              return '${user.lastName} ${user.firstName}'.trim();
+            }
+            return user?.username ?? 'Én';
+          }
+
+          // 1. Try fetched admin name (from group members lookup)
+          if (groupId != null && groupAdminNames.containsKey(groupId)) {
+            return groupAdminNames[groupId]!;
+          }
+
+          // 2. Try owner_name field (API provided name)
+          if (json['owner_name'] != null &&
+              json['owner_name'].toString().isNotEmpty) {
+            return json['owner_name'].toString();
+          }
+
+          if (instructorFirstName.isNotEmpty || instructorLastName.isNotEmpty) {
+            return '$instructorLastName $instructorFirstName'.trim();
+          }
+
+          return 'Admin'; 
+        })();
+
         return Group(
           id: groupId,
           title: json['name'] ?? 'Névtelen csoport',
-          subtitle: () {
-            if (isAdmin) {
-              return '';
-            }
-
-            // 1. Try fetched admin name
-            if (groupId != null && groupAdminNames.containsKey(groupId)) {
-              return groupAdminNames[groupId]!;
-            }
-
-            // Try to find admin name from API response
-            if (json['owner_name'] != null &&
-                json['owner_name'].toString().isNotEmpty) {
-              return json['owner_name'].toString();
-            }
-
-            if (json['owner'] != null && json['owner'] is Map) {
-              final owner = json['owner'];
-              final nickname = owner['nickname']?.toString();
-              if (nickname != null && nickname.isNotEmpty) return nickname;
-
-              final firstName = owner['first_name']?.toString();
-              final lastName = owner['last_name']?.toString();
-              if (firstName != null && firstName.isNotEmpty ||
-                  lastName != null && lastName.isNotEmpty) {
-                return '${lastName ?? ''} ${firstName ?? ''}'.trim();
-              }
-
-              final username = owner['username']?.toString();
-              if (username != null && username.isNotEmpty) return username;
-            }
-
-            return 'Admin'; // Fallback
-          }(),
+          ownerName: ownerName,
+          instructorFirstName: instructorFirstName,
+          instructorLastName: instructorLastName,
+          subtitle: isAdmin ? '' : ownerName, // Logic for Home Page Card
           color: groupColor,
           inviteCode: json['invite_code'],
           inviteCodeFormatted: json['invite_code_formatted'],
@@ -182,7 +209,6 @@ class _HomePageState extends State<HomePage> {
         );
       }).toList();
 
-      // Split groups based on admin status
       _myGroups = allGroups.where((g) => g.rank == 'ADMIN').toList();
       _otherGroups = allGroups.where((g) => g.rank != 'ADMIN').toList();
 
@@ -282,7 +308,6 @@ class _HomePageState extends State<HomePage> {
             backgroundColor: Colors.green,
           ),
         );
-        // Refresh group list
         await _fetchGroups();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -330,7 +355,6 @@ class _HomePageState extends State<HomePage> {
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      // Speed Dial FAB for desktop
                       Positioned(
                         bottom: 24,
                         right: 24,
@@ -442,7 +466,6 @@ class _HomePageState extends State<HomePage> {
                 final currentGroupId = _selectedGroup?.id;
                 await _fetchGroups();
                 if (currentGroupId != null) {
-                  // Find the updated group in both lists
                   final allGroups = [..._myGroups, ..._otherGroups];
                   final updatedGroup = allGroups.firstWhere(
                     (g) => g.id == currentGroupId,
@@ -461,11 +484,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Speed Dial Widget - Expandable FAB with two action buttons
   Widget _buildSpeedDial(BuildContext context, {required bool isGroupView}) {
     final theme = Theme.of(context);
 
-    // If in group view, show simple add member button (only if admin)
     if (isGroupView) {
       final isAdmin = _selectedGroup?.rank == 'ADMIN';
 
@@ -498,18 +519,15 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
-    // Otherwise, show speed dial menu
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end, // Keep main FAB right-aligned
+      crossAxisAlignment: CrossAxisAlignment.end, 
       children: [
-        // Center the action buttons above the main FAB
         Align(
           alignment: Alignment.center,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Action Button 1: Join Group
               AnimatedScale(
                 scale: _isSpeedDialOpen ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 300),
@@ -560,7 +578,6 @@ class _HomePageState extends State<HomePage> {
                       : const SizedBox.shrink(),
                 ),
               ),
-              // Action Button 2: Create Group
               AnimatedScale(
                 scale: _isSpeedDialOpen ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 300),
@@ -578,7 +595,6 @@ class _HomePageState extends State<HomePage> {
                                 setState(() {
                                   _isSpeedDialOpen = false;
                                 });
-                                // Navigate to Create Group Page and refresh if group created
                                 final result = await Navigator.push<bool>(
                                   context,
                                   MaterialPageRoute(
@@ -624,7 +640,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
-        // Main FAB
+        // Main 
         Tooltip(
           message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
           child: InkWell(
@@ -792,13 +808,58 @@ class _HomePageState extends State<HomePage> {
             ),
           const SizedBox(height: 24),
           const SizedBox(height: 16),
-          SideNavItem(
-            label: 'Profil & Beállítások',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SettingsPage(onLogout: widget.onLogout),
+          // Profil & Beállítások with profile picture
+          Consumer<UserProvider>(
+            builder: (context, userProvider, child) {
+              final user = userProvider.user;
+              final pfpUrl = user?.pfpUrl;
+
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          SettingsPage(onLogout: widget.onLogout),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundColor: theme.primaryColor,
+                        backgroundImage: pfpUrl != null && pfpUrl.isNotEmpty
+                            ? NetworkImage(pfpUrl)
+                            : null,
+                        child: pfpUrl == null || pfpUrl.isEmpty
+                            ? const Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 14,
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Profil & Beállítások',
+                        style: TextStyle(
+                          color: theme.textTheme.bodyLarge?.color,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },

@@ -22,6 +22,9 @@ class Group {
   final String? inviteCode;
   final String? inviteCodeFormatted;
   final String? rank; // ADMIN = teacher/admin
+  final String ownerName;
+  final String instructorFirstName;
+  final String instructorLastName;
 
   Group({
     this.id,
@@ -35,6 +38,9 @@ class Group {
     this.inviteCode,
     this.inviteCodeFormatted,
     this.rank,
+    required this.ownerName,
+    this.instructorFirstName = '',
+    this.instructorLastName = '',
   });
 
   Group copyWith({
@@ -45,6 +51,9 @@ class Group {
     DateTime? testExpiryDate,
     String? activeTestTitle,
     String? activeTestDescription,
+    String? ownerName,
+    String? instructorFirstName,
+    String? instructorLastName,
   }) {
     return Group(
       title: title ?? this.title,
@@ -55,6 +64,13 @@ class Group {
       activeTestTitle: activeTestTitle ?? this.activeTestTitle,
       activeTestDescription:
           activeTestDescription ?? this.activeTestDescription,
+      ownerName: ownerName ?? this.ownerName,
+      instructorFirstName: instructorFirstName ?? this.instructorFirstName,
+      instructorLastName: instructorLastName ?? this.instructorLastName,
+      inviteCode: inviteCode,
+      inviteCodeFormatted: inviteCodeFormatted,
+      rank: rank,
+      id: id,
     );
   }
 
@@ -280,7 +296,7 @@ class _GroupPageState extends State<GroupPage> {
                   const SizedBox(height: 4),
                   // Oktató neve
                   Text(
-                    'Oktató: ${widget.group.subtitle}',
+                    'Oktató: ${widget.group.instructorLastName} ${widget.group.instructorFirstName}',
                     style: TextStyle(
                       color: widget.group
                           .getTextColor(context)
@@ -883,6 +899,139 @@ class _GroupPageState extends State<GroupPage> {
     }
   }
 
+  void _showDeleteGroupDialog(BuildContext context) {
+    final passwordController = TextEditingController();
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(Icons.warning, color: Colors.red),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Csoport Törlése',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Biztosan törölni szeretnéd a "${widget.group.title}" csoportot?',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ez a művelet nem vonható vissza! A csoport és minden tagsága törlésre kerül.',
+                    style: TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Jelszó megerősítés',
+                      hintText: 'Add meg a jelszavadat',
+                      prefixIcon: Icon(Icons.lock),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          passwordController.dispose();
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text('Mégsem'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (passwordController.text.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Kérlek add meg a jelszavadat!'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isLoading = true);
+
+                          final success = await _deleteGroup(
+                            passwordController.text,
+                          );
+
+                          if (!mounted) return;
+                          passwordController.dispose();
+                          Navigator.of(dialogContext).pop();
+
+                          if (success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Csoport sikeresen törölve'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            widget.onGroupLeft?.call();
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Hiba a csoport törlésekor. Ellenőrizd a jelszót!',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Törlés'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<bool> _deleteGroup(String password) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null || widget.group.id == null) return false;
+
+    final apiService = ApiService();
+    return await apiService.deleteGroup(token, widget.group.id!, password);
+  }
+
   void _showLeaveGroupConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -1146,6 +1295,26 @@ class _GroupPageState extends State<GroupPage> {
                         ),
                       ),
                       child: const Text('Mentés'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  // Danger Zone: Delete Group
+                  _buildSectionLabel('VESZÉLYES ZÓNA', theme),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showDeleteGroupDialog(context),
+                      icon: const Icon(Icons.delete_forever, color: Colors.red),
+                      label: const Text('Csoport Törlése'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -1549,11 +1718,9 @@ class _GroupPageState extends State<GroupPage> {
     final username = user?['username'] as String? ?? 'Felhasználó';
     final pfpUrl = user?['pfp_url'] as String?;
 
-    final displayName = nickname.isNotEmpty
-        ? nickname
-        : (firstName.isNotEmpty || lastName.isNotEmpty
-              ? '$lastName $firstName'.trim()
-              : username);
+    final displayName = (firstName.isNotEmpty || lastName.isNotEmpty)
+        ? '$lastName $firstName'.trim()
+        : (nickname.isNotEmpty ? nickname : username);
 
     final currentUser = Provider.of<UserProvider>(context, listen: false).user;
     final isMe = currentUser?.id == userId;
