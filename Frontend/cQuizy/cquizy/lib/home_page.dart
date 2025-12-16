@@ -280,9 +280,20 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _showJoinGroupDialog() async {
-    final inviteCode = await showDialog<String>(
+    final inviteCode = await showGeneralDialog<String>(
       context: context,
-      builder: (context) => const _JoinGroupDialog(),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, widget) {
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(opacity: a1, child: const _JoinGroupDialog()),
+        );
+      },
     );
 
     if (inviteCode != null && inviteCode.isNotEmpty) {
@@ -505,9 +516,23 @@ class _HomePageState extends State<HomePage> {
             message: 'Új projekt létrehozása',
             child: InkWell(
               onTap: () async {
-                final result = await showDialog<Map<String, String>>(
+                final result = await showGeneralDialog<Map<String, String>>(
                   context: context,
-                  builder: (context) => const CreateProjectDialog(),
+                  barrierDismissible: true,
+                  barrierLabel: '',
+                  transitionDuration: const Duration(milliseconds: 300),
+                  pageBuilder: (context, animation1, animation2) {
+                    return Container();
+                  },
+                  transitionBuilder: (context, a1, a2, widget) {
+                    return ScaleTransition(
+                      scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+                      child: FadeTransition(
+                        opacity: a1,
+                        child: const CreateProjectDialog(),
+                      ),
+                    );
+                  },
                 );
 
                 if (result != null) {
@@ -1560,41 +1585,167 @@ class _JoinGroupDialogState extends State<_JoinGroupDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Csatlakozás csoporthoz'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Add meg a csoport meghívó kódját:',
-            style: TextStyle(fontSize: 14),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _controller,
-            decoration: InputDecoration(
-              labelText: 'Meghívó kód',
-              hintText: 'pl. ABC123',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              prefixIcon: const Icon(Icons.vpn_key),
+    final theme = Theme.of(context);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 0,
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: 500,
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
-            textCapitalization: TextCapitalization.characters,
-            autofocus: true,
-          ),
-        ],
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header with gradient
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    theme.primaryColor,
+                    theme.primaryColor.withValues(alpha: 0.7),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.group_add,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  const Text(
+                    'Csatlakozás csoporthoz',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  Text(
+                    'Add meg a csoport meghívó kódját:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
+                        alpha: 0.8,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: _controller,
+                    decoration: InputDecoration(
+                      labelText: 'Meghívó kód',
+                      hintText: 'pl. ABC123',
+                      prefixIcon: Icon(
+                        Icons.vpn_key,
+                        color: theme.primaryColor,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: theme.primaryColor,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, null),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 16,
+                          ),
+                        ),
+                        child: Text(
+                          'Mégse',
+                          style: TextStyle(
+                            color: theme.textTheme.bodyMedium?.color
+                                ?.withValues(alpha: 0.6),
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton(
+                        onPressed: () =>
+                            Navigator.pop(context, _controller.text),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 4,
+                          shadowColor: theme.primaryColor.withValues(
+                            alpha: 0.4,
+                          ),
+                        ),
+                        child: const Text(
+                          'Csatlakozás',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, null),
-          child: const Text('Mégse'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: const Text('Csatlakozás'),
-        ),
-      ],
     );
   }
 }
