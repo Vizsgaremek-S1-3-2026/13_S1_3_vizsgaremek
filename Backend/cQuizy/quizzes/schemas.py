@@ -11,6 +11,10 @@ class QuizCreateSchema(Schema):
     date_start: datetime
     date_end: datetime
 
+class QuizUpdateSchema(Schema):
+    date_start: datetime
+    date_end: datetime
+
 class QuizOutSchema(Schema):
     id: int
     project_name: str
@@ -188,6 +192,12 @@ class SubmissionDetailSchema(Schema):
     @staticmethod
     def resolve_group_id(obj):
         return obj.quiz.group.id
+
+class QuizStatsSchema(Schema):
+    average_score: float
+    max_score: float
+    min_score: float
+    submission_count: int
 
 # --- Update Points ---
 class PointUpdateItemSchema(Schema):

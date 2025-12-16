@@ -7,12 +7,14 @@ from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Avg, Max, Min, Count
 
 from .models import Quiz, Event, Submission, SubmittedAnswer
 from groups.models import GroupMember, Group, Grade, GradePercentage
 from blueprints.models import Project, Block
 from .schemas import (
     QuizCreateSchema,
+    QuizUpdateSchema,
     QuizOutSchema,
     QuizContentSchema,
     StudentLockStatusSchema,
@@ -22,6 +24,7 @@ from .schemas import (
     SubmissionCreateSchema,
     SubmissionOutSchema,
     SubmissionDetailSchema,
+    QuizStatsSchema,
     PointUpdatePayload,
     GradeUpdateSchema
 )
@@ -62,6 +65,33 @@ def create_quiz(request, payload: QuizCreateSchema):
         date_start=payload.date_start,
         date_end=payload.date_end
     )
+
+    return quiz
+
+#? Update Quiz
+@router.put("/{quiz_id}", response=QuizOutSchema, summary="Teacher: Update a quiz")
+def update_quiz(request, quiz_id: int, payload: QuizUpdateSchema):
+    """
+    Updates an existing Quiz session.
+    Requires the user to be an ADMIN of the target group.
+    """
+    current_user = request.auth
+    quiz = get_object_or_404(Quiz, id=quiz_id)
+
+    # 1. Authorization Check
+    is_admin = GroupMember.objects.filter(
+        group=quiz.group, 
+        user=current_user, 
+        rank='ADMIN'
+    ).exists()
+
+    if not is_admin and not current_user.is_superuser:
+        raise HttpError(403, "You must be a group admin to update quizzes.")
+
+    # 2. Update the Quiz
+    quiz.date_start = payload.date_start
+    quiz.date_end = payload.date_end
+    quiz.save()
 
     return quiz
 
@@ -420,6 +450,36 @@ def get_submission_detail(request, submission_id: int):
          raise HttpError(403, "Only teachers can review detailed submissions.")
 
     return submission
+
+#? Get Quiz Statistics
+@router.get("/{quiz_id}/stats", response=QuizStatsSchema, summary="Get quiz statistics")
+def get_quiz_stats(request, quiz_id: int):
+    """
+    Returns aggregation data (Avg, Min, Max, Count).
+    """
+    current_user = request.auth
+    quiz = get_object_or_404(Quiz, id=quiz_id)
+
+    # Authorization: Must be a member of the group
+    is_member = GroupMember.objects.filter(group=quiz.group, user=current_user).exists()
+    
+    if not is_member and not current_user.is_superuser:
+        raise HttpError(403, "You are not a member of this group.")
+
+    # Calculate stats from the Submissions table
+    stats = Submission.objects.filter(quiz=quiz).aggregate(
+        average_score=Avg('percentage'),
+        max_score=Max('percentage'),
+        min_score=Min('percentage'),
+        submission_count=Count('id')
+    )
+
+    return {
+        "average_score": stats['average_score'] or 0.0,
+        "max_score": stats['max_score'] or 0.0,
+        "min_score": stats['min_score'] or 0.0,
+        "submission_count": stats['submission_count'] or 0
+    }
 
 #? Update Points (Manual Regrading)
 @router.post("/submission/{submission_id}/update-points", response=SubmissionOutSchema, summary="Teacher: Update points manually")

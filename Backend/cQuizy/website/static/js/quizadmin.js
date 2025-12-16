@@ -5,32 +5,59 @@ let currentSubmissionId = null;
 let currentGroupId = null;
 let eventPollingInterval = null;
 
-// --- Utils ---
-function getToken() { return localStorage.getItem('authToken'); }
-function getQuizId() { const p = new URLSearchParams(window.location.search); return p.get('quizId'); }
-
-async function handleApiError(response) {
-    try { const d = await response.json(); return d.detail || JSON.stringify(d); }
-    catch { return response.statusText; }
+function getToken() {
+    return localStorage.getItem('authToken');
 }
 
-function formatTime(iso) {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function getQuizId() {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('quizId');
 }
 
-// --- Main Init ---
 document.addEventListener('DOMContentLoaded', async () => {
     quizId = getQuizId();
-    if (!quizId) { alert("No Quiz ID provided."); window.location.href = '/groups/'; return; }
+    if (!quizId) {
+        alert("No Quiz ID provided.");
+        window.location.href = '/groups/';
+        return;
+    }
 
-    try {
-        document.getElementById('quizAdminTitle').innerText = `Quiz Manager (ID: ${quizId})`;
-    } catch (e) { console.error(e); }
+    document.getElementById('quizIdDisplay').innerText = `ID: ${quizId}`;
 
+    loadStats();
     loadEvents();
-    eventPollingInterval = setInterval(loadEvents, 3000);
     loadSubmissions();
+
+    eventPollingInterval = setInterval(() => {
+        loadEvents();
+    }, 3000);
 });
+
+// --- STATS LOGIC ---
+async function loadStats() {
+    try {
+        const response = await fetch(`/api/quizzes/${quizId}/stats`, {
+            headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+        if (!response.ok) return;
+
+        const stats = await response.json();
+
+        document.getElementById('statAvg').innerText = stats.average_score.toFixed(1) + '%';
+        document.getElementById('statMax').innerText = stats.max_score.toFixed(1) + '%';
+        document.getElementById('statMin').innerText = stats.min_score.toFixed(1) + '%';
+        document.getElementById('statCount').innerText = stats.submission_count;
+
+        // Color coding for Avg
+        const avgEl = document.getElementById('statAvg');
+        if (stats.average_score >= 80) avgEl.style.color = 'var(--success-color)';
+        else if (stats.average_score < 50) avgEl.style.color = 'var(--danger-color)';
+        else avgEl.style.color = 'white';
+
+    } catch (e) {
+        console.error("Stats error", e);
+    }
+}
 
 // --- EVENTS LOGIC ---
 async function loadEvents() {
@@ -42,259 +69,215 @@ async function loadEvents() {
 
         const events = await response.json();
         const container = document.getElementById('eventsContainer');
+
         container.innerHTML = '';
 
         let activeCount = 0;
+
         events.sort((a, b) => {
-            if (a.status === 'active' && b.status !== 'active') return -1;
-            if (a.status !== 'active' && b.status === 'active') return 1;
+            if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+            if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
             return new Date(b.created_at) - new Date(a.created_at);
         });
 
-        events.forEach(ev => {
-            if (ev.status === 'active') activeCount++;
-            const card = document.createElement('div');
-            card.className = `event-card status-${ev.status}`;
+        if (events.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#666;">No events recorded.</p>';
+            return;
+        }
 
-            let actionHtml = '';
-            if (ev.status === 'active') {
-                actionHtml = `<button class="resolve-btn" onclick="resolveEvent(${ev.id})">Unlock Student</button>`;
+        events.forEach(ev => {
+            if (ev.status === 'ACTIVE') activeCount++;
+
+            const div = document.createElement('div');
+            div.className = `event-item ${ev.status.toLowerCase()}`;
+
+            const time = new Date(ev.created_at).toLocaleTimeString();
+
+            let btn = '';
+            if (ev.status === 'ACTIVE') {
+                btn = `<button onclick="resolveEvent(${ev.id})" style="margin-top:5px; padding:4px 10px; font-size:0.7em; background:white; color:black; border-radius:4px; border:none; cursor:pointer; font-weight:bold;">UNLOCK</button>`;
             }
 
-            card.innerHTML = `
-                <div class="event-header">
-                    <span>${ev.student_name}</span>
-                    <span class="event-time">${formatTime(ev.created_at)}</span>
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between;">
+                    <strong style="color:white;">${ev.student_name}</strong>
+                    <span style="font-size:0.8em; color:#999;">${time}</span>
                 </div>
-                <div style="font-size:0.9em; margin-bottom:5px;">Type: <b>${ev.type}</b></div>
-                <div style="font-size:0.9em; color:#ccc;">${ev.type === 'tab_switch' ? 'Student left the tab.' : 'System Event'}</div>
-                ${actionHtml}
+                <div style="color:${ev.status === 'ACTIVE' ? '#ff8080' : '#aaa'}; font-size:0.9em; margin-top:2px;">
+                    ${ev.desc}
+                </div>
+                ${btn}
             `;
-            container.appendChild(card);
+            container.appendChild(div);
         });
-        document.getElementById('activeCount').innerText = activeCount;
-    } catch (error) { console.error("Event Poll Error", error); }
+
+        document.getElementById('activeCount').innerText = `${activeCount} Active`;
+        if (activeCount > 0) document.getElementById('activeCount').style.background = 'var(--danger-color)';
+        else document.getElementById('activeCount').style.background = '#444';
+
+    } catch (error) {
+        console.error(error);
+    }
 }
 
 async function resolveEvent(eventId) {
-    if (!confirm("Unlock this student? They will be allowed to continue.")) return;
+    if (!confirm("Unlock this student?")) return;
     try {
-        const response = await fetch(`/api/quizzes/events/${eventId}`, {
+        await fetch(`/api/quizzes/events/${eventId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-            body: JSON.stringify({ action: 'unlock', note: 'Unlocked by Admin' })
+            body: JSON.stringify({ action: 'unlock' })
         });
-        if (!response.ok) throw new Error(await handleApiError(response));
         loadEvents();
-    } catch (error) { alert(`Error: ${error.message}`); }
+    } catch (e) {
+        alert(e);
+    }
 }
 
 // --- SUBMISSIONS LOGIC ---
 async function loadSubmissions() {
     const tbody = document.getElementById('submissionsBody');
-    tbody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
-
     try {
         const response = await fetch(`/api/quizzes/${quizId}/submissions`, {
             headers: { 'Authorization': `Bearer ${getToken()}` }
         });
-        if (!response.ok) throw new Error(await handleApiError(response));
-
         const subs = await response.json();
-        tbody.innerHTML = '';
 
+        loadStats(); // Refresh stats when we load submissions
+
+        tbody.innerHTML = '';
         if (subs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No submissions yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No submissions yet</td></tr>';
             return;
         }
 
         subs.forEach(sub => {
             const tr = document.createElement('tr');
-            tr.className = 'submission-row';
             tr.onclick = () => openSubmissionModal(sub.id);
+            tr.style.cursor = "pointer";
 
-            const gradeHtml = sub.grade_value
-                ? `<span class="grade-badge">${sub.grade_value}</span>`
-                : '<span style="opacity:0.5">-</span>';
+            let gradeBadge = sub.grade_value ?
+                `<span class="grade-badge">${sub.grade_value}</span>` :
+                `<span style="color:#666;">-</span>`;
 
             tr.innerHTML = `
-                <td><b>${sub.student_name}</b></td>
-                <td>${sub.percentage.toFixed(1)}%</td>
-                <td>${gradeHtml}</td>
-                <td style="font-size:0.8em;">${new Date(sub.date_submitted).toLocaleDateString()}</td>
+                <td style="font-weight:bold; color:white;">${sub.student_name}</td>
+                <td style="color:var(--secondary-color);">${sub.percentage.toFixed(1)}%</td>
+                <td>${gradeBadge}</td>
+                <td style="font-size:0.8em; color:#888;">${new Date(sub.date_submitted).toLocaleDateString()}</td>
             `;
             tbody.appendChild(tr);
         });
-    } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="4" style="color:red">${error.message}</td></tr>`;
+    } catch (e) {
+        console.error(e);
     }
 }
 
 // --- MODAL LOGIC ---
 
 async function fetchGradeRules(groupId) {
-    // Populate the Grade Dropdown
     try {
         const response = await fetch(`/api/groups/${groupId}/grade-rules`, {
             headers: { 'Authorization': `Bearer ${getToken()}` }
         });
-        if (!response.ok) return; // Maybe group has no rules, that's fine
-
+        if (!response.ok) return;
         const rules = await response.json();
         const select = document.getElementById('modalGradeSelect');
-        // Clear existing options except first
         select.innerHTML = '<option value="">No Grade</option>';
-
-        // Add manual options just in case
-        // But mainly use rules
-        rules.forEach(rule => {
+        rules.forEach(r => {
             const opt = document.createElement('option');
-            opt.value = rule.name;
-            opt.text = `${rule.name} (${rule.min_percentage}-${rule.max_percentage}%)`;
+            opt.value = r.name;
+            opt.text = `${r.name} (${r.min_percentage}-${r.max_percentage}%)`;
             select.appendChild(opt);
         });
-    } catch (e) { console.error("Failed to load grade rules", e); }
+    } catch (e) { }
 }
 
-async function openSubmissionModal(submissionId) {
-    currentSubmissionId = submissionId;
-    const modal = document.getElementById('submissionModal');
+async function openSubmissionModal(subId) {
+    currentSubmissionId = subId;
+    document.getElementById('submissionModal').style.display = 'flex';
+    document.getElementById('modalAnswersContainer').innerHTML = 'Loading...';
+
+    const response = await fetch(`/api/quizzes/submission/${subId}`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+    });
+    const data = await response.json();
+    currentGroupId = data.group_id;
+
+    document.getElementById('modalStudentName').innerText = data.student_name;
+    document.getElementById('modalScoreDisplay').innerText = data.percentage.toFixed(1) + '%';
+
+    await fetchGradeRules(data.group_id);
+    document.getElementById('modalGradeSelect').value = data.grade_value || "";
+
+    // Render Blocks
     const container = document.getElementById('modalAnswersContainer');
+    container.innerHTML = '';
 
-    modal.style.display = 'block';
-    container.innerHTML = '<p>Loading details...</p>';
-
-    try {
-        const response = await fetch(`/api/quizzes/submission/${submissionId}`, {
-            headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
-        if (!response.ok) throw new Error(await handleApiError(response));
-
-        const details = await response.json();
-        currentGroupId = details.group_id;
-
-        document.getElementById('modalStudentName').textContent = `${details.student_name}`;
-        document.getElementById('modalScoreDisplay').textContent = `Total Score: ${details.percentage.toFixed(1)}%`;
-
-        // Setup Grade Dropdown
-        await fetchGradeRules(currentGroupId);
-        const gradeSelect = document.getElementById('modalGradeSelect');
-        gradeSelect.value = details.grade_value || ""; // Set current grade
-
-        // --- RENDER BLOCKS ---
-        container.innerHTML = '';
-
-        // 1. Group answers by Block
-        const groupedMap = new Map(); // blockId -> { question: "", order: 0, answers: [] }
-
-        details.answers.forEach(ans => {
-            if (!groupedMap.has(ans.block_id)) {
-                groupedMap.set(ans.block_id, {
-                    id: ans.block_id,
-                    order: ans.block_order,
-                    question: ans.block_question,
-                    answers: []
-                });
-            }
-            groupedMap.get(ans.block_id).answers.push(ans);
-        });
-
-        // 2. Sort by Order
-        const sortedBlocks = Array.from(groupedMap.values()).sort((a, b) => a.order - b.order);
-
-        // 3. Render
-        sortedBlocks.forEach(block => {
-            const blockDiv = document.createElement('div');
-            blockDiv.className = 'question-block'; // Reusing global css
-            blockDiv.style.padding = "15px"; // Override slightly for compact view
-            blockDiv.style.marginBottom = "15px";
-
-            let html = `<div style="font-weight:bold; margin-bottom:10px;">${block.order}. ${block.question}</div>`;
-
-            block.answers.forEach(ans => {
-                html += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.1); padding:8px; border-radius:5px; margin-bottom:5px;">
-                        <span style="color:var(--text-color); margin-right:10px;">${ans.student_answer}</span>
-                        <div style="display:flex; align-items:center; gap:5px;">
-                            <label style="font-size:0.8em;">Points:</label>
-                            <input type="number" class="points-input" 
-                                   data-answer-id="${ans.id}" 
-                                   value="${ans.points_awarded}" 
-                                   style="width:60px; padding:5px; border-radius:5px; border:1px solid #555;">
-                        </div>
-                    </div>
-                `;
-            });
-
-            blockDiv.innerHTML = html;
-            container.appendChild(blockDiv);
-        });
-
-    } catch (error) {
-        container.innerHTML = `<p style="color:red">Error: ${error.message}</p>`;
-    }
-}
-
-async function savePointChanges() {
-    if (!confirm("Recalculate score based on these points?")) return;
-
-    const inputs = document.querySelectorAll('.points-input');
-    const updates = [];
-
-    inputs.forEach(inp => {
-        updates.push({
-            submitted_answer_id: parseInt(inp.dataset.answerId),
-            new_points: parseInt(inp.value)
-        });
+    // Grouping logic for QA
+    const grouped = {};
+    data.answers.forEach(a => {
+        if (!grouped[a.block_id]) grouped[a.block_id] = { q: a.block_question, ans: [] };
+        grouped[a.block_id].ans.push(a);
     });
 
-    try {
-        const response = await fetch(`/api/quizzes/submission/${currentSubmissionId}/update-points`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-            body: JSON.stringify({ updates: updates })
+    Object.values(grouped).forEach((group) => {
+        const div = document.createElement('div');
+        div.style.background = "#1a1a1a";
+        div.style.padding = "15px";
+        div.style.marginBottom = "10px";
+        div.style.borderRadius = "8px";
+
+        let html = `<div style="color:white; margin-bottom:5px;"><strong>Q:</strong> ${group.q}</div>`;
+
+        group.ans.forEach(a => {
+            html += `
+                <div style="display:flex; justify-content:space-between; margin-top:5px; border-top:1px solid #333; padding-top:5px;">
+                    <span style="color:#ccc;">${a.student_answer}</span>
+                    <div style="display:flex; align-items:center;">
+                        <span style="font-size:0.8em; margin-right:5px;">Pts:</span>
+                        <input type="number" class="points-input" data-id="${a.id}" value="${a.points_awarded}" style="width:50px; padding:4px; text-align:center;">
+                    </div>
+                </div>
+            `;
         });
-        if (!response.ok) throw new Error(await handleApiError(response));
-
-        alert("Points updated and score recalculated!");
-        // Refresh modal to see new percentage/grade
-        openSubmissionModal(currentSubmissionId);
-        // Refresh table
-        loadSubmissions();
-
-    } catch (error) {
-        alert(`Error: ${error.message}`);
-    }
-}
-
-async function saveGradeOverride() {
-    const select = document.getElementById('modalGradeSelect');
-    const newGrade = select.value;
-
-    // Allow empty grade? Assuming yes to clear it.
-
-    try {
-        const response = await fetch(`/api/quizzes/submission/${currentSubmissionId}/update-grade`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-            body: JSON.stringify({ new_grade: newGrade })
-        });
-        if (!response.ok) throw new Error(await handleApiError(response));
-
-        alert("Grade updated!");
-        loadSubmissions(); // Update table
-    } catch (error) {
-        alert(`Error: ${error.message}`);
-    }
+        div.innerHTML = html;
+        container.appendChild(div);
+    });
 }
 
 function closeModal() {
     document.getElementById('submissionModal').style.display = 'none';
 }
 
-window.onclick = function (event) {
-    const modal = document.getElementById('submissionModal');
-    if (event.target == modal) {
-        modal.style.display = "none";
-    }
+window.onclick = function (e) {
+    if (e.target == document.getElementById('submissionModal')) closeModal();
+}
+
+async function savePointChanges() {
+    const inputs = document.querySelectorAll('.points-input');
+    const updates = Array.from(inputs).map(i => ({
+        submitted_answer_id: parseInt(i.dataset.id),
+        new_points: parseInt(i.value)
+    }));
+
+    await fetch(`/api/quizzes/submission/${currentSubmissionId}/update-points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+        body: JSON.stringify({ updates })
+    });
+    alert("Recalculated!");
+    loadSubmissions();
+    closeModal();
+}
+
+async function saveGradeOverride() {
+    const val = document.getElementById('modalGradeSelect').value;
+    await fetch(`/api/quizzes/submission/${currentSubmissionId}/update-grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+        body: JSON.stringify({ new_grade: val })
+    });
+    alert("Grade Saved.");
+    loadSubmissions();
 }
