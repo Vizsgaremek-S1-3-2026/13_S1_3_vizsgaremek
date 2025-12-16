@@ -1148,7 +1148,7 @@ class _GroupPageState extends State<GroupPage> {
       token,
       widget.group.id!,
       name: _groupNameController.text,
-      color: colorHex,
+      color: '#$colorHex',
       anticheat: _antiCheat,
       kiosk: _kioskMode,
     );

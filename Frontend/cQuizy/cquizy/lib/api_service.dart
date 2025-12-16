@@ -571,4 +571,148 @@ class ApiService {
       return false;
     }
   }
+
+  // Create a new project (blueprint)
+  Future<Map<String, dynamic>?> createProject(
+    String token,
+    String name,
+    String description,
+  ) async {
+    final url = Uri.parse('$_baseUrl/blueprints/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'name': name, 'desc': description}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Projekt létrehozási hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba projekt létrehozása során: $e');
+      return null;
+    }
+  }
+
+  // Get all projects (blueprints) for the user
+  Future<List<Map<String, dynamic>>> getProjects(String token) async {
+    final url = Uri.parse('$_baseUrl/blueprints/');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint(
+          'Projektek lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba projektek lekérése során: $e');
+      return [];
+    }
+  }
+
+  // Get full project details with blocks
+  Future<Map<String, dynamic>?> getProjectDetails(
+    String token,
+    int projectId,
+  ) async {
+    final url = Uri.parse('$_baseUrl/blueprints/$projectId/');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Projekt részletek hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba projekt részletek lekérése során: $e');
+      return null;
+    }
+  }
+
+  // Update full project with blocks
+  Future<Map<String, dynamic>?> updateProject(
+    String token,
+    int projectId,
+    Map<String, dynamic> data,
+  ) async {
+    final url = Uri.parse('$_baseUrl/blueprints/$projectId/');
+    try {
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(data),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Projekt frissítési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba projekt frissítése során: $e');
+      return null;
+    }
+  }
+
+  // Delete a project
+  Future<bool> deleteProject(String token, int projectId) async {
+    final url = Uri.parse('$_baseUrl/blueprints/$projectId/');
+    try {
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 204 || response.statusCode == 200) {
+        return true;
+      } else {
+        debugPrint(
+          'Projekt törlési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba projekt törlése során: $e');
+      return false;
+    }
+  }
 }

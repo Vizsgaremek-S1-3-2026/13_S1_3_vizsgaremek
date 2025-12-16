@@ -6,6 +6,8 @@ import 'settings_page.dart';
 import 'create_group_page.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
+import 'projects_page.dart';
+import 'create_project_dialog.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -27,6 +29,7 @@ class _HomePageState extends State<HomePage> {
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
   bool _isSpeedDialOpen = false;
+  bool _showProjects = false;
 
   @override
   void initState() {
@@ -192,7 +195,7 @@ class _HomePageState extends State<HomePage> {
             return '$instructorLastName $instructorFirstName'.trim();
           }
 
-          return 'Admin'; 
+          return 'Admin';
         })();
 
         return Group(
@@ -266,6 +269,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedGroup = group;
     });
+    _fetchGroups();
   }
 
   void _unselectGroup() {
@@ -447,9 +451,8 @@ class _HomePageState extends State<HomePage> {
   Widget _buildAnimatedContent() {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      child: _selectedGroup == null
-          ? _buildGroupList()
-          : GroupPage(
+      child: _selectedGroup != null
+          ? GroupPage(
               key: ValueKey(_selectedGroup!.title),
               group: _selectedGroup!,
               onTestExpired: _handleTestExpired,
@@ -480,12 +483,84 @@ class _HomePageState extends State<HomePage> {
                 _unselectGroup();
                 await _fetchGroups();
               },
-            ),
+            )
+          : _showProjects
+          ? const ProjectsPage(key: ValueKey('projects'))
+          : _buildGroupList(),
     );
   }
 
   Widget _buildSpeedDial(BuildContext context, {required bool isGroupView}) {
     final theme = Theme.of(context);
+
+    if (_showProjects) {
+      return AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: 1.0,
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 300),
+          scale: 1.0,
+          curve: Curves.easeInOut,
+          child: Tooltip(
+            message: 'Új projekt létrehozása',
+            child: InkWell(
+              onTap: () async {
+                final result = await showDialog<Map<String, String>>(
+                  context: context,
+                  builder: (context) => const CreateProjectDialog(),
+                );
+
+                if (result != null) {
+                  final userProvider = Provider.of<UserProvider>(
+                    context,
+                    listen: false,
+                  );
+                  final token = userProvider.token;
+                  if (token != null) {
+                    final api = ApiService();
+                    final project = await api.createProject(
+                      token,
+                      result['name']!,
+                      result['desc']!,
+                    );
+                    if (mounted) {
+                      if (project != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Projekt sikeresen létrehozva!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        // TODO: Refresh projects list
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Hiba a projekt létrehozása során'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  }
+                }
+              },
+              customBorder: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: BorderRadius.circular(16.0),
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     if (isGroupView) {
       final isAdmin = _selectedGroup?.rank == 'ADMIN';
@@ -521,7 +596,7 @@ class _HomePageState extends State<HomePage> {
 
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end, 
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Align(
           alignment: Alignment.center,
@@ -640,7 +715,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
-        // Main 
+        // Main
         Tooltip(
           message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
           child: InkWell(
@@ -770,9 +845,30 @@ class _HomePageState extends State<HomePage> {
           SideNavItem(
             label: 'Csoportok',
             icon: Icons.group,
-            isSelected: _selectedGroup == null,
+            isSelected: _selectedGroup == null && !_showProjects,
             onTap: () {
-              if (_selectedGroup != null) _unselectGroup();
+              if (_selectedGroup != null || _showProjects) {
+                setState(() {
+                  _showProjects = false;
+                  _selectedGroup = null;
+                });
+              }
+              if (isDrawer) Navigator.pop(context);
+            },
+          ),
+          const SizedBox(height: 8),
+          SideNavItem(
+            label: 'Projektek',
+            icon: Icons.folder,
+            isSelected: _showProjects,
+            onTap: () {
+              if (!_showProjects) {
+                setState(() {
+                  _showProjects = true;
+                  _selectedGroup = null;
+                  _isMemberPanelOpen = false;
+                });
+              }
               if (isDrawer) Navigator.pop(context);
             },
           ),
@@ -814,57 +910,116 @@ class _HomePageState extends State<HomePage> {
               final user = userProvider.user;
               final pfpUrl = user?.pfpUrl;
 
-              return InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          SettingsPage(onLogout: widget.onLogout),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.cardColor.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor: theme.primaryColor,
-                        backgroundImage: pfpUrl != null && pfpUrl.isNotEmpty
-                            ? NetworkImage(pfpUrl)
-                            : null,
-                        child: pfpUrl == null || pfpUrl.isEmpty
-                            ? const Icon(
-                                Icons.person,
-                                color: Colors.white,
-                                size: 14,
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Profil & Beállítások',
-                        style: TextStyle(
-                          color: theme.textTheme.bodyLarge?.color,
-                          fontSize: 14,
-                        ),
-                      ),
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.primaryColor.withOpacity(0.15),
+                      theme.primaryColor.withOpacity(0.05),
                     ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  border: Border.all(
+                    color: theme.primaryColor.withOpacity(0.2),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.shadowColor.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              SettingsPage(onLogout: widget.onLogout),
+                        ),
+                      );
+                      _fetchGroups();
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: theme.primaryColor.withOpacity(0.5),
+                                width: 2,
+                              ),
+                            ),
+                            child: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: theme.primaryColor,
+                              backgroundImage:
+                                  pfpUrl != null && pfpUrl.isNotEmpty
+                                  ? NetworkImage(pfpUrl)
+                                  : null,
+                              child: pfpUrl == null || pfpUrl.isEmpty
+                                  ? const Icon(
+                                      Icons.person,
+                                      color: Colors.white,
+                                      size: 20,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Profil és Beállítások',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodyMedium?.color
+                                        ?.withOpacity(0.7),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  user?.nickname ??
+                                      user?.username ??
+                                      'Felhasználó',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodyLarge?.color,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.settings_outlined,
+                            color: theme.primaryColor,
+                            size: 24,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               );
             },
           ),
-
           const SizedBox(height: 10),
         ],
       ),
@@ -893,44 +1048,90 @@ class SideNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+
+    // Színkódok és stílusok definiálása az állapottól függően
+    final backgroundColor = isSelected
+        ? theme.primaryColor.withOpacity(0.1)
+        : Colors.transparent;
+
+    final iconBackgroundColor = isSelected
+        ? theme.primaryColor
+        : theme.colorScheme.surfaceContainerHighest;
+
+    final iconColor = isSelected
+        ? Colors.white
+        : theme.iconTheme.color?.withOpacity(0.7);
+
     final textColor = isSelected
         ? theme.primaryColor
-        : theme.textTheme.bodyLarge?.color;
-    final iconColor = isSelected ? theme.primaryColor : theme.iconTheme.color;
+        : theme.textTheme.bodyLarge?.color?.withOpacity(0.8);
 
-    return Material(
-      color: isSelected
-          ? theme.primaryColor.withOpacity(0.1)
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            mainAxisAlignment: icon == null
-                ? MainAxisAlignment.center
-                : MainAxisAlignment.start,
-            children: [
-              if (icon != null) ...[
-                CircleAvatar(
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  radius: 18,
-                  child: Icon(icon, color: iconColor, size: 20),
-                ),
-                const SizedBox(width: 16),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 16,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(16),
+          border: isSelected
+              ? Border.all(color: theme.primaryColor.withOpacity(0.3), width: 1)
+              : Border.all(color: Colors.transparent, width: 1),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: theme.primaryColor.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  if (icon != null) ...[
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: iconBackgroundColor,
+                        shape: BoxShape.circle,
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: theme.primaryColor.withOpacity(0.3),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: Icon(icon, color: iconColor, size: 20),
+                    ),
+                    const SizedBox(width: 16),
+                  ],
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 15,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
