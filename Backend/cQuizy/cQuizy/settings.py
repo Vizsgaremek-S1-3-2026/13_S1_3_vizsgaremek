@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'users',
     'groups',
     'blueprints',
+    'quizzes',
 ]
 
 MIDDLEWARE = [

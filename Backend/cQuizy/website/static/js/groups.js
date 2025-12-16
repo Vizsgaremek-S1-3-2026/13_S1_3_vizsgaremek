@@ -1,8 +1,7 @@
+// static/js/groups.js
+
 /**
  * Creates a darker shade of a given hex color.
- * @param {string} color - The hex color string (e.g., "#FF5733").
- * @param {number} amount - The percentage to darken by (e.g., 0.3 for 30% darker).
- * @returns {string} The new, darker hex color string.
  */
 function darkenColor(color, amount) {
     let usePound = false;
@@ -26,11 +25,6 @@ function darkenColor(color, amount) {
     return (usePound ? "#" : "") + newColor;
 }
 
-/**
- * Helper function to format ISO 8601 date strings into a more readable format.
- * @param {string} isoString - The ISO date string from the API.
- * @returns {string} A formatted date string (e.g., "2025. 11. 12. 09:30:00").
- */
 function formatDateTime(isoString) {
     const date = new Date(isoString);
     const year = date.getFullYear();
@@ -42,12 +36,6 @@ function formatDateTime(isoString) {
     return `${year}. ${month}. ${day}. ${hours}:${minutes}:${seconds}`;
 }
 
-/**
- * A robust helper function to parse and return a user-friendly error message
- * from a failed API response.
- * @param {Response} response - The raw response object from a failed fetch call.
- * @returns {Promise<string>} A promise that resolves to the error message.
- */
 async function handleApiError(response) {
     try {
         const errorData = await response.json();
@@ -58,19 +46,17 @@ async function handleApiError(response) {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    // This is the main container where all the group information will be displayed.
     const groupsContainer = document.getElementById('groupsContainer');
-    // We need the auth token for all our API calls.
     const token = localStorage.getItem('authToken');
 
-    // --- References to all form elements on the page ---
+    // Form References
     const createGroupForm = document.getElementById('formCreateGroup');
     const joinGroupForm = document.getElementById('formJoinGroup');
     const updateGroupForm = document.getElementById('formUpdateGroup');
     const regenerateCodeForm = document.getElementById('formRegenerateCode');
     const transferGroupForm = document.getElementById('formTransferGroup');
 
-    // --- References to all input elements for the forms ---
+    // Input References
     const groupNameInput = document.getElementById('groupNameInput');
     const groupColorInput = document.getElementById('groupColorInput');
     const groupInviteInput = document.getElementById('groupInviteInput');
@@ -79,14 +65,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     const groupUpdateIdInput = document.getElementById('groupUpdateId');
     const groupUpdateNameInput = document.getElementById('groupUpdateName');
     const groupUpdateColorInput = document.getElementById('groupUpdateColor');
-    const groupUpdateColorCheck = document.getElementById('groupUpdateColorCheck'); // NEW
+    const groupUpdateColorCheck = document.getElementById('groupUpdateColorCheck');
     const groupUpdateAnticheatInput = document.getElementById('groupUpdateAnticheat');
     const groupUpdateKioskInput = document.getElementById('groupUpdateKiosk');
     const groupRegenerateIdInput = document.getElementById('groupRegenerateId');
 
 
     /**
-     * Fetches all groups for the current user from the API and renders them on the page.
+     * Fetches all groups for the current user and renders them.
      */
     const fetchAndDisplayGroups = async () => {
         if (!token) {
@@ -101,7 +87,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (!response.ok) throw new Error(await handleApiError(response));
             
             const groups = await response.json();
-            groupsContainer.innerHTML = ''; // Clear the container before rendering
+            groupsContainer.innerHTML = '';
 
             if (groups.length === 0) {
                 groupsContainer.innerHTML = '<p>You are not a member of any groups yet. Create or join one!</p>';
@@ -111,27 +97,31 @@ document.addEventListener('DOMContentLoaded', async function() {
                     groupElement.className = 'groupItem';
                     const darkerColor = darkenColor(group.color, 0.3);
                     groupElement.style.background = `linear-gradient(to bottom right, ${darkerColor}, ${group.color})`;
+                    
                     let primaryAction = '';
                     if (group.rank === 'ADMIN' || group.rank === 'SUPERUSER') {
                         primaryAction = `<button class="delete-btn" data-group-id="${group.id}">Delete Group</button>`;
                     } else {
                         primaryAction = `<button class="leave-btn" data-group-id="${group.id}">Leave Group</button>`;
                     }
-                    const memberButton = `<button class="view-members-btn" data-group-id="${group.id}" data-user-rank="${group.rank}">View Members</button>`;
+
+                    // CHANGED: Replaced View Members with Group Page button
+                    const groupPageButton = `<button class="group-page-btn" data-group-id="${group.id}">Group Page</button>`;
+                    
                     const formattedDate = formatDateTime(group.date_created);
+                    
                     groupElement.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <h3>${group.name} | ID: ${group.id}</h3>
                             <div class="group-actions">
                                 ${primaryAction}
-                                ${memberButton}
+                                ${groupPageButton}
                             </div>
                         </div>
                         <p><strong>Invite Code:</strong> ${group.invite_code_formatted}</p>
                         <p><strong>Created on:</strong> ${formattedDate}</p>
                         <p><strong>Your Rank:</strong> ${group.rank}</p> 
                         <p><strong>Anti-Cheat:</strong> ${group.anticheat ? 'Enabled' : 'Disabled'} | <strong>Kiosk Mode:</strong> ${group.kiosk ? 'Enabled' : 'Disabled'}</p>
-                        <div class="member-list-container" id="members-${group.id}" style="display: none;"></div>
                     `;
                     groupsContainer.appendChild(groupElement);
                 });
@@ -140,55 +130,14 @@ document.addEventListener('DOMContentLoaded', async function() {
             groupsContainer.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
         }
     };
-    
-    /**
-     * Fetches and displays the member list for a specific group inside its container.
-     */
-    const displayMembers = async (groupId, container, currentUserRank) => {
-        // This function is unchanged
-        container.innerHTML = '<p>Loading members...</p>';
-        try {
-            const response = await fetch(`/api/groups/${groupId}/members`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error(await handleApiError(response));
-            const members = await response.json();
-            
-            let membersHTML = '<h4>Group Members:</h4><ul>';
-            const canKick = currentUserRank === 'ADMIN' || currentUserRank === 'SUPERUSER';
-            
-            members.forEach(member => {
-                const displayName = member.user.nickname || member.user.username;
-                let kickButtonHTML = '';
-                if (canKick && member.rank !== 'ADMIN') {
-                    kickButtonHTML = `<button class="kick-btn" data-group-id="${groupId}" data-user-id="${member.user.id}">Kick</button>`;
-                }
 
-                membersHTML += `
-                    <li style="color: white; display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
-                        <span>${displayName} (${member.rank}) | User ID: ${member.user.id}</span>
-                        ${kickButtonHTML}
-                    </li>
-                `;
-            });
-            membersHTML += '</ul>';
-            container.innerHTML = membersHTML;
-
-        } catch (error) {
-            container.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
-        }
-    };
-
-
-    // Event listener for all button clicks inside the groups container.
+    // Event listener for button clicks inside the groups container
     groupsContainer.addEventListener('click', async (event) => {
-        // This function is unchanged
         if (!token) return alert('Please log in.');
 
         const deleteBtn = event.target.closest('.delete-btn');
         const leaveBtn = event.target.closest('.leave-btn');
-        const viewMembersBtn = event.target.closest('.view-members-btn');
-        const kickBtn = event.target.closest('.kick-btn');
+        const groupPageBtn = event.target.closest('.group-page-btn'); // NEW
 
         const processAction = async (url, method, confirmMsg) => {
             if (confirm(confirmMsg)) {
@@ -212,44 +161,10 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
         
-        if (viewMembersBtn) {
-            const groupId = viewMembersBtn.dataset.groupId;
-            const userRank = viewMembersBtn.dataset.userRank;
-            const container = document.getElementById(`members-${groupId}`);
-
-            if (container.style.display === 'none') {
-                container.style.display = 'block';
-                viewMembersBtn.textContent = 'Hide Members';
-                displayMembers(groupId, container, userRank);
-            } else {
-                container.style.display = 'none';
-                viewMembersBtn.textContent = 'View Members';
-                container.innerHTML = '';
-            }
-            return;
-        }
-
-        if (kickBtn) {
-            const groupId = kickBtn.dataset.groupId;
-            const userId = kickBtn.dataset.userId;
-
-            if (confirm(`Are you sure you want to remove user ID ${userId} from the group?`)) {
-                try {
-                    const response = await fetch(`/api/groups/${groupId}/members/${userId}`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (!response.ok) throw new Error(await handleApiError(response));
-                    
-                    const container = kickBtn.closest('.member-list-container');
-                    const viewButton = container.parentElement.querySelector('.view-members-btn');
-                    const currentUserRank = viewButton.dataset.userRank;
-                    displayMembers(groupId, container, currentUserRank);
-
-                } catch (error) {
-                    alert(`Error: ${error.message}`);
-                }
-            }
+        // NEW: Handle redirection to Group Page
+        if (groupPageBtn) {
+            const groupId = groupPageBtn.dataset.groupId;
+            window.location.href = `/grouppage/?groupId=${groupId}`;
             return;
         }
     });
@@ -275,7 +190,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     joinGroupForm.addEventListener('submit', async (event) => {
-        // This function is unchanged
         event.preventDefault();
         if (!token) return alert('You must be logged in to join a group.');
         const inviteCode = groupInviteInput.value.trim();
@@ -299,23 +213,18 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (!groupId) return alert('Please provide the Group ID to update.');
         const newName = groupUpdateNameInput.value.trim();
         
-        // --- NEW LOGIC FOR UPDATE PAYLOAD ---
         const payload = {
-            // These are always included
             anticheat: groupUpdateAnticheatInput.checked,
             kiosk: groupUpdateKioskInput.checked
         };
         
-        // Only include the name if the user actually entered one
         if (newName !== '') {
             payload.name = newName;
         }
 
-        // Only include the color if the "Update Color?" checkbox is checked
         if (groupUpdateColorCheck.checked) {
             payload.color = groupUpdateColorInput.value;
         }
-        // --- END OF NEW LOGIC ---
 
         try {
             const response = await fetch(`/api/groups/${groupId}`, {
@@ -333,7 +242,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     regenerateCodeForm.addEventListener('submit', async (event) => {
-        // This function is unchanged
         event.preventDefault();
         if (!token) return alert('You must be logged in.');
         const groupId = groupRegenerateIdInput.value.trim();
@@ -356,7 +264,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     transferGroupForm.addEventListener('submit', async (event) => {
-        // This function is unchanged
         event.preventDefault();
         if (!token) return alert('You must be logged in.');
         const groupId = groupTransferIdInput.value.trim();

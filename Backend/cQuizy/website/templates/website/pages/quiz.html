@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | cQuizy Exam</title>
+</head>
+<body>
+    <!-- LOCK OVERLAY -->
+    <div id="lockOverlay">
+        <div class="lock-icon">🔒</div>
+        <h1 style="color:#ff4747; margin:0;">EXAM LOCKED</h1>
+        <p style="color:#ccc; font-size:1.2rem;">System Integrity Violation Detected.</p>
+        <p style="color:#888; margin-top:0;">You switched tabs or lost focus.</p>
+        <p id="lockStatusText" style="margin-top:20px; color:white; font-weight:bold; background:#333; padding:10px 20px; border-radius:50px;">Waiting for teacher approval...</p>
+    </div>
+
+    <!-- MAIN APP -->
+    <div class="container" id="quizApp" style="display:none; max-width:800px;">
+        
+        <div id="quizHeader">
+            <div>
+                <h2 id="quizTitle" style="margin:0; font-size:1.5rem;">Quiz Title</h2>
+                <div id="quizModeBadge" style="font-size:0.8rem; color:#888; margin-top:5px;"></div>
+            </div>
+            <div id="timerBadge" class="timer-badge">--:--</div>
+        </div>
+
+        <div id="questionsContainer">
+            <!-- Questions injected here -->
+        </div>
+
+        <div class="submit-container" style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
+            <button class="btn btn-secondary" onclick="document.documentElement.requestFullscreen()">⛶ Fullscreen</button>
+            <button class="btn btn-primary" id="submitQuizBtn" style="padding:15px 40px; font-size:1.2rem;">Submit Exam</button>
+        </div>
+    </div>
+
+    <!-- LOADING/START SCREEN -->
+    <div id="loadingMessage" style="height:100vh; display:flex; justify-content:center; align-items:center; flex-direction:column;">
+        <h1>Loading Exam...</h1>
+        <div class="loader"></div>
+    </div>
+
+    <script src="{% static 'js/quiz.js' %}"></script>
+</body>
+</html>

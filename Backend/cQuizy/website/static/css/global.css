@@ -1,4 +1,4 @@
-/*! IMPORTS/ROOT/BODY ====================================================================================================*/
+/*! IMPORTS/ROOT/BODY */
 @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300..700&display=swap');
 
 :root {
@@ -6,8 +6,8 @@
     --primary-color-hover: #f0587b;
     --secondary-color: #2fedc1;
     --secondary-color-hover: #8df5dd;
-
     --danger-color: #ffd800;
+    --danger-bg: #44252c;
 
     --primary-background: #151515;
     --secondary-background: #1e1e1e;
@@ -20,14 +20,10 @@
 body {
     background-color: var(--primary-background);
     font-family: "Comfortaa", sans-serif !important;
+    margin: 0;
 }
 
-
-
-
-
-/*! BASE ELEMENTS ====================================================================================================*/
-/*? TEXT ------------------------------ */
+/*! BASE ELEMENTS */
 h1,
 h2,
 h3 {
@@ -44,7 +40,24 @@ p {
     color: var(--text-color);
 }
 
-/*? FORMS ------------------------------ */
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/*? LISTS */
+.list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--tertiary-background);
+    padding: 15px;
+    border-radius: 15px;
+    margin-bottom: 10px;
+    color: var(--text-color);
+}
+
+/*? FORMS */
 .formTitle {
     color: var(--primary-color);
     margin: 5px;
@@ -62,48 +75,95 @@ form {
     background-color: var(--secondary-background);
     border-radius: 25px;
     width: fit-content;
+}
 
-    label {
-        color: var(--text-color);
-        margin: 5px;
-    }
+label {
+    color: var(--text-color);
+    margin: 5px;
+    display: block;
+}
 
-    input {
-        margin: 5px;
-        background-color: var(--tertiary-background);
-        color: var(--text-color);
-        border: none;
-        border-radius: 25px;
-        padding: 10px 20px;
-        font-family: "Comfortaa", sans-serif !important;
-    }
+input,
+select,
+textarea {
+    margin: 5px 0;
+    background-color: var(--tertiary-background);
+    color: var(--text-color);
+    border: none;
+    border-radius: 25px;
+    padding: 10px 20px;
+    font-family: "Comfortaa", sans-serif !important;
+    width: 100%;
+    box-sizing: border-box;
+}
 
-    button {
-        margin: 5px;
-        background-color: var(--primary-color);
-        color: var(--text-color);
-        border: none;
-        border-radius: 25px;
-        padding: 10px 20px;
-        cursor: pointer;
-        font-family: "Comfortaa", sans-serif !important;
-        transition: background-color 0.2s ease-in-out;
-    }
+input:focus,
+select:focus,
+textarea:focus {
+    outline: 2px solid var(--secondary-color);
+}
 
-    button:hover {
-        background-color: var(--primary-color-hover);
-    }
+/* Unified Button Styles */
+button,
+.btn {
+    margin: 5px 0;
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    border: none;
+    border-radius: 25px;
+    /* Ensures consistent shape */
+    padding: 10px 20px;
+    cursor: pointer;
+    font-family: "Comfortaa", sans-serif !important;
+    font-size: 14px;
+    transition: background-color 0.2s ease-in-out;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+button:hover {
+    background-color: var(--primary-color-hover);
+}
+
+.delete-btn,
+.btn-danger {
+    background-color: var(--danger-bg) !important;
+    color: var(--text-color) !important;
+}
+
+.delete-btn:hover,
+.btn-danger:hover {
+    background-color: var(--primary-color) !important;
 }
 
 .formDanger {
-    background-color: #44252c !important;
+    background-color: var(--danger-bg) !important;
 }
 
+/*? UTILS */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
 
+.back-btn {
+    background-color: var(--tertiary-background);
+    color: var(--secondary-text-color);
+    padding: 8px 15px;
+    border-radius: 25px;
+    display: inline-block;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
 
+.back-btn:hover {
+    background-color: #333;
+    color: white;
+}
 
-
-/*! NAVBAR ====================================================================================================*/
+/*! NAVBAR */
 .navbar {
     display: flex;
     justify-content: space-between;
@@ -112,18 +172,14 @@ form {
     padding: 10px 20px;
     border-radius: 25px;
     height: 30px;
+    margin: 10px;
 }
 
-.nav-left {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-}
-
+.nav-left,
 .nav-right {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 20px;
 }
 
 .nav-logo {
@@ -138,33 +194,27 @@ form {
 .nav-item {
     color: var(--text-color);
     font-size: 18px;
-
     text-align: center;
-    text-decoration: none;
     transition: color 0.2s ease-in-out;
-
-    .nav-pfp {
-        height: 40px;
-        border-radius: 50%;
-        transition: filter 0.2s ease-in-out;
-    }
-
-    .nav-pfp:hover {
-        filter: brightness(1.2);
-    }
 }
 
 .nav-item:hover {
     color: var(--primary-color-hover);
 }
 
+.nav-item .nav-pfp {
+    height: 40px;
+    border-radius: 50%;
+    transition: filter 0.2s ease-in-out;
+}
+
+.nav-item .nav-pfp:hover {
+    filter: brightness(1.2);
+}
+
 .nav-button {
     color: var(--text-color);
     font-size: 18px;
-
-    text-align: center;
-    text-decoration: none;
-
     background-color: var(--primary-color);
     padding: 10px 20px;
     border-radius: 25px;
@@ -175,11 +225,7 @@ form {
     background-color: var(--primary-color-hover);
 }
 
-
-
-
-
-/*! PROFILE ====================================================================================================*/
+/*! GROUPS & PROJECTS */
 #profileContainer {
     display: flex;
     gap: 10px;
@@ -189,433 +235,322 @@ form {
 #profilePfp {
     height: 100px;
     border-radius: 50%;
-    transition: filter 0.2s ease-in-out;
 }
 
-#profileSettings {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-
-    @media (max-width: 768px) {
-        flex-direction: column;
-    }
-}
-
-
-
-
-/*! GROUPS ====================================================================================================*/
-#groupsForms {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-
-    @media (max-width: 768px) {
-        flex-direction: column;
-    }
-}
-
-.groupItem {
-    background-color: var(--secondary-background);
-    border-radius: 25px;
-    padding: 10px 20px;
-    margin: 10px;
-    max-width: 800px;
-    transition: background-color 0.2s ease-in-out;
-
-    h3 {
-        color: var(--text-color);
-    }
-
-    p {
-        color: var(--secondary-text-color);
-    }
-
-    button {
-        margin: 5px;
-        background-color: var(--primary-color);
-        color: var(--text-color);
-        border: none;
-        border-radius: 25px;
-        padding: 10px 20px;
-        cursor: pointer;
-        font-family: "Comfortaa", sans-serif !important;
-        transition: background-color 0.2s ease-in-out;
-    }
-
-    button:hover {
-        background-color: var(--primary-color-hover);
-    }
-}
-
-.groupItem:hover {
-    background-color: var(--tertiary-background);
-}
-
-input[type="color"] {
-    -webkit-appearance: none;
-    /* For older Safari/Chrome */
-    -moz-appearance: none;
-    /* For Firefox */
-    appearance: none;
-    /* Standard property */
-    width: 60px;
-    /* Give it a reasonable width */
-    height: 30px;
-    /* And height */
-    padding: 0;
-    /* Remove padding that can hide the color */
-    border: 1px solid #777;
-    /* A subtle border */
-    border-radius: 5px;
-    /* Rounded corners */
-    background-color: transparent;
-    /* Crucial: lets the color show through */
-    cursor: pointer;
-}
-
-/* This targets the tiny color swatch inside the picker for Webkit browsers */
-input[type="color"]::-webkit-color-swatch-wrapper {
-    padding: 0;
-}
-
-input[type="color"]::-webkit-color-swatch {
-    border: none;
-    border-radius: 4px;
-}
-
-
-
-/*! PROJECTS ====================================================================================================*/
+#profileSettings,
+#groupsForms,
 #projectsForms {
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
+}
 
-    @media (max-width: 768px) {
+@media (max-width: 768px) {
+
+    #profileSettings,
+    #groupsForms,
+    #projectsForms {
         flex-direction: column;
     }
 }
 
-/* Container for the list of project cards */
-#projectsContainer {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin: 20px 0;
-}
-
-/* Individual project card - styled to match .groupItem */
+.groupItem,
 .project-item {
     background-color: var(--secondary-background);
     border-radius: 25px;
     padding: 15px 25px;
-    margin: 0 10px;
+    margin: 10px;
     max-width: 800px;
     transition: background-color 0.2s ease-in-out;
-    border-left: 5px solid var(--primary-color);
-    /* Accent color */
 }
 
+.groupItem:hover,
 .project-item:hover {
     background-color: var(--tertiary-background);
 }
 
-.project-item h3 {
-    color: var(--text-color);
-    margin-top: 5px;
-    margin-bottom: 10px;
+.project-item {
+    border-left: 5px solid var(--primary-color);
 }
 
-.project-item p {
-    color: var(--secondary-text-color);
-    margin-bottom: 15px;
-}
-
-/* Container for Edit/Delete buttons */
 .project-actions {
     display: flex;
     gap: 10px;
+    margin-top: 10px;
 }
 
-/* Re-using existing button styles for consistency */
-.project-actions button {
-    margin: 0;
-    background-color: var(--primary-color);
-    color: var(--text-color);
+input[type="color"] {
+    -webkit-appearance: none;
     border: none;
+    width: 60px;
+    height: 30px;
+    padding: 0;
     border-radius: 25px;
-    padding: 10px 20px;
+    background: transparent;
     cursor: pointer;
-    font-family: "Comfortaa", sans-serif !important;
-    transition: background-color 0.2s ease-in-out;
 }
 
-.project-actions button:hover {
-    background-color: var(--primary-color-hover);
-}
-
-/* Specific styling for the delete button */
-.project-actions .delete-btn {
-    background-color: #44252c;
-}
-
-.project-actions .delete-btn:hover {
-    background-color: var(--primary-color);
-}
-
-
-
-
-
-/*! BUILDER ====================================================================================================*/
-
-/* NEW: Main container to center the form on the page */
-.builder-container {
-    display: flex;
-    justify-content: center;
-    padding: 20px;
-}
-
-#builder-form {
-    background-color: var(--secondary-background);
-    border-radius: 25px;
-    padding: 20px 30px;
-    width: 100%;
-    /* Take up the full width of the container */
-    max-width: 900px;
-}
-
-/* --- General Form Elements --- */
-
-.project-meta label,
-#builder-form h3 {
-    color: var(--text-color);
-    margin: 10px 0 5px 5px;
-    font-size: 18px;
-}
-
-/* Consolidated styles for all text inputs and textareas in the builder */
-#builder-form input[type="text"],
-#builder-form input[type="url"],
-#builder-form textarea {
-    width: 100%;
-    box-sizing: border-box;
-    margin: 5px 0;
-    color: var(--text-color);
+input[type="color"]::-webkit-color-swatch {
     border: none;
-    padding: 10px 15px;
-    font-family: "Comfortaa", sans-serif !important;
-    font-size: 15px;
-    resize: vertical;
+    border-radius: 25px;
 }
 
-#builder-form .project-meta input,
-#builder-form .project-meta textarea {
-    background-color: var(--tertiary-background);
-    border-radius: 15px;
-    font-size: 16px;
-}
-
-#builder-form .block-item input,
-#builder-form .block-item textarea {
-    background-color: var(--primary-background);
-    border-radius: 10px;
-}
-
-#builder-form .block-optional-fields input[type="url"] {
-    color: var(--secondary-text-color);
-    border: 1px dashed #444;
-}
-
-#builder-form .block-optional-fields input[type="url"]:focus {
-    outline: none;
-    border: 1px solid var(--secondary-color);
-}
-
-
-/* --- Block (Question) Specifics --- */
-
-#blocks-container {
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
-    margin-top: 30px;
-}
-
-.block-item {
-    background-color: var(--tertiary-background);
-    border-radius: 15px;
+/*! QUIZ PLAYER */
+#quizApp {
+    max-width: 900px;
+    margin: 0 auto;
     padding: 20px;
-    border-left: 4px solid var(--secondary-color);
 }
 
-.block-header {
+#quizHeader {
+    background-color: var(--secondary-background);
+    border-radius: 0 0 25px 25px;
+    padding: 20px 30px;
+    margin-bottom: 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+#quizTitle {
+    font-size: 1.4em;
+    color: var(--secondary-color);
+    margin: 0;
+}
+
+#timerBadge {
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    padding: 8px 20px;
+    border-radius: 25px;
+    font-family: monospace;
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+.question-block {
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    padding: 30px;
+    margin-bottom: 25px;
+    border-left: 5px solid var(--secondary-color);
+}
+
+.question-text {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 15px;
+    color: var(--text-color);
+}
+
+.subtext {
+    background-color: var(--tertiary-background);
+    padding: 10px 15px;
+    border-radius: 15px;
+    font-size: 0.9em;
+    color: var(--secondary-text-color);
+    margin-bottom: 15px;
+    display: inline-block;
+}
+
+.options-container label {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background-color: var(--tertiary-background);
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.options-container label:hover {
+    background-color: #333;
+}
+
+.options-container input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--secondary-color);
+}
+
+#lockOverlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.95);
+    z-index: 10000;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.lock-icon {
+    font-size: 5em;
+    margin-bottom: 20px;
+    color: var(--primary-color);
+}
+
+/*! ADMIN DASHBOARD */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background-color: var(--secondary-background);
+    padding: 20px;
+    border-radius: 25px;
+    text-align: center;
+    border-top: 4px solid var(--secondary-color);
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: var(--text-color) !important;
+    margin: 10px 0;
+}
+
+.stat-label {
+    color: var(--secondary-text-color);
+    font-size: 0.9em;
+    text-transform: uppercase;
+}
+
+.admin-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+@media (max-width: 900px) {
+    .admin-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.admin-section,
+.card {
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    padding: 25px;
+}
+
+.events-feed {
+    max-height: 500px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.event-item {
+    background-color: var(--tertiary-background);
+    padding: 15px;
+    border-radius: 15px;
+    margin-bottom: 10px;
+    border-left: 4px solid #555;
+}
+
+.event-item.active {
+    border-left-color: var(--danger-color);
+    background-color: var(--danger-bg);
+}
+
+.event-item.handled {
+    border-left-color: var(--secondary-color);
+    opacity: 0.7;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-color);
+}
+
+th,
+td {
+    text-align: left;
+    padding: 10px;
+    border-bottom: 1px solid var(--tertiary-background);
+}
+
+th {
+    color: var(--secondary-text-color);
+}
+
+tr:hover td {
+    background-color: var(--tertiary-background);
+}
+
+/*! BUILDER & MODALS (Re-structured for better visibility) */
+#builder-form {
+    background-color: var(--secondary-background);
+    border-radius: 25px;
+    padding: 30px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+/* Make inputs look "inset" when inside the main form */
+#builder-form input[type="text"],
+#builder-form textarea {
+    background-color: var(--tertiary-background);
+    border: 1px solid transparent;
+}
+
+#builder-form input[type="text"]:focus,
+#builder-form textarea:focus {
+    border-color: var(--secondary-color);
+    background-color: #222;
+}
+
+/* Distinct Block Card */
+.block-item {
+    background-color: var(--tertiary-background);
+    border-radius: 20px;
+    padding: 25px;
+    border-left: 6px solid var(--secondary-color);
+    margin-bottom: 30px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Inputs inside the block should differ from the block bg */
+.block-item input,
+.block-item textarea {
+    background-color: var(--primary-background) !important;
+    /* Darker than the card */
     margin-bottom: 10px;
 }
 
-.block-header h4 {
-    margin: 0;
-    color: var(--secondary-color);
-}
-
-.drag-handle {
-    cursor: grab;
-    color: #888;
-    font-size: 24px;
-    padding: 0 10px;
-}
-
-.drag-handle:active {
-    cursor: grabbing;
-}
-
-/* --- Answer Specifics --- */
-
+/* Visual separation for Answers */
 .answers-container {
     margin-top: 20px;
-    border-top: 1px solid #444;
-    padding-top: 15px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .answers-container h5 {
-    margin: 0 0 10px 0;
-    color: var(--secondary-text-color);
+    color: var(--secondary-color);
+    margin-bottom: 15px;
 }
 
 .answer-item {
     display: flex;
-    align-items: center;
     gap: 10px;
-    margin-bottom: 10px;
-    background-color: var(--primary-background);
-    padding: 10px;
-    border-radius: 10px;
-}
-
-.answer-item input[type="text"] {
-    flex-grow: 1;
-    margin: 0;
-    background-color: var(--tertiary-background) !important;
-    /* Ensure override */
-}
-
-.answer-item label {
-    color: var(--text-color);
-    display: flex;
     align-items: center;
-    gap: 5px;
-    cursor: pointer;
-    white-space: nowrap;
+    margin-bottom: 10px;
 }
 
-.answer-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-    accent-color: var(--secondary-color);
-}
-
-.answer-item.correct-hidden label {
-    display: none;
-}
-
-
-/* --- Buttons --- */
-
-.block-item button,
-.builder-actions button,
-.modal-content button {
-    background-color: #333;
-    color: var(--text-color);
-    border: none;
-    border-radius: 25px;
-    padding: 8px 16px;
-    cursor: pointer;
-    font-family: "Comfortaa", sans-serif !important;
-    font-size: 14px;
-    transition: background-color 0.2s ease-in-out;
-}
-
-.block-item button:hover,
-.builder-actions button:hover,
-.modal-content button:hover {
-    background-color: #444;
-}
-
-/* Specific Button Colors */
-
-.add-answer-btn,
-#add-block-btn,
-#blockSearchBtn,
-.insert-btn {
-    background-color: var(--secondary-color) !important;
-    color: var(--primary-background) !important;
-    font-weight: bold;
-}
-
-.add-answer-btn:hover,
-#add-block-btn:hover,
-#blockSearchBtn:hover,
-.insert-btn:hover {
-    background-color: var(--secondary-color-hover) !important;
-}
-
-#open-import-modal-btn {
-    background-color: #17a2b8 !important;
-    /* Teal for import action */
-    color: white !important;
-}
-
-#open-import-modal-btn:hover {
-    filter: brightness(1.1);
-}
-
-.delete-answer-btn,
-.delete-block-btn {
-    background-color: #44252c !important;
-}
-
-.delete-answer-btn:hover,
-.delete-block-btn:hover {
-    background-color: var(--primary-color) !important;
-}
-
-.builder-actions {
-    margin-top: 30px;
-    padding-top: 20px;
-    border-top: 1px solid #444;
-    display: flex;
-    gap: 15px;
-    justify-content: flex-end;
-}
-
-#save-project-btn {
-    background-color: var(--primary-color) !important;
-    padding: 12px 24px;
-    font-size: 16px;
-    font-weight: bold;
-}
-
-#save-project-btn:hover {
-    background-color: var(--primary-color-hover) !important;
-}
-
-/* Disabled State for buttons */
-.builder-actions button:disabled,
-.block-item button:disabled {
-    background-color: #333 !important;
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-
-/*? IMPORT MODAL*/
-
+/* Modal */
 .modal {
     display: none;
     position: fixed;
@@ -624,172 +559,49 @@ input[type="color"]::-webkit-color-swatch {
     top: 0;
     width: 100%;
     height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(5px);
     overflow: auto;
-    background-color: rgba(0, 0, 0, 0.6);
-    /* Slightly darker backdrop */
-    backdrop-filter: blur(3px);
-    /* Blur effect on background */
 }
 
 .modal-content {
     background-color: var(--secondary-background);
-    margin: 8% auto;
+    margin: 5% auto;
     padding: 30px;
-    border: 1px solid var(--tertiary-background);
     width: 80%;
     max-width: 800px;
     border-radius: 25px;
-    /* Matches builder form radius */
     box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
     color: var(--text-color);
-}
-
-.modal-content h3 {
-    margin-top: 0;
-    color: var(--secondary-color);
-    font-family: "Comfortaa", sans-serif;
 }
 
 .close-modal {
     color: var(--secondary-text-color);
     float: right;
     font-size: 28px;
-    font-weight: bold;
     cursor: pointer;
-    line-height: 20px;
-    transition: color 0.2s;
 }
 
 .close-modal:hover {
     color: var(--primary-color);
 }
 
-/* Modal Search Controls */
-.search-controls select {
-    background-color: var(--tertiary-background);
-    color: var(--text-color);
-    border: none;
-    border-radius: 15px;
-    padding: 0 10px;
-    font-family: "Comfortaa", sans-serif;
-    cursor: pointer;
+.loader {
+    border: 5px solid var(--tertiary-background);
+    border-top: 5px solid var(--primary-color);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
 }
 
-.search-controls select:focus {
-    outline: 2px solid var(--secondary-color);
-}
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
 
-/* Modal Search Input */
-#blockSearchInput {
-    background-color: var(--tertiary-background);
-    border: none;
-    border-radius: 15px;
-    padding: 12px 20px;
-    color: var(--text-color);
-    font-family: "Comfortaa", sans-serif;
-    font-size: 16px;
-}
-
-#blockSearchInput:focus {
-    outline: 2px solid var(--secondary-color);
-}
-
-/* Modal Search Results */
-#searchResultsContainer {
-    margin-top: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    padding-right: 5px;
-    /* Space for scrollbar */
-}
-
-/* Scrollbar styling for results */
-#searchResultsContainer::-webkit-scrollbar {
-    width: 8px;
-}
-
-#searchResultsContainer::-webkit-scrollbar-track {
-    background: var(--secondary-background);
-}
-
-#searchResultsContainer::-webkit-scrollbar-thumb {
-    background: #444;
-    border-radius: 4px;
-}
-
-#searchResultsContainer::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
-.search-result-item {
-    background-color: var(--tertiary-background);
-    border-radius: 15px;
-    padding: 15px 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    /* Aligns items to top so button stays up */
-    border: 1px solid transparent;
-    transition: border-color 0.2s;
-}
-
-.search-result-item:hover {
-    border-color: var(--secondary-color);
-}
-
-.search-result-info {
-    flex-grow: 1;
-    margin-right: 15px;
-}
-
-.result-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-}
-
-.result-header h5 {
-    margin: 0;
-    color: var(--text-color);
-    font-size: 16px;
-    font-family: "Comfortaa", sans-serif;
-}
-
-.badge {
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 10px;
-    background: #444;
-    color: white;
-    text-transform: uppercase;
-    font-weight: bold;
-}
-
-/* Answer Preview List */
-.result-preview {
-    background-color: var(--primary-background);
-    /* Darker background for contrast */
-    border-radius: 8px;
-    padding: 10px;
-}
-
-.result-answers-list {
-    margin: 0;
-    padding-left: 20px;
-    list-style-type: disc;
-    font-size: 13px;
-    color: var(--secondary-text-color);
-}
-
-.result-answers-list li {
-    margin-bottom: 4px;
-}
-
-.result-answers-list li.correct-answer {
-    color: var(--secondary-color);
-    /* Highlight correct answer */
-    font-weight: bold;
-    list-style-type: check;
+    100% {
+        transform: rotate(360deg);
+    }
 }

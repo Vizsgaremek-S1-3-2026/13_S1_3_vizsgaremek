@@ -289,26 +289,27 @@ def regenerate_invite_code(request, group_id: int):
     return group
 
 #? Retrieval by ID
-@router.get("/{group_id}", response=GroupOutSchema, auth=JWTAuth(), summary="Retrieve a specific group")
+@router.get("/{group_id}", response=GroupWithRankOutSchema, auth=JWTAuth(), summary="Retrieve a specific group")
 def get_group(request, group_id: int):
     """
-    Retrieves the details for a single group.
-
-    Access is granted only if the requesting user is an active member or a superuser.
+    Retrieves the details for a single group, INCLUDING the user's rank.
     """
     current_user = request.auth
     
-    # 1. Get the active group object from the database.
+    # 1. Get the active group
     group = get_object_or_404(Group, id=group_id)
 
-    # 2. Check for Authorization.
+    # 2. Check for Authorization and determine Rank
     if current_user.is_superuser:
+        group.rank = "SUPERUSER" # Manually attach rank for the schema
         return group 
 
-    # 3. If not a superuser, check if they are an active member of the group.
-    is_member = GroupMember.objects.filter(group=group, user=current_user).exists()
+    # 3. Check membership
+    # We use 'first()' so we get the object to access .rank
+    membership = GroupMember.objects.filter(group=group, user=current_user).first()
     
-    if is_member:
+    if membership:
+        group.rank = membership.rank # Manually attach rank for the schema
         return group
     
     return 403, {"detail": "You do not have permission to view this group."}
