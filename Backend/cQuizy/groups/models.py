@@ -132,3 +132,42 @@ class GradePercentage(models.Model):
 
     def __str__(self):
         return f"{self.group.name}: {self.name} ({self.min_percentage}% - {self.max_percentage}%)"
+
+
+
+#? Grades
+class Grade(models.Model):
+    """
+    Represents an actual grade assigned to a student for a specific task/project.
+    """
+    group = models.ForeignKey(
+        Group, 
+        on_delete=models.CASCADE, 
+        related_name="grades", 
+        verbose_name="Group"
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name="grades",
+        verbose_name="Student"
+    )
+    teacher = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name="grades_given",
+        verbose_name="Teacher"
+    )
+    value = models.CharField(
+        max_length=20,
+        verbose_name="Grade Value",
+        help_text="The actual grade (e.g. '5', 'A', 'Excellent')"
+    )
+    date_awarded = models.DateTimeField(auto_now_add=True, verbose_name="Date Awarded")
+
+    def __str__(self):
+        return f"{self.student.username} - {self.value}"
+
+    class Meta:
+        verbose_name = "Grade"
+        verbose_name_plural = "Grades"

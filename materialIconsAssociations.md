@@ -7,6 +7,6 @@
         "users": "admin",
         "groups": "ui",
         "blueprints": "layout",
-        "sessions": "class",
+        "quizzes": "class",
     },
 ```

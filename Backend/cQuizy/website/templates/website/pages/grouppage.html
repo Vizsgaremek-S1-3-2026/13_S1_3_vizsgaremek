@@ -1,0 +1,68 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "website/components/head.html" %}
+    <title>TF | Group Dashboard</title>
+</head>
+<body>
+    {% include "website/components/header.html" %}
+
+    <div class="container">
+        <a href="/groups/" class="back-btn">← Back to Groups</a>
+
+        <!-- HERO SECTION -->
+        <div id="groupHeader" style="padding:40px; border-radius:16px; margin-bottom:30px; position:relative; overflow:hidden; background: #222;">
+            <div style="position:relative; z-index:2;">
+                <h1 id="groupName" style="font-size:3rem; margin:0;">Loading...</h1>
+                <p style="opacity:0.8;">ID: <span id="groupIdDisplay">...</span></p>
+                <p style="opacity:0.8;">Invite Code: <span id="groupInviteCode" style="font-family:monospace; background:rgba(0,0,0,0.3); padding:5px 10px; border-radius:5px;">...</span></p>
+                
+                <div style="margin-top:20px; display:flex; gap:10px;">
+                    <span id="groupAnticheatBadge" style="background:rgba(0,0,0,0.3); padding:5px 10px; border-radius:20px; font-size:0.8em;"></span>
+                    <span id="groupKioskBadge" style="background:rgba(0,0,0,0.3); padding:5px 10px; border-radius:20px; font-size:0.8em;"></span>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 300px; gap:30px;">
+            
+            <!-- LEFT: QUIZZES -->
+            <div>
+                <h2>Assignments & Quizzes</h2>
+                <div id="quizzesList" style="display:flex; flex-direction:column; gap:15px;">
+                    <p style="color:#666;">Loading assignments...</p>
+                </div>
+            </div>
+
+            <!-- RIGHT: MEMBERS -->
+            <div>
+                <h2>Members</h2>
+                <div class="card" style="padding:0;">
+                    <div id="membersList" style="padding:15px;">
+                        <p>Loading...</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="{% static 'js/grouppage.js' %}"></script>
+    <script>
+        // Inline tweak for the Header Color Gradient
+        function darkenColor(color, amount) {
+            let usePound = false;
+            if (color[0] === "#") { color = color.slice(1); usePound = true; }
+            const num = parseInt(color, 16);
+            let r = (num >> 16);
+            let g = ((num >> 8) & 0x00FF);
+            let b = (num & 0x0000FF);
+            r = Math.max(0, Math.floor(r * (1 - amount)));
+            g = Math.max(0, Math.floor(g * (1 - amount)));
+            b = Math.max(0, Math.floor(b * (1 - amount)));
+            return (usePound ? "#" : "") + (g | (b << 8) | (r << 16)).toString(16).padStart(6,'0');
+        }
+    </script>
+</body>
+</html>

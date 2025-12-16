@@ -15,6 +15,7 @@ class AnswerOutSchema(Schema):
     id: int
     text: str
     is_correct: bool
+    points: int
 
 class BlockOutSchema(Schema):
     id: int
@@ -48,6 +49,7 @@ class AnswerUpdateSchema(Schema):
     id: Optional[int] = None
     text: str
     is_correct: bool
+    points: int
 
 class BlockUpdateSchema(Schema):
     id: Optional[int] = None
