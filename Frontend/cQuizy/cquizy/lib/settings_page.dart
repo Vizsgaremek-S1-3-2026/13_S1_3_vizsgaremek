@@ -159,8 +159,10 @@ class _SettingsPageState extends State<SettingsPage>
           // Mobile view with drawer
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
-            drawer: Drawer(child: _buildSidebar(context, isDesktop: false)),
-            body: _buildContent(context, isDesktop: false),
+            drawer: Drawer(
+              child: SafeArea(child: _buildSidebar(context, isDesktop: false)),
+            ),
+            body: SafeArea(child: _buildContent(context, isDesktop: false)),
           );
         }
       },
@@ -242,43 +244,254 @@ class _SettingsPageState extends State<SettingsPage>
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          // Logout button
+          const SizedBox(height: 24),
+          // Back to Home Button (Spectacular version)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: InkWell(
+              onTap: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.primaryColor.withValues(alpha: 0.1),
+                      theme.primaryColor.withValues(alpha: 0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.primaryColor.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.home_rounded,
+                      size: 20,
+                      color: theme.primaryColor,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Vissza a főlapra',
+                      style: TextStyle(
+                        color: theme.primaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 5),
           // Logout button
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton(
               onPressed: () {
-                showDialog(
+                showGeneralDialog(
                   context: context,
-                  builder: (BuildContext context) {
-                    return AlertDialog(
-                      title: const Text('Kijelentkezés'),
-                      content: const Text('Biztosan ki szeretne jelentkezni?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                          },
-                          child: Text(
-                            'Mégse',
-                            style: TextStyle(
-                              color: theme.textTheme.bodyMedium?.color,
+                  barrierDismissible: true,
+                  barrierLabel: '',
+                  transitionDuration: const Duration(milliseconds: 300),
+                  pageBuilder: (context, animation1, animation2) {
+                    return Container();
+                  },
+                  transitionBuilder: (context, a1, a2, child) {
+                    final theme = Theme.of(context);
+                    return ScaleTransition(
+                      scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+                      child: FadeTransition(
+                        opacity: a1,
+                        child: Dialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          elevation: 0,
+                          backgroundColor: Colors.transparent,
+                          child: Container(
+                            constraints: const BoxConstraints(maxWidth: 500),
+                            decoration: BoxDecoration(
+                              color: theme.cardColor,
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Header with gradient
+                                Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        theme.primaryColor,
+                                        theme.primaryColor.withValues(
+                                          alpha: 0.7,
+                                        ),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(24),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.2,
+                                          ),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.logout_rounded,
+                                          color: Colors.white,
+                                          size: 28,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      const Expanded(
+                                        child: Text(
+                                          'Kijelentkezés',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                // Content
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final hPadding = constraints.maxWidth < 400
+                                        ? 20.0
+                                        : 32.0;
+
+                                    return Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: hPadding,
+                                        vertical: 24,
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Text(
+                                            'Biztosan ki szeretne jelentkezni?',
+                                            style: TextStyle(
+                                              color: theme
+                                                  .textTheme
+                                                  .bodyLarge
+                                                  ?.color,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 32),
+
+                                          // Actions
+                                          Wrap(
+                                            alignment: WrapAlignment.end,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            spacing: 12,
+                                            runSpacing: 12,
+                                            children: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                style: TextButton.styleFrom(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 20,
+                                                        vertical: 12,
+                                                      ),
+                                                ),
+                                                child: Text(
+                                                  'Mégse',
+                                                  style: TextStyle(
+                                                    color: theme
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.color
+                                                        ?.withValues(
+                                                          alpha: 0.6,
+                                                        ),
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () {
+                                                  Navigator.of(context).pop();
+                                                  widget.onLogout();
+                                                  Navigator.of(
+                                                    context,
+                                                  ).popUntil(
+                                                    (route) => route.isFirst,
+                                                  );
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      theme.primaryColor,
+                                                  foregroundColor: Colors.white,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 28,
+                                                        vertical: 14,
+                                                      ),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                  elevation: 4,
+                                                  shadowColor: theme
+                                                      .primaryColor
+                                                      .withValues(alpha: 0.4),
+                                                ),
+                                                child: const Text(
+                                                  'Kijelentkezés',
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).pop(); // Close dialog
-                            widget.onLogout();
-                            Navigator.of(context).pop(); // Close settings page
-                          },
-                          child: Text(
-                            'Kijelentkezés',
-                            style: TextStyle(color: theme.primaryColor),
-                          ),
-                        ),
-                      ],
+                      ),
                     );
                   },
                 );
@@ -384,19 +597,14 @@ class _SettingsPageState extends State<SettingsPage>
           children: [
             // Top bar with menu/collapse toggle
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: isDesktop ? 16 : 24,
+                bottom: 16,
+              ),
               child: Row(
                 children: [
-                  if (!isDesktop)
-                    Builder(
-                      builder: (context) => IconButton(
-                        icon: Icon(Icons.menu, color: theme.iconTheme.color),
-                        onPressed: () {
-                          Scaffold.of(context).openDrawer();
-                        },
-                      ),
-                    ),
-                  const SizedBox(width: 16),
                   Expanded(
                     child: Text(
                       _selectedSection,
@@ -415,44 +623,55 @@ class _SettingsPageState extends State<SettingsPage>
           ],
         ),
         // Floating Back Button
-        Positioned(
-          bottom: 24,
-          left: 24,
-          child: Tooltip(
-            message: 'Vissza',
-            child: InkWell(
-              onTap: () {
-                if (!isDesktop) {
-                  Navigator.of(context).pop(); // Close drawer
-                }
-                Navigator.of(context).pop(); // Close settings page
-              },
-              customBorder: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.0),
-              ),
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: theme.primaryColor,
-                  borderRadius: BorderRadius.circular(16.0),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+        if (!isDesktop)
+          Positioned(
+            bottom: 24,
+            left: 24,
+            child: Builder(
+              builder: (context) {
+                return Tooltip(
+                  message: isDesktop ? 'Kezdőlap' : 'Menü (Hosszan: Kezdőlap)',
+                  child: InkWell(
+                    onTap: () {
+                      if (isDesktop) {
+                        Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst);
+                      } else {
+                        Scaffold.of(context).openDrawer();
+                      }
+                    },
+                    onLongPress: () {
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
+                    customBorder: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16.0),
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor,
+                        borderRadius: BorderRadius.circular(16.0),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        isDesktop ? Icons.home_rounded : Icons.menu,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-        ),
       ],
     );
   }
@@ -1391,7 +1610,7 @@ class _SettingsPageState extends State<SettingsPage>
                   elevation: 0,
                   backgroundColor: Colors.transparent,
                   child: Container(
-                    width: 500,
+                    constraints: const BoxConstraints(maxWidth: 500),
                     decoration: BoxDecoration(
                       color: theme.cardColor,
                       borderRadius: BorderRadius.circular(24),
@@ -1437,12 +1656,15 @@ class _SettingsPageState extends State<SettingsPage>
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              const Text(
-                                'Profil szerkesztése',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
+                              const Expanded(
+                                child: Text(
+                                  'Profil szerkesztése',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -1450,244 +1672,289 @@ class _SettingsPageState extends State<SettingsPage>
                         ),
 
                         // Content
-                        Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            children: [
-                              Row(
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final hPadding = constraints.maxWidth < 400
+                                ? 20.0
+                                : 32.0;
+
+                            return Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: hPadding,
+                                vertical: 24,
+                              ),
+                              child: Column(
                                 children: [
-                                  Expanded(
-                                    child: _buildDialogTextField(
-                                      lastNameController,
-                                      'Vezetéknév',
-                                      Icons.person_outline,
-                                    ),
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      if (constraints.maxWidth < 320) {
+                                        return Column(
+                                          children: [
+                                            _buildDialogTextField(
+                                              lastNameController,
+                                              'Vezetéknév',
+                                              Icons.person_outline,
+                                            ),
+                                            const SizedBox(height: 24),
+                                            _buildDialogTextField(
+                                              firstNameController,
+                                              'Keresztnév',
+                                              Icons.person_outline,
+                                            ),
+                                          ],
+                                        );
+                                      }
+                                      return Row(
+                                        children: [
+                                          Expanded(
+                                            child: _buildDialogTextField(
+                                              lastNameController,
+                                              'Vezetéknév',
+                                              Icons.person_outline,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: _buildDialogTextField(
+                                              firstNameController,
+                                              'Keresztnév',
+                                              Icons.person_outline,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    },
                                   ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: _buildDialogTextField(
-                                      firstNameController,
-                                      'Keresztnév',
-                                      Icons.person_outline,
-                                    ),
+                                  const SizedBox(height: 24),
+                                  _buildDialogTextField(
+                                    nicknameController,
+                                    'Becenév',
+                                    Icons.badge_outlined,
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 24),
-                              _buildDialogTextField(
-                                nicknameController,
-                                'Becenév',
-                                Icons.badge_outlined,
-                              ),
-                              const SizedBox(height: 24),
-                              TextField(
-                                controller: emailController,
-                                decoration: InputDecoration(
-                                  labelText: 'E-mail',
-                                  prefixIcon: Icon(
-                                    Icons.email_outlined,
-                                    color: theme.primaryColor,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(
-                                      color: theme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                ),
-                                onChanged: (value) {
-                                  setState(() {});
-                                },
-                              ),
-                              if (isEmailChanged) ...[
-                                const SizedBox(height: 24),
-                                TextField(
-                                  controller: passwordController,
-                                  obscureText: true,
-                                  decoration: InputDecoration(
-                                    labelText: 'Jelszó (megerősítéshez)',
-                                    prefixIcon: Icon(
-                                      Icons.lock_outline,
-                                      color: theme.primaryColor,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
+                                  const SizedBox(height: 24),
+                                  TextField(
+                                    controller: emailController,
+                                    decoration: InputDecoration(
+                                      labelText: 'E-mail',
+                                      prefixIcon: Icon(
+                                        Icons.email_outlined,
                                         color: theme.primaryColor,
-                                        width: 2,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: theme.primaryColor,
+                                          width: 2,
+                                        ),
                                       ),
                                     ),
-                                    helperText:
-                                        'Az email módosításához szükséges',
+                                    onChanged: (value) {
+                                      setState(() {});
+                                    },
                                   ),
-                                  onChanged: (value) {
-                                    setState(() {});
-                                  },
-                                ),
-                              ],
-                              const SizedBox(height: 24),
-                              // Avatar picker button
-                              OutlinedButton.icon(
-                                onPressed: () async {
-                                  final result = await _showAvatarPickerDialog(
-                                    context,
-                                    selectedAvatarId,
-                                  );
-                                  if (result != null) {
-                                    setState(() {
-                                      selectedAvatarId = result;
-                                    });
-                                  }
-                                },
-                                icon: Icon(
-                                  _avatars.firstWhere(
-                                        (a) => a['id'] == selectedAvatarId,
-                                        orElse: () => _avatars.first,
-                                      )['icon']
-                                      as IconData,
-                                  color: theme.primaryColor,
-                                ),
-                                label: const Text('Profilkép módosítása'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: theme.primaryColor,
-                                  side: BorderSide(color: theme.primaryColor),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                    horizontal: 24,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 32),
-
-                              // Actions
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    style: TextButton.styleFrom(
+                                  if (isEmailChanged) ...[
+                                    const SizedBox(height: 24),
+                                    TextField(
+                                      controller: passwordController,
+                                      obscureText: true,
+                                      decoration: InputDecoration(
+                                        labelText: 'Jelszó (megerősítéshez)',
+                                        prefixIcon: Icon(
+                                          Icons.lock_outline,
+                                          color: theme.primaryColor,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: theme.primaryColor,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        helperText:
+                                            'Az email módosításához szükséges',
+                                      ),
+                                      onChanged: (value) {
+                                        setState(() {});
+                                      },
+                                    ),
+                                  ],
+                                  const SizedBox(height: 24),
+                                  // Avatar picker button
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final result =
+                                          await _showAvatarPickerDialog(
+                                            context,
+                                            selectedAvatarId,
+                                          );
+                                      if (result != null) {
+                                        setState(() {
+                                          selectedAvatarId = result;
+                                        });
+                                      }
+                                    },
+                                    icon: Icon(
+                                      _avatars.firstWhere(
+                                            (a) => a['id'] == selectedAvatarId,
+                                            orElse: () => _avatars.first,
+                                          )['icon']
+                                          as IconData,
+                                      color: theme.primaryColor,
+                                    ),
+                                    label: const Text('Profilkép módosítása'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: theme.primaryColor,
+                                      side: BorderSide(
+                                        color: theme.primaryColor,
+                                      ),
                                       padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
                                         horizontal: 24,
-                                        vertical: 16,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'Mégse',
-                                      style: TextStyle(
-                                        color: theme.textTheme.bodyMedium?.color
-                                            ?.withValues(alpha: 0.6),
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  ElevatedButton(
-                                    // Disable button if email changed but password is empty
-                                    onPressed:
-                                        (isEmailChanged &&
-                                            passwordController.text.isEmpty)
-                                        ? null
-                                        : () async {
-                                            bool success = true;
-
-                                            // If email changed, call changeEmail endpoint
-                                            if (isEmailChanged) {
-                                              success = await context
-                                                  .read<UserProvider>()
-                                                  .changeEmail(
-                                                    emailController.text,
-                                                    passwordController.text,
-                                                  );
-                                            }
-
-                                            // Update other fields
-                                            if (success) {
-                                              final updateData = {
-                                                'first_name':
-                                                    firstNameController.text,
-                                                'last_name':
-                                                    lastNameController.text,
-                                                'nickname':
-                                                    nicknameController.text,
-                                                'pfp_url': selectedAvatarId,
-                                              };
-
-                                              success = await context
-                                                  .read<UserProvider>()
-                                                  .updateUser(updateData);
-                                            }
-
-                                            if (context.mounted) {
-                                              // Only close dialog if successful
-                                              if (success) {
-                                                Navigator.pop(context);
-                                              }
-
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    success
-                                                        ? 'Profil sikeresen frissítve'
-                                                        : 'Hiba történt a frissítés során',
-                                                  ),
-                                                  behavior:
-                                                      SnackBarBehavior.floating,
-                                                  backgroundColor: success
-                                                      ? Colors.green
-                                                      : Colors.red,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10,
-                                                        ),
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: theme.primaryColor,
-                                      foregroundColor: Colors.white,
-                                      disabledBackgroundColor: theme
-                                          .primaryColor
-                                          .withValues(alpha: 0.3),
-                                      disabledForegroundColor: Colors.white
-                                          .withValues(alpha: 0.5),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 32,
-                                        vertical: 16,
                                       ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                      elevation: 4,
-                                      shadowColor: theme.primaryColor
-                                          .withValues(alpha: 0.4),
                                     ),
-                                    child: const Text(
-                                      'Mentés',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
+                                  ),
+                                  const SizedBox(height: 32),
+
+                                  // Actions
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 24,
+                                            vertical: 16,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Mégse',
+                                          style: TextStyle(
+                                            color: theme
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.color
+                                                ?.withValues(alpha: 0.6),
+                                            fontSize: 16,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(width: 16),
+                                      ElevatedButton(
+                                        // Disable button if email changed but password is empty
+                                        onPressed:
+                                            (isEmailChanged &&
+                                                passwordController.text.isEmpty)
+                                            ? null
+                                            : () async {
+                                                bool success = true;
+
+                                                // If email changed, call changeEmail endpoint
+                                                if (isEmailChanged) {
+                                                  success = await context
+                                                      .read<UserProvider>()
+                                                      .changeEmail(
+                                                        emailController.text,
+                                                        passwordController.text,
+                                                      );
+                                                }
+
+                                                // Update other fields
+                                                if (success) {
+                                                  final updateData = {
+                                                    'first_name':
+                                                        firstNameController
+                                                            .text,
+                                                    'last_name':
+                                                        lastNameController.text,
+                                                    'nickname':
+                                                        nicknameController.text,
+                                                    'pfp_url': selectedAvatarId,
+                                                  };
+
+                                                  success = await context
+                                                      .read<UserProvider>()
+                                                      .updateUser(updateData);
+                                                }
+
+                                                if (context.mounted) {
+                                                  // Only close dialog if successful
+                                                  if (success) {
+                                                    Navigator.pop(context);
+                                                  }
+
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        success
+                                                            ? 'Profil sikeresen frissítve'
+                                                            : 'Hiba történt a frissítés során',
+                                                      ),
+                                                      behavior: SnackBarBehavior
+                                                          .floating,
+                                                      backgroundColor: success
+                                                          ? Colors.green
+                                                          : Colors.red,
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: theme.primaryColor,
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: theme
+                                              .primaryColor
+                                              .withValues(alpha: 0.3),
+                                          disabledForegroundColor: Colors.white
+                                              .withValues(alpha: 0.5),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 32,
+                                            vertical: 16,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          elevation: 4,
+                                          shadowColor: theme.primaryColor
+                                              .withValues(alpha: 0.4),
+                                        ),
+                                        child: const Text(
+                                          'Mentés',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -1722,7 +1989,7 @@ class _SettingsPageState extends State<SettingsPage>
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Container(
-                width: 400,
+                constraints: const BoxConstraints(maxWidth: 400),
                 height: 500,
                 padding: const EdgeInsets.all(24),
                 child: Column(
@@ -1901,7 +2168,7 @@ class _SettingsPageState extends State<SettingsPage>
                   elevation: 0,
                   backgroundColor: Colors.transparent,
                   child: Container(
-                    width: 500,
+                    constraints: const BoxConstraints(maxWidth: 500),
                     decoration: BoxDecoration(
                       color: theme.cardColor,
                       borderRadius: BorderRadius.circular(24),
@@ -1947,12 +2214,15 @@ class _SettingsPageState extends State<SettingsPage>
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              const Text(
-                                'Jelszó módosítása',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
+                              const Expanded(
+                                child: Text(
+                                  'Jelszó módosítása',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -1960,163 +2230,186 @@ class _SettingsPageState extends State<SettingsPage>
                         ),
 
                         // Content
-                        Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            children: [
-                              _buildDialogTextField(
-                                currentPasswordController,
-                                'Jelenlegi jelszó',
-                                Icons.lock_outline,
-                                isPassword: true,
-                                onChanged: (value) => setState(() {}),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final hPadding = constraints.maxWidth < 400
+                                ? 20.0
+                                : 32.0;
+
+                            return Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: hPadding,
+                                vertical: 24,
                               ),
-                              const SizedBox(height: 24),
-                              _buildDialogTextField(
-                                newPasswordController,
-                                'Új jelszó',
-                                Icons.lock_reset,
-                                isPassword: true,
-                                onChanged: (value) => setState(() {}),
-                              ),
-                              const SizedBox(height: 12),
-                              // Password requirements
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Column(
                                 children: [
-                                  _buildPasswordRequirement(
-                                    hasMinLength,
-                                    'Legalább 8 karakter',
+                                  _buildDialogTextField(
+                                    currentPasswordController,
+                                    'Jelenlegi jelszó',
+                                    Icons.lock_outline,
+                                    isPassword: true,
+                                    onChanged: (value) => setState(() {}),
                                   ),
-                                  _buildPasswordRequirement(
-                                    hasUppercase,
-                                    'Nagybetű',
+                                  const SizedBox(height: 24),
+                                  _buildDialogTextField(
+                                    newPasswordController,
+                                    'Új jelszó',
+                                    Icons.lock_reset,
+                                    isPassword: true,
+                                    onChanged: (value) => setState(() {}),
                                   ),
-                                  _buildPasswordRequirement(
-                                    hasLowercase,
-                                    'Kisbetű',
+                                  const SizedBox(height: 12),
+                                  // Password requirements
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildPasswordRequirement(
+                                        hasMinLength,
+                                        'Legalább 8 karakter',
+                                      ),
+                                      _buildPasswordRequirement(
+                                        hasUppercase,
+                                        'Nagybetű',
+                                      ),
+                                      _buildPasswordRequirement(
+                                        hasLowercase,
+                                        'Kisbetű',
+                                      ),
+                                      _buildPasswordRequirement(
+                                        hasDigit,
+                                        'Szám',
+                                      ),
+                                    ],
                                   ),
-                                  _buildPasswordRequirement(hasDigit, 'Szám'),
+                                  const SizedBox(height: 16),
+                                  _buildDialogTextField(
+                                    confirmPasswordController,
+                                    'Új jelszó megerősítése',
+                                    Icons.check_circle_outline,
+                                    isPassword: true,
+                                    onChanged: (value) => setState(() {}),
+                                  ),
+                                  if (confirmPasswordController
+                                          .text
+                                          .isNotEmpty &&
+                                      !passwordsMatch)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        'A jelszavak nem egyeznek',
+                                        style: TextStyle(
+                                          color: Colors.red,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 32),
+
+                                  // Actions
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 24,
+                                            vertical: 16,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Mégse',
+                                          style: TextStyle(
+                                            color: theme
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.color
+                                                ?.withValues(alpha: 0.6),
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      ElevatedButton(
+                                        // Disable button if conditions not met
+                                        onPressed: !isSaveEnabled
+                                            ? null
+                                            : () async {
+                                                final success = await context
+                                                    .read<UserProvider>()
+                                                    .changePassword(
+                                                      currentPasswordController
+                                                          .text,
+                                                      newPasswordController
+                                                          .text,
+                                                    );
+
+                                                if (context.mounted) {
+                                                  // Only close on success
+                                                  if (success) {
+                                                    Navigator.pop(context);
+                                                  }
+
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        success
+                                                            ? 'Jelszó sikeresen módosítva'
+                                                            : 'Hiba történt a módosítás során',
+                                                      ),
+                                                      behavior: SnackBarBehavior
+                                                          .floating,
+                                                      backgroundColor: success
+                                                          ? Colors.green
+                                                          : Colors.red,
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: theme.primaryColor,
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: theme
+                                              .primaryColor
+                                              .withValues(alpha: 0.3),
+                                          disabledForegroundColor: Colors.white
+                                              .withValues(alpha: 0.5),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 32,
+                                            vertical: 16,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          elevation: 4,
+                                          shadowColor: theme.primaryColor
+                                              .withValues(alpha: 0.4),
+                                        ),
+                                        child: const Text(
+                                          'Módosítás',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
-                              const SizedBox(height: 16),
-                              _buildDialogTextField(
-                                confirmPasswordController,
-                                'Új jelszó megerősítése',
-                                Icons.check_circle_outline,
-                                isPassword: true,
-                                onChanged: (value) => setState(() {}),
-                              ),
-                              if (confirmPasswordController.text.isNotEmpty &&
-                                  !passwordsMatch)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text(
-                                    'A jelszavak nem egyeznek',
-                                    style: TextStyle(
-                                      color: Colors.red,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              const SizedBox(height: 32),
-
-                              // Actions
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 24,
-                                        vertical: 16,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'Mégse',
-                                      style: TextStyle(
-                                        color: theme.textTheme.bodyMedium?.color
-                                            ?.withValues(alpha: 0.6),
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  ElevatedButton(
-                                    // Disable button if conditions not met
-                                    onPressed: !isSaveEnabled
-                                        ? null
-                                        : () async {
-                                            final success = await context
-                                                .read<UserProvider>()
-                                                .changePassword(
-                                                  currentPasswordController
-                                                      .text,
-                                                  newPasswordController.text,
-                                                );
-
-                                            if (context.mounted) {
-                                              // Only close on success
-                                              if (success) {
-                                                Navigator.pop(context);
-                                              }
-
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    success
-                                                        ? 'Jelszó sikeresen módosítva'
-                                                        : 'Hiba történt a módosítás során',
-                                                  ),
-                                                  behavior:
-                                                      SnackBarBehavior.floating,
-                                                  backgroundColor: success
-                                                      ? Colors.green
-                                                      : Colors.red,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10,
-                                                        ),
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: theme.primaryColor,
-                                      foregroundColor: Colors.white,
-                                      disabledBackgroundColor: theme
-                                          .primaryColor
-                                          .withValues(alpha: 0.3),
-                                      disabledForegroundColor: Colors.white
-                                          .withValues(alpha: 0.5),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 32,
-                                        vertical: 16,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      elevation: 4,
-                                      shadowColor: theme.primaryColor
-                                          .withValues(alpha: 0.4),
-                                    ),
-                                    child: const Text(
-                                      'Módosítás',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -2155,7 +2448,7 @@ class _SettingsPageState extends State<SettingsPage>
               elevation: 0,
               backgroundColor: Colors.transparent,
               child: Container(
-                width: 500,
+                constraints: const BoxConstraints(maxWidth: 500),
                 decoration: BoxDecoration(
                   color: theme.cardColor,
                   borderRadius: BorderRadius.circular(24),
@@ -2197,18 +2490,21 @@ class _SettingsPageState extends State<SettingsPage>
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
-                                Icons.warning_amber_rounded,
+                                Icons.delete_forever,
                                 color: Colors.white,
                                 size: 28,
                               ),
                             ),
                             const SizedBox(width: 16),
-                            const Text(
-                              'Fiók törlése',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
+                            const Expanded(
+                              child: Text(
+                                'Fiók törlése',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -2216,118 +2512,140 @@ class _SettingsPageState extends State<SettingsPage>
                       ),
 
                       // Content
-                      Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          children: [
-                            Text(
-                              'Biztosan törölni szeretnéd a fiókodat? Ez a művelet nem visszavonható, és minden adatod elveszik.',
-                              style: TextStyle(
-                                color: theme.textTheme.bodyLarge?.color,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            _buildDialogTextField(
-                              passwordController,
-                              'Jelszó megerősítése',
-                              Icons.lock_outline,
-                              isPassword: true,
-                              validator: (value) => value?.isEmpty ?? true
-                                  ? 'Kötelező mező'
-                                  : null,
-                            ),
-                            const SizedBox(height: 32),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final hPadding = constraints.maxWidth < 400
+                              ? 20.0
+                              : 32.0;
 
-                            // Actions
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
+                          return Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: hPadding,
+                              vertical: 24,
+                            ),
+                            child: Column(
                               children: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'Mégse',
-                                    style: TextStyle(
-                                      color: theme.textTheme.bodyMedium?.color
-                                          ?.withValues(alpha: 0.6),
-                                      fontSize: 16,
-                                    ),
+                                Text(
+                                  'Biztosan törölni szeretnéd a fiókodat? Ez a művelet nem visszavonható, és minden adatod elveszik.',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodyLarge?.color,
+                                    fontSize: 16,
                                   ),
                                 ),
-                                const SizedBox(width: 16),
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    if (formKey.currentState?.validate() ??
-                                        false) {
-                                      final success = await context
-                                          .read<UserProvider>()
-                                          .deleteAccount(
-                                            passwordController.text,
-                                          );
+                                const SizedBox(height: 24),
+                                _buildDialogTextField(
+                                  passwordController,
+                                  'Jelszó megerősítése',
+                                  Icons.lock_outline,
+                                  isPassword: true,
+                                  validator: (value) => value?.isEmpty ?? true
+                                      ? 'Kötelező mező'
+                                      : null,
+                                ),
+                                const SizedBox(height: 32),
 
-                                      if (context.mounted) {
-                                        if (success) {
-                                          Navigator.pop(
-                                            context,
-                                          ); // Close dialog
-                                          widget.onLogout(); // Trigger logout
-                                          Navigator.pop(
-                                            context,
-                                          ); // Close settings page
-                                        } else {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: const Text(
-                                                'Hiba történt a törlés során. Ellenőrizd a jelszót.',
-                                              ),
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                              backgroundColor: Colors.red,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
+                                // Actions
+                                // Actions
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        onPressed: () async {
+                                          if (formKey.currentState
+                                                  ?.validate() ??
+                                              false) {
+                                            final success = await context
+                                                .read<UserProvider>()
+                                                .deleteAccount(
+                                                  passwordController.text,
+                                                );
+
+                                            if (context.mounted) {
+                                              if (success) {
+                                                // Close dialog
+                                                Navigator.pop(context);
+                                                // Trigger logout
+                                                widget.onLogout();
+                                                // Close settings page
+                                                Navigator.pop(context);
+                                              } else {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: const Text(
+                                                      'Hiba történt a törlés során. Ellenőrizd a jelszót.',
+                                                    ),
+                                                    behavior: SnackBarBehavior
+                                                        .floating,
+                                                    backgroundColor: Colors.red,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            10,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            }
+                                          }
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 28,
+                                            vertical: 16,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
                                             ),
-                                          );
-                                        }
-                                      }
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 32,
-                                      vertical: 16,
+                                          ),
+                                          elevation: 4,
+                                          shadowColor: Colors.red.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Végleges törlés',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                                    const SizedBox(height: 8),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 12,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Mégse',
+                                        style: TextStyle(
+                                          color: theme
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.color
+                                              ?.withValues(alpha: 0.6),
+                                          fontSize: 16,
+                                        ),
+                                      ),
                                     ),
-                                    elevation: 4,
-                                    shadowColor: Colors.red.withValues(
-                                      alpha: 0.4,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Végleges törlés',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ],
                   ),

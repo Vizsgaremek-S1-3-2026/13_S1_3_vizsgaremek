@@ -307,13 +307,14 @@ class _GroupPageState extends State<GroupPage> {
                   SizedBox(height: isMobile ? 12 : 16),
                   // Gombok
                   if (isMobile)
-                    // Mobil nézet: csak ikonok
+                    // Mobil nézet: ikonok felirattal
                     Row(
                       children: [
                         if (widget.group.rank == 'ADMIN')
-                          _buildIconButton(
+                          _buildHeaderButton(
+                            context,
                             icon: Icons.settings,
-                            tooltip: 'Beállítások',
+                            label: 'Beállítások',
                             onPressed: () {
                               setState(() {
                                 _isCustomizePanelVisible =
@@ -329,16 +330,18 @@ class _GroupPageState extends State<GroupPage> {
                             },
                           )
                         else
-                          _buildIconButton(
+                          _buildHeaderButton(
+                            context,
                             icon: Icons.exit_to_app,
-                            tooltip: 'Csoport elhagyása',
+                            label: 'Kilépés',
                             onPressed: () =>
                                 _showLeaveGroupConfirmation(context),
                           ),
                         const SizedBox(width: 8),
-                        _buildIconButton(
+                        _buildHeaderButton(
+                          context,
                           icon: Icons.people_outline,
-                          tooltip: 'Tagok',
+                          label: 'Tagok',
                           onPressed: () {
                             setState(() {
                               _isMembersPanelVisible = !_isMembersPanelVisible;
@@ -467,18 +470,19 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  Widget _buildIconButton({
+  Widget _buildHeaderButton(
+    BuildContext context, {
     required IconData icon,
-    required String tooltip,
+    required String label,
     required VoidCallback onPressed,
   }) {
     return Tooltip(
-      message: tooltip,
+      message: label,
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             border: Border.all(
               color: widget.group.getTextColor(context).withOpacity(0.5),
@@ -486,10 +490,20 @@ class _GroupPageState extends State<GroupPage> {
             ),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
-            icon,
-            color: widget.group.getTextColor(context),
-            size: 20,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: widget.group.getTextColor(context), size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: widget.group.getTextColor(context),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -765,30 +779,172 @@ class _GroupPageState extends State<GroupPage> {
     String userName,
     int userId,
   ) {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Tag eltávolítása: $userName'),
-          content: Text(
-            'Biztosan el akarod távolítani $userName-t a csoportból?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Mégsem'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _removeMember(userId);
-              },
-              child: const Text(
-                'Eltávolítás',
-                style: TextStyle(color: Colors.red),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with gradient
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Colors.red, Color(0xFFFF5252)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.person_remove_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Text(
+                              'Tag eltávolítása',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Content
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final hPadding = constraints.maxWidth < 400
+                            ? 20.0
+                            : 32.0;
+
+                        return Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: hPadding,
+                            vertical: 24,
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Biztosan el akarod távolítani $userName-t a csoportból?',
+                                style: TextStyle(
+                                  color: theme.textTheme.bodyLarge?.color,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 32),
+
+                              // Actions
+                              Wrap(
+                                alignment: WrapAlignment.end,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Mégse',
+                                      style: TextStyle(
+                                        color: theme.textTheme.bodyMedium?.color
+                                            ?.withValues(alpha: 0.6),
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _removeMember(userId);
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 28,
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 4,
+                                      shadowColor: Colors.red.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Eltávolítás',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
         );
       },
     );
@@ -836,30 +992,172 @@ class _GroupPageState extends State<GroupPage> {
     String userName,
     int userId,
   ) {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Admin jog átadása: $userName'),
-          content: Text(
-            'Biztosan átadod az admin jogot $userName-nak? Ezzel elveszíted a csoport feletti adminisztrátori jogodat.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Mégsem'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _transferAdmin(userId);
-              },
-              child: const Text(
-                'Átadás',
-                style: TextStyle(color: Colors.orange),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with gradient
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Colors.orange, Color(0xFFFF9800)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.star_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Text(
+                              'Admin jog átadása',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Content
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final hPadding = constraints.maxWidth < 400
+                            ? 20.0
+                            : 32.0;
+
+                        return Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: hPadding,
+                            vertical: 24,
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Biztosan átadod az admin jogot $userName-nak? Ezzel elveszíted a csoport feletti adminisztrátori jogodat.',
+                                style: TextStyle(
+                                  color: theme.textTheme.bodyLarge?.color,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 32),
+
+                              // Actions
+                              Wrap(
+                                alignment: WrapAlignment.end,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Mégse',
+                                      style: TextStyle(
+                                        color: theme.textTheme.bodyMedium?.color
+                                            ?.withValues(alpha: 0.6),
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _transferAdmin(userId);
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 28,
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 4,
+                                      shadowColor: Colors.orange.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Átadás',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
         );
       },
     );
@@ -903,121 +1201,279 @@ class _GroupPageState extends State<GroupPage> {
     final passwordController = TextEditingController();
     bool isLoading = false;
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  const Icon(Icons.warning, color: Colors.red),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Csoport Törlése',
-                      style: TextStyle(color: Colors.red),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: StatefulBuilder(
+              builder: (context, setDialogState) {
+                return Dialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  elevation: 0,
+                  backgroundColor: Colors.transparent,
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 500),
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Biztosan törölni szeretnéd a "${widget.group.title}" csoportot?',
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Ez a művelet nem vonható vissza! A csoport és minden tagsága törlésre kerül.',
-                    style: TextStyle(color: Colors.red, fontSize: 12),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: passwordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Jelszó megerősítés',
-                      hintText: 'Add meg a jelszavadat',
-                      prefixIcon: Icon(Icons.lock),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                          passwordController.dispose();
-                          Navigator.of(dialogContext).pop();
-                        },
-                  child: const Text('Mégsem'),
-                ),
-                ElevatedButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          if (passwordController.text.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Kérlek add meg a jelszavadat!'),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isLoading = true);
-
-                          final success = await _deleteGroup(
-                            passwordController.text,
-                          );
-
-                          if (!mounted) return;
-                          passwordController.dispose();
-                          Navigator.of(dialogContext).pop();
-
-                          if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Csoport sikeresen törölve'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                            widget.onGroupLeft?.call();
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Hiba a csoport törlésekor. Ellenőrizd a jelszót!',
-                                ),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Header with gradient
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Colors.red, Color(0xFFFF5252)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(24),
+                            ),
                           ),
-                        )
-                      : const Text('Törlés'),
-                ),
-              ],
-            );
-          },
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.warning_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Text(
+                                  'Csoport Törlése',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Content
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final hPadding = constraints.maxWidth < 400
+                                ? 20.0
+                                : 32.0;
+
+                            return Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: hPadding,
+                                vertical: 24,
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Biztosan törölni szeretnéd a "${widget.group.title}" csoportot?',
+                                    style: TextStyle(
+                                      color: theme.textTheme.bodyLarge?.color,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Ez a művelet nem vonható vissza! A csoport és minden tagsága törlésre kerül.',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  TextField(
+                                    controller: passwordController,
+                                    obscureText: true,
+                                    decoration: InputDecoration(
+                                      labelText: 'Jelszó megerősítés',
+                                      prefixIcon: Icon(
+                                        Icons.lock_rounded,
+                                        color: theme.primaryColor,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: theme.primaryColor,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 32),
+
+                                  // Actions
+                                  Wrap(
+                                    alignment: WrapAlignment.end,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      TextButton(
+                                        onPressed: isLoading
+                                            ? null
+                                            : () => Navigator.pop(context),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 20,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Mégse',
+                                          style: TextStyle(
+                                            color: theme
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.color
+                                                ?.withValues(alpha: 0.6),
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: isLoading
+                                            ? null
+                                            : () async {
+                                                if (passwordController
+                                                    .text
+                                                    .isEmpty) {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'Kérlek add meg a jelszavadat!',
+                                                      ),
+                                                      backgroundColor:
+                                                          Colors.orange,
+                                                    ),
+                                                  );
+                                                  return;
+                                                }
+
+                                                setDialogState(
+                                                  () => isLoading = true,
+                                                );
+
+                                                final success =
+                                                    await _deleteGroup(
+                                                      passwordController.text,
+                                                    );
+
+                                                if (!mounted) return;
+                                                Navigator.pop(context);
+
+                                                if (success) {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'Csoport sikeresen törölve',
+                                                      ),
+                                                      backgroundColor:
+                                                          Colors.green,
+                                                    ),
+                                                  );
+                                                  widget.onGroupLeft?.call();
+                                                } else {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'Hiba a csoport törlésekor. Ellenőrizd a jelszót!',
+                                                      ),
+                                                      backgroundColor:
+                                                          Colors.red,
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 28,
+                                            vertical: 14,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          elevation: 4,
+                                          shadowColor: Colors.red.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                        ),
+                                        child: isLoading
+                                            ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: Colors.white,
+                                                    ),
+                                              )
+                                            : const Text(
+                                                'Törlés',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         );
       },
     );
@@ -1033,30 +1489,172 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   void _showLeaveGroupConfirmation(BuildContext context) {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Csoport elhagyása'),
-          content: Text(
-            'Biztosan elhagyod a "${widget.group.title}" csoportot?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Mégsem'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _leaveGroup();
-              },
-              child: const Text(
-                'Elhagyás',
-                style: TextStyle(color: Colors.red),
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with gradient
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Colors.orange, Color(0xFFFF9800)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.exit_to_app_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Text(
+                              'Csoport elhagyása',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Content
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final hPadding = constraints.maxWidth < 400
+                            ? 20.0
+                            : 32.0;
+
+                        return Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: hPadding,
+                            vertical: 24,
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Biztosan elhagyod a "${widget.group.title}" csoportot?',
+                                style: TextStyle(
+                                  color: theme.textTheme.bodyLarge?.color,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 32),
+
+                              // Actions
+                              Wrap(
+                                alignment: WrapAlignment.end,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Mégse',
+                                      style: TextStyle(
+                                        color: theme.textTheme.bodyMedium?.color
+                                            ?.withValues(alpha: 0.6),
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _leaveGroup();
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 28,
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 4,
+                                      shadowColor: Colors.orange.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Elhagyás',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
         );
       },
     );

@@ -35,7 +35,7 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
       elevation: 0,
       backgroundColor: Colors.transparent,
       child: Container(
-        width: 500,
+        constraints: const BoxConstraints(maxWidth: 500),
         decoration: BoxDecoration(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(24),
@@ -81,12 +81,15 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
-                    'Új Projekt Létrehozása',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                  const Expanded(
+                    child: Text(
+                      'Új Projekt Létrehozása',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],

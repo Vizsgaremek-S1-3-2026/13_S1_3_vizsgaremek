@@ -395,6 +395,7 @@ class _HomePageState extends State<HomePage> {
           // --- MOBIL NÉZET ---
           return Scaffold(
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            extendBody: true, // Allow background to flow behind bottom bar
             drawer: _buildSideNav(_activeTests, isDrawer: true),
             onDrawerChanged: (isOpened) {
               if (!isOpened) {
@@ -403,49 +404,45 @@ class _HomePageState extends State<HomePage> {
                 });
               }
             },
-            body: _buildAnimatedContent(),
-            bottomNavigationBar: _isBottomBarVisible
-                ? AnimatedOpacity(
-                    duration: const Duration(milliseconds: 300),
-                    opacity: _isMemberPanelOpen ? 0.0 : 1.0,
-                    child: IgnorePointer(
-                      ignoring: _isMemberPanelOpen,
-                      child: Container(
-                        color: Colors.transparent,
-                        child: SafeArea(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0,
-                              vertical: 8.0,
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Builder(
-                                  builder: (context) => _buildMenuButton(
-                                    icon: isGroupView
-                                        ? Icons.arrow_back
-                                        : Icons.menu_rounded,
-                                    tooltip: isGroupView ? 'Vissza' : 'Menü',
-                                    onPressed: () {
-                                      if (isGroupView) {
-                                        _unselectGroup();
-                                      } else {
-                                        setState(() {
-                                          _isBottomBarVisible = false;
-                                        });
-                                        Scaffold.of(context).openDrawer();
-                                      }
-                                    },
-                                  ),
+            body: SafeArea(bottom: false, child: _buildAnimatedContent()),
+            bottomNavigationBar: _isBottomBarVisible && !_isMemberPanelOpen
+                ? IgnorePointer(
+                    ignoring: _isMemberPanelOpen,
+                    child: Container(
+                      color: Colors.transparent,
+                      child: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8.0,
+                            vertical: 8.0,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Builder(
+                                builder: (context) => _buildMenuButton(
+                                  icon: isGroupView
+                                      ? Icons.arrow_back
+                                      : Icons.menu_rounded,
+                                  tooltip: isGroupView ? 'Vissza' : 'Menü',
+                                  onPressed: () {
+                                    if (isGroupView) {
+                                      _unselectGroup();
+                                    } else {
+                                      setState(() {
+                                        _isBottomBarVisible = false;
+                                      });
+                                      Scaffold.of(context).openDrawer();
+                                    }
+                                  },
                                 ),
-                                const Spacer(),
-                                _buildSpeedDial(
-                                  context,
-                                  isGroupView: isGroupView,
-                                ),
-                              ],
-                            ),
+                              ),
+                              const Spacer(),
+                              _buildSpeedDial(
+                                context,
+                                isGroupView: isGroupView,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -656,15 +653,6 @@ class _HomePageState extends State<HomePage> {
                                 decoration: BoxDecoration(
                                   color: theme.primaryColor.withOpacity(0.9),
                                   borderRadius: BorderRadius.circular(12.0),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: theme.primaryColor.withOpacity(
-                                        0.3,
-                                      ),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
                                 ),
                                 child: const Icon(
                                   Icons.group_add,
@@ -715,15 +703,6 @@ class _HomePageState extends State<HomePage> {
                                 decoration: BoxDecoration(
                                   color: theme.primaryColor.withOpacity(0.9),
                                   borderRadius: BorderRadius.circular(12.0),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: theme.primaryColor.withOpacity(
-                                        0.3,
-                                      ),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
                                 ),
                                 child: const Icon(
                                   Icons.add_circle_outline,
@@ -756,13 +735,6 @@ class _HomePageState extends State<HomePage> {
               decoration: BoxDecoration(
                 color: theme.primaryColor,
                 borderRadius: BorderRadius.circular(16.0),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.primaryColor.withOpacity(0.4),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
               child: AnimatedRotation(
                 duration: const Duration(milliseconds: 300),
@@ -1592,7 +1564,7 @@ class _JoinGroupDialogState extends State<_JoinGroupDialog> {
       elevation: 0,
       backgroundColor: Colors.transparent,
       child: Container(
-        width: 500,
+        constraints: const BoxConstraints(maxWidth: 500),
         decoration: BoxDecoration(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(24),
@@ -1632,18 +1604,21 @@ class _JoinGroupDialogState extends State<_JoinGroupDialog> {
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
-                      Icons.group_add,
+                      Icons.group_add_rounded,
                       color: Colors.white,
                       size: 28,
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Text(
-                    'Csatlakozás csoporthoz',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                  const Expanded(
+                    child: Text(
+                      'Csatlakozás csoporthoz',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -1651,97 +1626,108 @@ class _JoinGroupDialogState extends State<_JoinGroupDialog> {
             ),
 
             // Content
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                children: [
-                  Text(
-                    'Add meg a csoport meghívó kódját:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: theme.textTheme.bodyMedium?.color?.withValues(
-                        alpha: 0.8,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      labelText: 'Meghívó kód',
-                      hintText: 'pl. ABC123',
-                      prefixIcon: Icon(
-                        Icons.vpn_key,
-                        color: theme.primaryColor,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: theme.primaryColor,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    textCapitalization: TextCapitalization.characters,
-                    autofocus: true,
-                  ),
-                  const SizedBox(height: 32),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final hPadding = constraints.maxWidth < 400 ? 20.0 : 32.0;
 
-                  // Actions
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                return Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: hPadding,
+                    vertical: 24,
+                  ),
+                  child: Column(
                     children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, null),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 16,
-                          ),
-                        ),
-                        child: Text(
-                          'Mégse',
-                          style: TextStyle(
-                            color: theme.textTheme.bodyMedium?.color
-                                ?.withValues(alpha: 0.6),
-                            fontSize: 16,
+                      Text(
+                        'Add meg a csoport meghívó kódját:',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: theme.textTheme.bodyMedium?.color?.withValues(
+                            alpha: 0.8,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      ElevatedButton(
-                        onPressed: () =>
-                            Navigator.pop(context, _controller.text),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 16,
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: _controller,
+                        decoration: InputDecoration(
+                          labelText: 'Meghívó kód',
+                          hintText: 'pl. ABC123',
+                          prefixIcon: Icon(
+                            Icons.vpn_key,
+                            color: theme.primaryColor,
                           ),
-                          shape: RoundedRectangleBorder(
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          elevation: 4,
-                          shadowColor: theme.primaryColor.withValues(
-                            alpha: 0.4,
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: theme.primaryColor,
+                              width: 2,
+                            ),
                           ),
                         ),
-                        child: const Text(
-                          'Csatlakozás',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                        textCapitalization: TextCapitalization.characters,
+                        autofocus: true,
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Actions
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, null),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                            ),
+                            child: Text(
+                              'Mégse',
+                              style: TextStyle(
+                                color: theme.textTheme.bodyMedium?.color
+                                    ?.withValues(alpha: 0.6),
+                                fontSize: 16,
+                              ),
+                            ),
                           ),
-                        ),
+                          ElevatedButton(
+                            onPressed: () =>
+                                Navigator.pop(context, _controller.text),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 28,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 4,
+                              shadowColor: theme.primaryColor.withValues(
+                                alpha: 0.4,
+                              ),
+                            ),
+                            child: const Text(
+                              'Csatlakozás',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ],
         ),
