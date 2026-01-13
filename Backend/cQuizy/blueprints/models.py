@@ -58,7 +58,7 @@ class Block(models.Model):
         default=BlockType.SINGLE_CHOICE,
         verbose_name="Block Type"
     )
-    question = models.TextField(max_length=1000, verbose_name="Question")
+    question = models.TextField(max_length=1000, verbose_name="Question", blank=True, null=True)
     subtext = models.TextField(max_length=5000, verbose_name="Task Description, Information", blank=True, null=True)
     image_url = models.URLField(max_length=2000, verbose_name="Optional Image URL", blank=True, null=True)
     link_url = models.URLField(max_length=2000, verbose_name="Optional Link URL", blank=True, null=True)
@@ -102,9 +102,16 @@ class Answer(models.Model):
         help_text="How many points is this answer worth? (Can be 0 or negative for penalties)"
     )
 
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Order",
+        help_text="The order of this answer in the block."
+    )
+
     def __str__(self):
         return f"Answer: {self.text[:50]}... (for: {self.block.question[:30]}...)"
 
     class Meta:
         verbose_name = "Answer (Option)"
         verbose_name_plural = "Answers (Options)"
+        ordering = ['block', 'order']

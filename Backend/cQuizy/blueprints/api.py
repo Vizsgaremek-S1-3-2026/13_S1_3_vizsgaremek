@@ -88,18 +88,17 @@ def get_project_details(request, project_id: int):
     Retrieves full, nested details of a single project created by the user.
     """
     user = request.auth
-    project = get_object_or_404(Project, id=project_id, creator=user)
+    project = get_object_or_404(Project, id=project_id, creator=user, date_deleted__isnull=True)
     return project
 
 #? Update Project
 @router.put("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
     """
-    Intelligently updates a project, validating all business rules (limits, question types, empty values)
-    before saving.
+    Intelligently updates a project.
     """
     user = request.auth
-    project = get_object_or_404(Project, id=project_id, creator=user)
+    project = get_object_or_404(Project, id=project_id, creator=user, date_deleted__isnull=True)
 
     # --- FULL VALIDATION BLOCK ---
 
@@ -128,17 +127,26 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
 
         if block_data.type == 'SINGLE':
             correct_answers_count = sum(1 for answer in block_data.answers if answer.is_correct)
+            
+            # Fix: Check if NO correct answer is selected
+            if correct_answers_count == 0:
+                return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') is Single Choice but has no correct answer selected."}
+            
             if correct_answers_count > 1:
                 return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') can only have one correct answer."}
+        
         if block_data.type == 'TEXT':
             if any(not answer.is_correct for answer in block_data.answers):
                 return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') is a text question but has an answer marked as incorrect."}
 
+    # --- SAVING LOGIC ---
+
     with transaction.atomic():
         project.name = payload.name
-        project.desc = payload.desc.strip() if payload.desc else None # Converts empty string to None
+        project.desc = payload.desc.strip() if payload.desc else None
         project.save()
 
+        # 1. Handle Blocks (Questions) Deletion
         payload_block_ids = {b.id for b in payload.blocks if b.id is not None}
         block_map = {b.id: b for b in project.blocks.all()}
 
@@ -146,14 +154,16 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
         if ids_to_delete:
             project.blocks.filter(id__in=ids_to_delete).delete()
 
+        # Temporarily shift orders to avoid collision if strict uniqueness is enforced
         for block_id in payload_block_ids:
             if block_id in block_map:
                 block = block_map[block_id]
                 block.order += 10000
                 block.save()
 
+        # 2. Iterate Blocks
         for i, block_data in enumerate(payload.blocks):
-            final_order = i + 1
+            final_block_order = i + 1
             
             block_values = {
                 'question': block_data.question,
@@ -167,13 +177,13 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
                 block = block_map[block_data.id]
                 for key, value in block_values.items():
                     setattr(block, key, value)
-                block.order = final_order
+                block.order = final_block_order
                 block.save()
             else:
-                block_values['order'] = final_order
+                block_values['order'] = final_block_order
                 block = project.blocks.create(**block_values)
             
-            # Processing answers
+            # 3. Handle Answers
             payload_answer_ids = {a.id for a in block_data.answers if a.id is not None}
             answer_map = {a.id: a for a in block.answers.all()}
             
@@ -181,14 +191,24 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
             if answer_ids_to_delete:
                 block.answers.filter(id__in=answer_ids_to_delete).delete()
 
-            for answer_data in block_data.answers:
+            # Iterate Answers to save Order and Points
+            for j, answer_data in enumerate(block_data.answers):
+                final_answer_order = j + 1  # Logic for reordering
+
                 if answer_data.id:
                     answer = answer_map[answer_data.id]
                     answer.text = answer_data.text
                     answer.is_correct = answer_data.is_correct
+                    answer.points = answer_data.points  # Saving Points
+                    answer.order = final_answer_order   # Saving Order
                     answer.save()
                 else:
-                    block.answers.create(text=answer_data.text, is_correct=answer_data.is_correct)
+                    block.answers.create(
+                        text=answer_data.text, 
+                        is_correct=answer_data.is_correct,
+                        points=answer_data.points,      # Saving Points
+                        order=final_answer_order        # Saving Order
+                    )
 
     return project
 
@@ -199,7 +219,7 @@ def delete_project(request, project_id: int):
     Logically deletes a project created by the user.
     """
     user = request.auth
-    project = get_object_or_404(Project, id=project_id, creator=user)
+    project = get_object_or_404(Project, id=project_id, creator=user, date_deleted__isnull=True)
     project.date_deleted = timezone.now()
     project.save()
     return 204, None
