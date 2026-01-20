@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AppTheme {
   // --- Light Theme Colors ---
@@ -152,41 +154,95 @@ class ThemeProvider with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   double _fontScale = 1.0;
   bool _highContrast = false;
+  bool _hapticEnabled = true;
+
+  static const String _themeModeKey = 'theme_mode';
+  static const String _fontScaleKey = 'font_scale';
+  static const String _highContrastKey = 'high_contrast';
+  static const String _hapticEnabledKey = 'haptic_enabled';
+
+  ThemeProvider() {
+    _loadSettings();
+  }
 
   ThemeMode get themeMode => _themeMode;
   double get fontScale => _fontScale;
   bool get highContrast => _highContrast;
+  bool get hapticEnabled => _hapticEnabled;
 
-  bool get isDarkMode {
-    return _themeMode == ThemeMode.dark;
+  bool get isDarkMode => _themeMode == ThemeMode.dark;
+  bool get isSystemMode => _themeMode == ThemeMode.system;
+  bool get isLightMode => _themeMode == ThemeMode.light;
+
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final modeIndex = prefs.getInt(_themeModeKey);
+      if (modeIndex != null) {
+        _themeMode = ThemeMode.values[modeIndex];
+      }
+
+      _fontScale = prefs.getDouble(_fontScaleKey) ?? 1.0;
+      _highContrast = prefs.getBool(_highContrastKey) ?? false;
+      _hapticEnabled = prefs.getBool(_hapticEnabledKey) ?? true;
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading theme settings: $e');
+    }
   }
 
-  bool get isSystemMode {
-    return _themeMode == ThemeMode.system;
-  }
-
-  bool get isLightMode {
-    return _themeMode == ThemeMode.light;
+  Future<void> _saveSetting(String key, dynamic value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (value is int) {
+        await prefs.setInt(key, value);
+      } else if (value is double) {
+        await prefs.setDouble(key, value);
+      } else if (value is bool) {
+        await prefs.setBool(key, value);
+      } else if (value is String) {
+        await prefs.setString(key, value);
+      }
+    } catch (e) {
+      debugPrint('Error saving theme setting $key: $e');
+    }
   }
 
   void toggleTheme(bool isDark) {
     _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+    _saveSetting(_themeModeKey, _themeMode.index);
     notifyListeners();
   }
 
   void setThemeMode(ThemeMode mode) {
     _themeMode = mode;
+    _saveSetting(_themeModeKey, mode.index);
     notifyListeners();
   }
 
   void setFontScale(double scale) {
     _fontScale = scale.clamp(0.8, 1.5);
+    _saveSetting(_fontScaleKey, _fontScale);
     notifyListeners();
   }
 
   void setHighContrast(bool value) {
     _highContrast = value;
+    _saveSetting(_highContrastKey, value);
     notifyListeners();
+  }
+
+  void setHapticEnabled(bool value) {
+    _hapticEnabled = value;
+    _saveSetting(_hapticEnabledKey, value);
+    notifyListeners();
+  }
+
+  void triggerHaptic() {
+    if (!_hapticEnabled) return;
+    HapticFeedback.mediumImpact();
   }
 
   // Get the appropriate theme based on high contrast setting

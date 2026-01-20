@@ -603,6 +603,128 @@ class ApiService {
     }
   }
 
+  // Create a new Quiz session
+  Future<Map<String, dynamic>?> createQuiz(
+    String token,
+    int projectId,
+    int groupId,
+    DateTime start,
+    DateTime end,
+  ) async {
+    final url = Uri.parse('$_baseUrl/quizzes/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'project_id': projectId,
+          'group_id': groupId,
+          'date_start': start.toIso8601String(),
+          'date_end': end.toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Teszt létrehozási hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba teszt létrehozása során: $e');
+      return null;
+    }
+  }
+
+  // Update an existing Quiz session
+  Future<Map<String, dynamic>?> updateQuiz(
+    String token,
+    int quizId,
+    DateTime start,
+    DateTime end,
+  ) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId');
+    try {
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'date_start': start.toIso8601String(),
+          'date_end': end.toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Teszt frissítési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba teszt frissítése során: $e');
+      return null;
+    }
+  }
+
+  // Delete a quiz session
+  Future<bool> deleteQuiz(String token, int quizId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/');
+    try {
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('Teszt törlési hiba: $e');
+      return false;
+    }
+  }
+
+  // Get quizzes for a group
+  Future<List<Map<String, dynamic>>> getGroupQuizzes(
+    String token,
+    int groupId,
+  ) async {
+    final url = Uri.parse('$_baseUrl/quizzes/group/$groupId');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint(
+          'Tesztek lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba tesztek lekérése során: $e');
+      return [];
+    }
+  }
+
   // Get all projects (blueprints) for the user
   Future<List<Map<String, dynamic>>> getProjects(String token) async {
     final url = Uri.parse('$_baseUrl/blueprints/');
@@ -712,6 +834,77 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('Hálózati hiba projekt törlése során: $e');
+      return false;
+    }
+  }
+
+  // Search for user blocks (questions)
+  Future<List<Map<String, dynamic>>> searchUserBlocks(
+    String token,
+    String query, {
+    String mode = 'both', // 'question', 'answer', 'both'
+  }) async {
+    final uri = Uri.parse(
+      '$_baseUrl/blueprints/my-blocks/',
+    ).replace(queryParameters: {'query': query, 'mode': mode});
+
+    try {
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint(
+          'Blokk keresési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba blokk keresése során: $e');
+      return [];
+    }
+  }
+
+  // Report network issue (unstable network) to the teacher
+  // This notifies the teacher that a student experienced network instability during a test
+  Future<bool> reportNetworkIssue({
+    required String token,
+    required int quizId,
+    required String
+    issueType, // 'unstable_network', 'disconnected', 'reconnected'
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/quizzes/$quizId/report-issue/'),
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'issue_type': issueType,
+          'timestamp': DateTime.now().toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('Hálózati probléma jelentése sikeres');
+        return true;
+      } else {
+        debugPrint(
+          'Hálózati probléma jelentése sikertelen: ${response.statusCode}',
+        );
+        return false;
+      }
+    } catch (e) {
+      // Silent fail - we don't want to block the student if this fails
+      debugPrint('Hálózati probléma jelentése sikertelen: $e');
       return false;
     }
   }

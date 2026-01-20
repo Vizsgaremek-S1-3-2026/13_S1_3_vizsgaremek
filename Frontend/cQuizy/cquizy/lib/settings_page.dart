@@ -542,6 +542,8 @@ class _SettingsPageState extends State<SettingsPage>
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () {
+            final themeProvider = ThemeInherited.of(context);
+            themeProvider.triggerHaptic();
             if (onTap != null) {
               onTap();
             } else {
@@ -698,7 +700,12 @@ class _SettingsPageState extends State<SettingsPage>
   Widget _buildGeneralSettings(BuildContext context) {
     final theme = Theme.of(context);
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 24.0,
+        bottom: 100.0,
+      ),
       children: [
         _buildSettingsCard(
           context,
@@ -738,7 +745,7 @@ class _SettingsPageState extends State<SettingsPage>
     }
 
     return ListView(
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.only(bottom: 100.0),
       children: [
         SizedBox(
           height: 360,
@@ -943,7 +950,12 @@ class _SettingsPageState extends State<SettingsPage>
     final themeProvider = ThemeInherited.of(context);
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 24.0,
+        bottom: 100.0,
+      ),
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 8.0),
@@ -1215,11 +1227,14 @@ class _SettingsPageState extends State<SettingsPage>
         _buildSettingsCard(
           context,
           title: 'Haptikus visszajelzés',
-          subtitle: 'Rezgés interakciók során',
+          subtitle: 'Rezgés a gombok és műveletek használatakor',
           trailing: Switch(
-            value: true,
+            value: themeProvider.hapticEnabled,
             activeColor: theme.primaryColor,
-            onChanged: (val) {},
+            onChanged: (val) {
+              if (val) themeProvider.triggerHaptic();
+              themeProvider.setHapticEnabled(val);
+            },
             thumbColor: WidgetStateProperty.resolveWith<Color>((
               Set<WidgetState> states,
             ) {
@@ -1273,7 +1288,12 @@ class _SettingsPageState extends State<SettingsPage>
 
   Widget _buildLanguageSettings(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 24.0,
+        bottom: 100.0,
+      ),
       children: [
         _buildSettingsCard(
           context,
@@ -1295,7 +1315,12 @@ class _SettingsPageState extends State<SettingsPage>
   Widget _buildNotificationSettings(BuildContext context) {
     final theme = Theme.of(context);
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 24.0,
+        bottom: 100.0,
+      ),
       children: [
         _buildSettingsCard(
           context,
@@ -1361,7 +1386,12 @@ class _SettingsPageState extends State<SettingsPage>
     final themeProvider = ThemeInherited.of(context);
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 24.0,
+        bottom: 100.0,
+      ),
       children: [
         // Font Size Section
         Padding(
@@ -1506,7 +1536,10 @@ class _SettingsPageState extends State<SettingsPage>
           trailing: Switch(
             value: themeProvider.highContrast,
             activeColor: theme.primaryColor,
-            onChanged: (val) => themeProvider.setHighContrast(val),
+            onChanged: (val) {
+              themeProvider.triggerHaptic();
+              themeProvider.setHighContrast(val);
+            },
             thumbColor: WidgetStateProperty.resolveWith<Color>((
               Set<WidgetState> states,
             ) {
@@ -2546,11 +2579,32 @@ class _SettingsPageState extends State<SettingsPage>
 
                                 // Actions
                                 // Actions
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
+                                Row(
                                   children: [
-                                    SizedBox(
-                                      width: double.infinity,
+                                    Expanded(
+                                      child: TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 16,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Mégse',
+                                          style: TextStyle(
+                                            color: theme
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.color
+                                                ?.withValues(alpha: 0.6),
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      flex: 2,
                                       child: ElevatedButton(
                                         onPressed: () async {
                                           if (formKey.currentState
@@ -2564,11 +2618,8 @@ class _SettingsPageState extends State<SettingsPage>
 
                                             if (context.mounted) {
                                               if (success) {
-                                                // Close dialog
                                                 Navigator.pop(context);
-                                                // Trigger logout
                                                 widget.onLogout();
-                                                // Close settings page
                                                 Navigator.pop(context);
                                               } else {
                                                 ScaffoldMessenger.of(
@@ -2597,7 +2648,6 @@ class _SettingsPageState extends State<SettingsPage>
                                           backgroundColor: Colors.red,
                                           foregroundColor: Colors.white,
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 28,
                                             vertical: 16,
                                           ),
                                           shape: RoundedRectangleBorder(
@@ -2613,30 +2663,9 @@ class _SettingsPageState extends State<SettingsPage>
                                         child: const Text(
                                           'Végleges törlés',
                                           style: TextStyle(
-                                            fontSize: 16,
+                                            fontSize: 15,
                                             fontWeight: FontWeight.bold,
                                           ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 20,
-                                          vertical: 12,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'Mégse',
-                                        style: TextStyle(
-                                          color: theme
-                                              .textTheme
-                                              .bodyMedium
-                                              ?.color
-                                              ?.withValues(alpha: 0.6),
-                                          fontSize: 16,
                                         ),
                                       ),
                                     ),
@@ -2775,13 +2804,17 @@ class _SettingsPageState extends State<SettingsPage>
     VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
+    final themeProvider = ThemeInherited.of(context);
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
-        onTap: onTap,
+        onTap: () {
+          themeProvider.triggerHaptic();
+          onTap?.call();
+        },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text(
           title,

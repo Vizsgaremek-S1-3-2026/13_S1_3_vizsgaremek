@@ -18,6 +18,19 @@ dependencies:
   shared_preferences: ^2.2.2
   intl: ^0.20.2
   loading_animation_widget: ^1.3.0
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  window_manager: ^0.5.1
+  kiosk_mode: ^0.7.0+1
+  connectivity_plus: ^7.0.0
+  screen_protector: ^1.4.12
+  wakelock_plus: ^1.2.10
+  volume_controller: ^2.0.7
+  webview_flutter: ^4.10.0
+  webview_windows: ^0.4.0
+  scribble: ^0.2.0
+  flutter_localizations:
+    sdk: flutter
 
 
 dev_dependencies:

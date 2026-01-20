@@ -6,8 +6,12 @@ import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'test_taking_page.dart';
+import 'utils/web_protections.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
+import 'admin_page.dart';
+import 'create_quiz_dialog.dart';
 
 // --- MEOSZTOTT MODELL ---
 class Group {
@@ -25,6 +29,10 @@ class Group {
   final String ownerName;
   final String instructorFirstName;
   final String instructorLastName;
+  final Map<String, dynamic>? activeQuizData;
+  final List<Map<String, dynamic>> allActiveQuizzes;
+  final bool anticheat; // Védelmi szint
+  final bool kiosk; // Zárolt mód
 
   Group({
     this.id,
@@ -41,6 +49,10 @@ class Group {
     required this.ownerName,
     this.instructorFirstName = '',
     this.instructorLastName = '',
+    this.activeQuizData,
+    this.allActiveQuizzes = const [],
+    this.anticheat = false, // Default: Nyitott (no protection)
+    this.kiosk = false, // Default disabled
   });
 
   Group copyWith({
@@ -54,6 +66,8 @@ class Group {
     String? ownerName,
     String? instructorFirstName,
     String? instructorLastName,
+    Map<String, dynamic>? activeQuizData,
+    List<Map<String, dynamic>>? allActiveQuizzes,
   }) {
     return Group(
       title: title ?? this.title,
@@ -71,6 +85,8 @@ class Group {
       inviteCodeFormatted: inviteCodeFormatted,
       rank: rank,
       id: id,
+      activeQuizData: activeQuizData ?? this.activeQuizData,
+      allActiveQuizzes: allActiveQuizzes ?? this.allActiveQuizzes,
     );
   }
 
@@ -145,8 +161,8 @@ class _GroupPageState extends State<GroupPage> {
   bool _isCustomizePanelVisible = false;
   late TextEditingController _groupNameController;
   late Color _selectedColor;
-  bool _kioskMode = false;
-  bool _antiCheat = false;
+  // Protection level: 0 = Nyitott, 1 = Védett, 2 = Zárolt
+  int _protectionLevel = 1; // Default to Védett
 
   // HSL Color State
   double _hue = 0.0;
@@ -158,6 +174,12 @@ class _GroupPageState extends State<GroupPage> {
   String? _currentInviteCode;
   bool _isRegeneratingCode = false;
 
+  // Active Test Pagination State
+  int _activeHeroIndex = 0;
+
+  List<Map<String, dynamic>> _quizzes = [];
+  bool _isLoadingQuizzes = false;
+
   @override
   void initState() {
     super.initState();
@@ -167,6 +189,7 @@ class _GroupPageState extends State<GroupPage> {
       {'title': 'Félévi Felmérő', 'detail': '-'},
     ];
     _fetchMembers();
+    _fetchQuizzes();
 
     // Init customize state
     _groupNameController = TextEditingController(text: widget.group.title);
@@ -179,6 +202,16 @@ class _GroupPageState extends State<GroupPage> {
     // Initialize invite code
     _currentInviteCode =
         widget.group.inviteCodeFormatted ?? widget.group.inviteCode;
+
+    // Initialize protection level from group settings
+    // kiosk=true means Zárolt (2), anticheat=true means Védett (1), else Nyitott (0)
+    if (widget.group.kiosk) {
+      _protectionLevel = 2; // Zárolt
+    } else if (widget.group.anticheat) {
+      _protectionLevel = 1; // Védett
+    } else {
+      _protectionLevel = 0; // Nyitott
+    }
   }
 
   @override
@@ -211,6 +244,9 @@ class _GroupPageState extends State<GroupPage> {
   @override
   void didUpdateWidget(GroupPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Refresh quizzes silently when group data updates (e.g. from Home Timer)
+    _fetchQuizzes(silent: true);
+
     if (oldWidget.group.hasNotification &&
         !widget.group.hasNotification &&
         oldWidget.group.activeTestTitle != null) {
@@ -510,267 +546,894 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
+  Widget _buildHeroActiveTestCard(List<Map<String, dynamic>> quizzes) {
+    if (quizzes.isEmpty) return const SizedBox.shrink();
+    if (_activeHeroIndex >= quizzes.length) _activeHeroIndex = 0;
+
+    final quiz = quizzes[_activeHeroIndex];
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+
+    // Parse dates
+    final end = DateTime.tryParse(quiz['date_end'] ?? '')?.toLocal() ?? now;
+    final start = DateTime.tryParse(quiz['date_start'] ?? '')?.toLocal() ?? now;
+
+    final isAdmin = widget.group.rank == 'ADMIN';
+
+    void openAdmin() {
+      if (isAdmin) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                AdminPage(quiz: quiz, groupName: widget.group.title),
+          ),
+        );
+      }
+    }
+
+    return GestureDetector(
+      onLongPress: openAdmin,
+      onSecondaryTap: openAdmin,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: theme.primaryColor.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: theme.primaryColor, width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'JELENLEG AKTÍV',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                if (quizzes.length > 1)
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios, size: 16),
+                        color: theme.primaryColor,
+                        onPressed: _activeHeroIndex > 0
+                            ? () => setState(() => _activeHeroIndex--)
+                            : null,
+                      ),
+                      Text(
+                        '${_activeHeroIndex + 1}/${quizzes.length}',
+                        style: TextStyle(
+                          color: theme.textTheme.bodyMedium?.color,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.arrow_forward_ios, size: 16),
+                        color: theme.primaryColor,
+                        onPressed: _activeHeroIndex < quizzes.length - 1
+                            ? () => setState(() => _activeHeroIndex++)
+                            : null,
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              quiz['project_name'] ?? 'Névtelen teszt',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: theme.textTheme.bodyLarge?.color,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Icon(Icons.timer, color: theme.primaryColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: CountdownTimerWidget(
+                    expiryDate: end,
+                    isBig: true,
+                    onExpired: _fetchQuizzes,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  DateFormat('yyyy. MM. dd. HH:mm').format(start),
+                  style: TextStyle(
+                    color: theme.textTheme.bodyMedium?.color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  DateFormat('yyyy. MM. dd. HH:mm').format(end),
+                  style: TextStyle(
+                    color: theme.textTheme.bodyMedium?.color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _SpectacularProgressBar(start: start, end: end),
+
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  if (isAdmin) {
+                    openAdmin();
+                  } else {
+                    _showStartTestConfirmation(context, quiz);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                child: Text(
+                  isAdmin ? 'Admin felület megnyitása' : 'Teszt kitöltése',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTestContent() {
+    if (_isLoadingQuizzes && _quizzes.isEmpty) {
+      return Center(
+        child: LoadingAnimationWidget.newtonCradle(
+          color: Theme.of(context).primaryColor,
+          size: 80,
+        ),
+      );
+    }
+
+    final now = DateTime.now();
+    final active = <Map<String, dynamic>>[];
+    final future = <Map<String, dynamic>>[];
+    final past = <Map<String, dynamic>>[];
+
+    for (var quiz in _quizzes) {
+      final start = DateTime.tryParse(quiz['date_start'] ?? '');
+      final end = DateTime.tryParse(quiz['date_end'] ?? '');
+
+      if (start != null && end != null) {
+        if (!now.isBefore(start) && !now.isAfter(end)) {
+          active.add(quiz);
+        } else if (now.isBefore(start)) {
+          future.add(quiz);
+        } else {
+          past.add(quiz);
+        }
+      }
+    }
+
+    // Sort lists
+    // Active: closest to ending first
+    active.sort((a, b) {
+      final endA = DateTime.tryParse(a['date_end'] ?? '') ?? DateTime(0);
+      final endB = DateTime.tryParse(b['date_end'] ?? '') ?? DateTime(0);
+      return endA.compareTo(endB);
+    });
+
+    // Future: closest to starting first
+    future.sort((a, b) {
+      final startA = DateTime.tryParse(a['date_start'] ?? '') ?? DateTime(0);
+      final startB = DateTime.tryParse(b['date_start'] ?? '') ?? DateTime(0);
+      return startA.compareTo(startB);
+    });
+
+    // Past: most recently ended first
+    past.sort((a, b) {
+      final endA = DateTime.tryParse(a['date_end'] ?? '') ?? DateTime(0);
+      final endB = DateTime.tryParse(b['date_end'] ?? '') ?? DateTime(0);
+      return endB.compareTo(endA);
+    });
+
+    if (active.isEmpty && future.isEmpty && past.isEmpty) {
+      return Center(
+        child: Text(
+          'Nincsenek tesztek ebben a csoportban.',
+          style: TextStyle(color: Theme.of(context).hintColor),
+        ),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(24.0),
       children: [
-        if (widget.group.hasNotification &&
-            widget.group.testExpiryDate != null) ...[
-          _buildActiveTestCard(),
+        if (active.isNotEmpty) ...[
+          _buildHeroActiveTestCard(active),
           const SizedBox(height: 24),
         ],
-        const HeaderWithDivider(title: 'Jövőbeli tesztek'),
-        const SizedBox(height: 16),
-        _buildTestCard(
-          title: 'Algebra Témazáró II.',
-          detail: '2025. nov. 28.',
-          isGrade: false,
-        ),
-        _buildTestCard(
-          title: 'Geometria Röpdolgozat',
-          detail: '2025. dec. 05.',
-          isGrade: false,
-        ),
-        const SizedBox(height: 24),
-        const HeaderWithDivider(title: 'Múltbeli tesztek'),
-        const SizedBox(height: 16),
-        ..._pastTests.map((test) {
-          final isNumeric = int.tryParse(test['detail']!) != null;
-          return _buildTestCard(
-            title: test['title']!,
-            detail: test['detail']!,
-            isGrade: isNumeric,
-          );
-        }).toList(),
-        const SizedBox(height: 80),
+        if (future.isNotEmpty) ...[
+          const HeaderWithDivider(title: 'Jövőbeli tesztek'),
+          const SizedBox(height: 16),
+          ...future.map(
+            (q) => _buildTestCard(
+              quiz: q,
+              title: q['project_name'] ?? 'Névtelen',
+              detail: 'Kezdődik: ${_formatDate(q['date_start'])}',
+              isGrade: false,
+              onTap: () => _showQuizOptions(q),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+        if (past.isNotEmpty) ...[
+          const HeaderWithDivider(title: 'Múltbeli tesztek'),
+          const SizedBox(height: 16),
+          ...past.map(
+            (q) => _buildTestCard(
+              quiz: q,
+              title: q['project_name'] ?? 'Névtelen',
+              detail: 'Lezárult: ${_formatDate(q['date_end'])}',
+              isGrade: false,
+              onTap: () {
+                if (widget.group.rank == 'ADMIN') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          AdminPage(quiz: q, groupName: widget.group.title),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
       ],
     );
   }
 
   Widget _buildTestCard({
+    required Map<String, dynamic> quiz,
     required String title,
     required String detail,
     required bool isGrade,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12.0),
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: theme.textTheme.bodyLarge?.color,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: () => _showQuizOptions(quiz),
+      onSecondaryTap: () => _showQuizOptions(quiz),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12.0),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: theme.textTheme.bodyLarge?.color,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 2,
+                softWrap: true,
               ),
-              maxLines: 2,
-              softWrap: true,
             ),
-          ),
-          const SizedBox(width: 16),
-          Text(
-            detail,
-            style: TextStyle(
-              color: isGrade
-                  ? theme.textTheme.bodyLarge?.color
-                  : theme.textTheme.bodyMedium?.color,
-              fontSize: isGrade ? 22 : 14,
-              fontWeight: isGrade ? FontWeight.bold : FontWeight.normal,
+            const SizedBox(width: 16),
+            Text(
+              detail,
+              style: TextStyle(
+                color: isGrade
+                    ? theme.textTheme.bodyLarge?.color
+                    : theme.textTheme.bodyMedium?.color,
+                fontSize: isGrade ? 22 : 14,
+                fontWeight: isGrade ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildActiveTestCard() {
-    final isExpired = widget.group.testExpiryDate!.isBefore(DateTime.now());
+  Future<void> _fetchQuizzes({bool silent = false}) async {
+    if (!silent) setState(() => _isLoadingQuizzes = true);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final apiService = ApiService();
+    if (userProvider.token == null || widget.group.id == null) {
+      if (mounted && !silent) setState(() => _isLoadingQuizzes = false);
+      return;
+    }
+
+    final quizzes = await apiService.getGroupQuizzes(
+      userProvider.token!,
+      widget.group.id!,
+    );
+
+    if (mounted) {
+      setState(() {
+        _quizzes = quizzes;
+        if (!silent) _isLoadingQuizzes = false;
+      });
+    }
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null) return '';
+    try {
+      final date = DateTime.parse(iso).toLocal();
+      return DateFormat('yyyy. MM. dd. HH:mm').format(date);
+    } catch (e) {
+      return iso;
+    }
+  }
+
+  void _showEditQuiz(Map<String, dynamic> quiz) async {
+    await showDialog(
+      context: context,
+      builder: (context) =>
+          CreateQuizDialog(groupId: widget.group.id!, existingQuiz: quiz),
+    );
+    _fetchQuizzes();
+  }
+
+  Future<void> _startQuizNow(Map<String, dynamic> quiz) async {
     final theme = Theme.of(context);
+    final quizId = quiz['id'];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 350;
-        final horizontalPadding = constraints.maxWidth * 0.05;
-        final responsivePadding = horizontalPadding.clamp(16.0, 24.0);
+    // Default: +45 mins from now
+    DateTime endDate = DateTime.now().add(const Duration(minutes: 45));
+    int selectedMode = 0; // 0: Duration, 1: Date
 
-        return Card(
-          color: theme.cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 0,
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  responsivePadding,
-                  20,
-                  responsivePadding,
-                  16,
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          final isDuration = selectedMode == 0;
+          return Dialog(
+            backgroundColor: theme.cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Teszt indítása',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.bodyLarge?.color,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Időtartam'),
+                          selected: isDuration,
+                          onSelected: (v) => setState(() => selectedMode = 0),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Dátum'),
+                          selected: !isDuration,
+                          onSelected: (v) => setState(() => selectedMode = 1),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  if (isDuration) ...[
+                    DropdownButtonFormField<int>(
+                      value: 45,
+                      decoration: const InputDecoration(
+                        labelText: 'Időtartam (perc)',
+                      ),
+                      items: [15, 30, 45, 60, 90]
+                          .map(
+                            (e) => DropdownMenuItem(
+                              value: e,
+                              child: Text('$e perc'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) {
+                          endDate = DateTime.now().add(Duration(minutes: v));
+                        }
+                      },
+                    ),
+                  ] else ...[
+                    TextButton.icon(
+                      icon: const Icon(Icons.calendar_today),
+                      label: Text(_formatDate(endDate.toIso8601String())),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(const Duration(days: 7)),
+                          initialDate: endDate,
+                        );
+                        if (picked != null) {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(endDate),
+                          );
+                          if (time != null) {
+                            setState(
+                              () => endDate = DateTime(
+                                picked.year,
+                                picked.month,
+                                picked.day,
+                                time.hour,
+                                time.minute,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Mégse'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () =>
+                            Navigator.pop(context, {'endDate': endDate}),
+                        child: const Text('Indítás'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (result != null && result['endDate'] != null && mounted) {
+      if (quizId == null || quizId is! int) return;
+
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final apiService = ApiService();
+
+      try {
+        await apiService.updateQuiz(
+          userProvider.token!,
+          quizId,
+          DateTime.now().toUtc(),
+          (result['endDate'] as DateTime).toUtc(),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Teszt indítása sikeres!')),
+          );
+          _fetchQuizzes();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Hiba: $e')));
+        }
+      }
+    }
+  }
+
+  void _showStartTestConfirmation(
+    BuildContext context,
+    Map<String, dynamic> quiz,
+  ) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
                 ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.hourglass_bottom,
-                          color: Colors.yellow,
-                          size: 28,
-                        ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: Text(
-                            'Jelenleg aktív teszt',
-                            style: TextStyle(
-                              color: theme.textTheme.bodyLarge?.color,
-                              fontSize: isNarrow ? 18 : 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Divider(color: theme.dividerColor, height: 24),
-                    if (isNarrow)
-                      // Narrow layout: stack content vertically
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.group.activeTestTitle ?? 'Nincs cím',
-                            style: TextStyle(
-                              color: theme.textTheme.bodyLarge?.color,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            widget.group.activeTestDescription ??
-                                'Nincs leírása a tesztnek.',
-                            style: TextStyle(
-                              color: theme.textTheme.bodyMedium?.color,
-                              fontSize: 14,
-                              height: 1.4,
-                            ),
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Készítő: ${widget.group.subtitle}',
-                            style: TextStyle(
-                              color: theme.textTheme.bodySmall?.color,
-                              fontSize: 12,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (widget.group.testExpiryDate != null) ...[
-                            const SizedBox(height: 16),
-                            CountdownTimerWidget(
-                              expiryDate: widget.group.testExpiryDate!,
-                              onExpired: () =>
-                                  widget.onTestExpired(widget.group),
-                            ),
+                    // Header with orange gradient
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFF57C00), // Orange Dark
+                            Color(0xFFFF9800), // Orange
                           ],
-                        ],
-                      )
-                    else
-                      // Wide layout: side-by-side with timer
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      child: Row(
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.group.activeTestTitle ?? 'Nincs cím',
-                                  style: TextStyle(
-                                    color: theme.textTheme.bodyLarge?.color,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  widget.group.activeTestDescription ??
-                                      'Nincs leírása a tesztnek.',
-                                  style: TextStyle(
-                                    color: theme.textTheme.bodyMedium?.color,
-                                    fontSize: 14,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Készítő: ${widget.group.subtitle}',
-                                  style: TextStyle(
-                                    color: theme.textTheme.bodySmall?.color,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 28,
                             ),
                           ),
                           const SizedBox(width: 16),
-                          if (widget.group.testExpiryDate != null)
-                            CountdownTimerWidget(
-                              expiryDate: widget.group.testExpiryDate!,
-                              onExpired: () =>
-                                  widget.onTestExpired(widget.group),
+                          const Expanded(
+                            child: Text(
+                              'Teszt indítása',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
+                          ),
                         ],
                       ),
+                    ),
+
+                    // Content
+                    Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        children: [
+                          Text(
+                            'A teszt kitöltése alatt nem lehet kilépni a felületből. Biztosan elindítod?',
+                            style: TextStyle(
+                              color: theme.textTheme.bodyLarge?.color,
+                              fontSize: 16,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 32),
+
+                          // Actions
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text(
+                                  'Mégse',
+                                  style: TextStyle(
+                                    color: theme.textTheme.bodyMedium?.color
+                                        ?.withOpacity(0.6),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton(
+                                onPressed: () {
+                                  WebProtections.enterFullScreen(); // Request fullscreen on web gesture
+                                  Navigator.pop(context); // Close dialog
+
+                                  // Prepare quiz object with group back-reference
+                                  final quizData = Map<String, dynamic>.from(
+                                    quiz,
+                                  );
+                                  quizData['group_obj'] = widget.group;
+
+                                  Navigator.pushAndRemoveUntil(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => TestTakingPage(
+                                        quiz: quizData,
+                                        groupName: widget.group.title,
+                                        anticheat: widget.group.anticheat,
+                                        kiosk: widget.group.kiosk,
+                                      ),
+                                    ),
+                                    (route) => false,
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF57C00),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Indítás',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              ElevatedButton(
-                onPressed: isExpired ? null : () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isExpired
-                      ? theme.disabledColor
-                      : theme.primaryColor.withOpacity(0.2),
-                  foregroundColor: isExpired
-                      ? theme.disabledColor.withOpacity(0.5)
-                      : theme.primaryColor,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showQuizOptions(Map<String, dynamic> quiz) {
+    if (widget.group.rank != 'ADMIN') return;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Container(
+          width: 400,
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Green Header
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.green, Color(0xFF009688)], // Green to Teal
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  elevation: 0,
-                  disabledBackgroundColor: theme.disabledColor,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.settings_suggest_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Teszt kezelése',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Content Body
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
                   children: [
                     Text(
-                      'Teszt indítása',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                      quiz['project_name'] ?? 'Névtelen teszt',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    SizedBox(width: 8),
-                    Icon(Icons.play_arrow, size: 20),
+                    const SizedBox(height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildOptionButton(
+                          label: 'Szerkesztés',
+                          icon: Icons.edit_calendar_rounded,
+                          color: const Color(0xFF5D3A44),
+                          iconColor: const Color(0xFFFF5252),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(16),
+                            bottomLeft: Radius.circular(16),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showEditQuiz(quiz);
+                          },
+                        ),
+                        // No logic to separate buttons, they touch
+                        _buildOptionButton(
+                          label: 'Indítás',
+                          icon: Icons.play_arrow_rounded,
+                          color: const Color(0xFF2E4A45),
+                          iconColor: const Color(0xFF4DB6AC),
+                          borderRadius: BorderRadius.zero,
+                          onTap: () {
+                            Navigator.pop(context);
+                            _startQuizNow(quiz);
+                          },
+                        ),
+                        _buildOptionButton(
+                          label: 'Törlés',
+                          icon: Icons.delete_rounded,
+                          color: const Color(0xFF4A2E2E),
+                          iconColor: const Color(0xFFE57373),
+                          borderRadius: const BorderRadius.only(
+                            topRight: Radius.circular(16),
+                            bottomRight: Radius.circular(16),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showDeleteQuizConfirmation(
+                              context,
+                              quiz['project_name'] ?? '',
+                              quiz['id'],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.color?.withValues(alpha: 0.5),
+                      ),
+                      child: const Text('Mégse'),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required Color iconColor,
+    required VoidCallback onTap,
+    required BorderRadius borderRadius,
+  }) {
+    return Expanded(
+      child: Material(
+        color: color,
+        borderRadius: borderRadius,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: borderRadius,
+          child: Container(
+            height: 100,
+            decoration: BoxDecoration(borderRadius: borderRadius),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: iconColor, size: 28),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: iconColor,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -958,32 +1621,260 @@ class _GroupPageState extends State<GroupPage> {
     setState(() => _isLoadingMembers = true);
 
     final apiService = ApiService();
-    final success = await apiService.removeMember(
-      token,
-      widget.group.id!,
-      userId,
-    );
+    try {
+      final success = await apiService.removeMember(
+        token,
+        widget.group.id!,
+        userId,
+      );
 
-    if (success) {
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tag sikeresen eltávolítva'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _fetchMembers();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Hiba a tag eltávolítása során'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Tag sikeresen eltávolítva'),
-            backgroundColor: Colors.green,
-          ),
+          SnackBar(content: Text('Hiba: $e'), backgroundColor: Colors.red),
         );
       }
-      _fetchMembers();
-    } else {
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingMembers = false);
+      }
+    }
+  }
+
+  void _showDeleteQuizConfirmation(
+    BuildContext context,
+    String quizName,
+    int quizId,
+  ) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation1, animation2) {
+        return Container();
+      },
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
+          child: FadeTransition(
+            opacity: a1,
+            child: Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with gradient
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Colors.red, Color(0xFFFF5252)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.delete_forever_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Text(
+                              'Teszt eltávolítása',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Content
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final hPadding = constraints.maxWidth < 400
+                            ? 20.0
+                            : 32.0;
+
+                        return Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: hPadding,
+                            vertical: 24,
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Biztosan el akarod távolítani a(z) "$quizName" tesztet?',
+                                style: TextStyle(
+                                  color: theme.textTheme.bodyLarge?.color,
+                                  fontSize: 16,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 32),
+
+                              // Actions
+                              Wrap(
+                                alignment: WrapAlignment.end,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Mégse',
+                                      style: TextStyle(
+                                        color: theme.textTheme.bodyMedium?.color
+                                            ?.withValues(alpha: 0.6),
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _deleteQuiz(quizId);
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 28,
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 4,
+                                      shadowColor: Colors.red.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Törlés',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteQuiz(int quizId) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    setState(() => _isLoadingQuizzes = true);
+
+    final apiService = ApiService();
+    try {
+      final success = await apiService.deleteQuiz(token, quizId);
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Teszt sikeresen törölve'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _fetchQuizzes();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Hiba a teszt törlése során'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Hiba a tag eltávolításakor'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Hiba: $e'), backgroundColor: Colors.red),
         );
       }
-      setState(() => _isLoadingMembers = false);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingQuizzes = false);
+      }
     }
   }
 
@@ -1747,8 +2638,8 @@ class _GroupPageState extends State<GroupPage> {
       widget.group.id!,
       name: _groupNameController.text,
       color: '#$colorHex',
-      anticheat: _antiCheat,
-      kiosk: _kioskMode,
+      anticheat: _protectionLevel >= 1, // Védett or Zárolt
+      kiosk: _protectionLevel >= 2, // Only Zárolt
     );
 
     if (!mounted) return;
@@ -1862,23 +2753,7 @@ class _GroupPageState extends State<GroupPage> {
                   const SizedBox(height: 24),
                   _buildSectionLabel('BEÁLLÍTÁSOK', theme),
                   const SizedBox(height: 16),
-                  _buildSettingTile(
-                    theme: theme,
-                    title: 'Kiosk Mód',
-                    subtitle: 'Teljes képernyős mód',
-                    value: _kioskMode,
-                    onChanged: (val) => setState(() => _kioskMode = val),
-                    icon: Icons.fullscreen,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSettingTile(
-                    theme: theme,
-                    title: 'Anti Cheat',
-                    subtitle: 'Csalásmegelőzés',
-                    value: _antiCheat,
-                    onChanged: (val) => setState(() => _antiCheat = val),
-                    icon: Icons.security,
-                  ),
+                  _buildProtectionSlider(theme),
                   const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
@@ -2157,6 +3032,137 @@ class _GroupPageState extends State<GroupPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildProtectionSlider(ThemeData theme) {
+    final labels = ['Nyitott', 'Védett', 'Zárolt'];
+    final icons = [
+      Icons.lock_open_rounded,
+      Icons.shield_rounded,
+      Icons.lock_rounded,
+    ];
+    final colors = [Colors.green, Colors.orange, Colors.red];
+    final descriptions = [
+      'Nincs korlátozás. A tanulók szabadon használhatnak más alkalmazásokat.',
+      'A rendszer figyeli a diákot, és jelzi a gyanús tevékenységeket.',
+      'A diák eszköze teljesen lezár, és nem lehet más alkalmazásokat használni amíg be nem küldi a dolgozatot.',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Label row with icons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(3, (index) {
+              final isSelected = _protectionLevel == index;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _protectionLevel = index),
+                  child: Column(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? colors[index].withOpacity(0.2)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected
+                                ? colors[index]
+                                : theme.dividerColor,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Icon(
+                          icons[index],
+                          color: isSelected
+                              ? colors[index]
+                              : theme.iconTheme.color?.withOpacity(0.5),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        labels[index],
+                        style: TextStyle(
+                          color: isSelected
+                              ? colors[index]
+                              : theme.textTheme.bodyMedium?.color?.withOpacity(
+                                  0.6,
+                                ),
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 16),
+          // Slider
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: colors[_protectionLevel],
+              inactiveTrackColor: theme.dividerColor,
+              thumbColor: colors[_protectionLevel],
+              overlayColor: colors[_protectionLevel].withOpacity(0.2),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+              trackHeight: 6,
+            ),
+            child: Slider(
+              value: _protectionLevel.toDouble(),
+              min: 0,
+              max: 2,
+              divisions: 2,
+              onChanged: (value) =>
+                  setState(() => _protectionLevel = value.toInt()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Description
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors[_protectionLevel].withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: colors[_protectionLevel],
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    descriptions[_protectionLevel],
+                    style: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2694,6 +3700,95 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
         ),
       );
     }
+  }
+}
+
+class _SpectacularProgressBar extends StatefulWidget {
+  final DateTime start;
+  final DateTime end;
+
+  const _SpectacularProgressBar({required this.start, required this.end});
+
+  @override
+  State<_SpectacularProgressBar> createState() =>
+      _SpectacularProgressBarState();
+}
+
+class _SpectacularProgressBarState extends State<_SpectacularProgressBar>
+    with SingleTickerProviderStateMixin {
+  late Timer _timer;
+  double _progress = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateProgress();
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateProgress(),
+    );
+  }
+
+  void _updateProgress() {
+    final now = DateTime.now();
+    final total = widget.end.difference(widget.start).inSeconds;
+    final elapsed = now.difference(widget.start).inSeconds;
+
+    double p = 0.0;
+    if (total > 0) {
+      p = (elapsed / total).clamp(0.0, 1.0);
+    } else {
+      p = 1.0;
+    }
+
+    if (mounted && p != _progress) {
+      setState(() {
+        _progress = p;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // Calculate remaining percentage for the bar width (1.0 - progress)
+    final barValue = (1.0 - _progress);
+
+    return Container(
+      height: 16,
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Stack(
+        children: [
+          AnimatedFractionallySizedBox(
+            duration: const Duration(milliseconds: 1000),
+            widthFactor: barValue,
+            curve: Curves.linear,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                gradient: LinearGradient(
+                  colors: [
+                    theme.primaryColor.withValues(alpha: 0.7),
+                    theme.primaryColor,
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
