@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
-from .models import Project, Block
+from .models import Project, Block, Answer
 from .schemas import (
     ProjectCreateSchema,
     ProjectUpdateSchema,
@@ -18,7 +18,6 @@ from .schemas import (
 
 from users.auth import JWTAuth
 
-# Instead of using NinjaAPI, we use Router for app-specific endpoints
 router = Router(tags=['Projects'])
 
 #? Creation
@@ -44,9 +43,8 @@ def list_projects(request):
 @router.get("/my-blocks/", response=List[BlockOutSchema], auth=JWTAuth())
 def search_user_blocks(request, query: Optional[str] = None, mode: str = 'both'):
     """
-    Searches for blocks (questions) within projects created by the authenticated user.
-    Used for the 'Insert Existing Question' feature.
-    Modes: 'question', 'answer', 'both'.
+    Searches for blocks.
+    UPDATED: Now searches in 'maintext' instead of 'question'.
     """
     user = request.auth
     
@@ -59,8 +57,10 @@ def search_user_blocks(request, query: Optional[str] = None, mode: str = 'both')
     # 2. Apply search logic based on mode and query
     if query and query.strip():
         if mode == 'question':
+            # Changed 'question' to 'maintext' and added 'gap_text'
             blocks_qs = blocks_qs.filter(
-                Q(question__icontains=query) | 
+                Q(maintext__icontains=query) | 
+                Q(gap_text__icontains=query) |
                 Q(subtext__icontains=query)
             )
         elif mode == 'answer':
@@ -69,14 +69,13 @@ def search_user_blocks(request, query: Optional[str] = None, mode: str = 'both')
             )
         else: # 'both'
             blocks_qs = blocks_qs.filter(
-                Q(question__icontains=query) | 
+                Q(maintext__icontains=query) | 
+                Q(gap_text__icontains=query) |
                 Q(subtext__icontains=query) |
                 Q(answers__text__icontains=query)
             )
     
-    # 3. distinct() is required because filtering by 'answers' (many-to-many)
-    # can return the same block multiple times.
-    # Limit results to 20.
+    # 3. Limit results to 20.
     blocks_qs = blocks_qs.distinct()[:20]
 
     return blocks_qs
@@ -85,7 +84,7 @@ def search_user_blocks(request, query: Optional[str] = None, mode: str = 'both')
 @router.get("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def get_project_details(request, project_id: int):
     """
-    Retrieves full, nested details of a single project created by the user.
+    Retrieves full, nested details of a single project.
     """
     user = request.auth
     project = get_object_or_404(Project, id=project_id, creator=user, date_deleted__isnull=True)
@@ -95,7 +94,7 @@ def get_project_details(request, project_id: int):
 @router.put("/{project_id}/", response=ProjectOutSchema, auth=JWTAuth())
 def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
     """
-    Intelligently updates a project.
+    Intelligently updates a project, handling all new Block Types and Validations.
     """
     user = request.auth
     project = get_object_or_404(Project, id=project_id, creator=user, date_deleted__isnull=True)
@@ -108,36 +107,67 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
         return 400, {"detail": "A project cannot have more than 100 questions."}
 
     for i, block_data in enumerate(payload.blocks):
-        question_num = i + 1
+        q_num = i + 1
 
-        if not block_data.question or not block_data.question.strip():
-            return 400, {"detail": f"Question #{question_num} cannot be empty."}
+        # 1. Validate Main Content
+        if block_data.type == 'gap_fill':
+            if not block_data.gap_text or not block_data.gap_text.strip():
+                return 400, {"detail": f"Question #{q_num}: Gap text cannot be empty."}
+        else:
+            if not block_data.maintext or not block_data.maintext.strip():
+                return 400, {"detail": f"Question #{q_num}: Main text/Question cannot be empty."}
         
-        # Minimum 2 answers rule for multiple-choice questions
-        if block_data.type in ['SINGLE', 'MULTIPLE'] and len(block_data.answers) < 2:
-            return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') must have at least two answers."}
+        # 2. Validate Answer Counts (Skip for Static types)
+        # Static types: text_block, divider
+        if block_data.type not in ['text_block', 'divider']:
+            
+            # Choice-based questions need at least 2 options
+            if block_data.type in ['single', 'multiple', 'ordering', 'matching']:
+                if len(block_data.answers) < 2:
+                    return 400, {"detail": f"Question #{q_num} ('{block_data.maintext[:20]}...') must have at least two options."}
 
-        if len(block_data.answers) > 10:
-            return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') cannot have more than 10 answers."}
+            if len(block_data.answers) > 20: # Slightly increased limit for complex types
+                return 400, {"detail": f"Question #{q_num} cannot have more than 20 answers."}
         
+        # 3. Validate Individual Answers
         for j, answer_data in enumerate(block_data.answers):
-            answer_num = j + 1
-            if not answer_data.text or not answer_data.text.strip():
-                return 400, {"detail": f"At Question #{question_num}, answer #{answer_num} cannot be empty."}
+            a_num = j + 1
+            
+            # Matching: Needs both sides
+            if block_data.type == 'matching':
+                if not answer_data.text or not answer_data.text.strip():
+                    return 400, {"detail": f"Question #{q_num}, Answer #{a_num}: Left side text is missing."}
+                if not answer_data.match_text or not answer_data.match_text.strip():
+                    return 400, {"detail": f"Question #{q_num}, Answer #{a_num}: Right side (match) text is missing."}
+            
+            # Range: Needs numeric value
+            elif block_data.type == 'range':
+                if answer_data.numeric_value is None:
+                    return 400, {"detail": f"Question #{q_num}: Numeric value is missing."}
 
-        if block_data.type == 'SINGLE':
+            # Gap Fill: Needs text and index
+            elif block_data.type == 'gap_fill':
+                if not answer_data.text:
+                     return 400, {"detail": f"Question #{q_num}, Answer #{a_num}: Answer text is missing."}
+                if answer_data.gap_index is None:
+                     return 400, {"detail": f"Question #{q_num}, Answer #{a_num}: Gap index is missing."}
+
+            # Standard Types (Single, Multiple, Ordering, Text Input)
+            elif block_data.type in ['single', 'multiple', 'ordering', 'text']:
+                if not answer_data.text or not answer_data.text.strip():
+                    return 400, {"detail": f"Question #{q_num}, Answer #{a_num} cannot be empty."}
+
+        # 4. Validate Correct Answers Logic
+        if block_data.type == 'single':
             correct_answers_count = sum(1 for answer in block_data.answers if answer.is_correct)
-            
-            # Fix: Check if NO correct answer is selected
             if correct_answers_count == 0:
-                return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') is Single Choice but has no correct answer selected."}
-            
+                return 400, {"detail": f"Question #{q_num} (Single Choice) has no correct answer selected."}
             if correct_answers_count > 1:
-                return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') can only have one correct answer."}
+                return 400, {"detail": f"Question #{q_num} (Single Choice) can only have one correct answer."}
         
-        if block_data.type == 'TEXT':
-            if any(not answer.is_correct for answer in block_data.answers):
-                return 400, {"detail": f"Question #{question_num} ('{block_data.question[:20]}...') is a text question but has an answer marked as incorrect."}
+        if block_data.type == 'text':
+             if any(not answer.is_correct for answer in block_data.answers):
+                return 400, {"detail": f"Question #{q_num} is a text input but has an answer marked as incorrect."}
 
     # --- SAVING LOGIC ---
 
@@ -146,7 +176,7 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
         project.desc = payload.desc.strip() if payload.desc else None
         project.save()
 
-        # 1. Handle Blocks (Questions) Deletion
+        # 1. Handle Blocks Deletion
         payload_block_ids = {b.id for b in payload.blocks if b.id is not None}
         block_map = {b.id: b for b in project.blocks.all()}
 
@@ -154,7 +184,7 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
         if ids_to_delete:
             project.blocks.filter(id__in=ids_to_delete).delete()
 
-        # Temporarily shift orders to avoid collision if strict uniqueness is enforced
+        # Shift orders to avoid collision
         for block_id in payload_block_ids:
             if block_id in block_map:
                 block = block_map[block_id]
@@ -165,9 +195,11 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
         for i, block_data in enumerate(payload.blocks):
             final_block_order = i + 1
             
+            # Map Schema fields -> Model fields
             block_values = {
-                'question': block_data.question,
                 'type': block_data.type,
+                'maintext': block_data.maintext,  # NEW
+                'gap_text': block_data.gap_text,  # NEW
                 'subtext': block_data.subtext.strip() if block_data.subtext else None,
                 'image_url': block_data.image_url.strip() if block_data.image_url else None,
                 'link_url': block_data.link_url.strip() if block_data.link_url else None,
@@ -191,24 +223,30 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
             if answer_ids_to_delete:
                 block.answers.filter(id__in=answer_ids_to_delete).delete()
 
-            # Iterate Answers to save Order and Points
             for j, answer_data in enumerate(block_data.answers):
-                final_answer_order = j + 1  # Logic for reordering
+                final_answer_order = j + 1
+
+                # Prepare values dictionary for Answer
+                answer_values = {
+                    'text': answer_data.text,
+                    'is_correct': answer_data.is_correct,
+                    'points': answer_data.points,
+                    'order': final_answer_order,
+                    
+                    # NEW FIELDS
+                    'match_text': answer_data.match_text,
+                    'gap_index': answer_data.gap_index,
+                    'numeric_value': answer_data.numeric_value,
+                    'tolerance': answer_data.tolerance,
+                }
 
                 if answer_data.id:
                     answer = answer_map[answer_data.id]
-                    answer.text = answer_data.text
-                    answer.is_correct = answer_data.is_correct
-                    answer.points = answer_data.points  # Saving Points
-                    answer.order = final_answer_order   # Saving Order
+                    for key, value in answer_values.items():
+                        setattr(answer, key, value)
                     answer.save()
                 else:
-                    block.answers.create(
-                        text=answer_data.text, 
-                        is_correct=answer_data.is_correct,
-                        points=answer_data.points,      # Saving Points
-                        order=final_answer_order        # Saving Order
-                    )
+                    block.answers.create(**answer_values)
 
     return project
 

@@ -13,25 +13,35 @@ class ProjectCreateSchema(Schema):
 #! Project JSON Output Schemas ===================================================
 class AnswerOutSchema(Schema):
     id: int
-    text: str
+    text: Optional[str] = None
     is_correct: bool
     points: int
     order: int
+    match_text: Optional[str] = None
+    gap_index: Optional[int] = None
+    numeric_value: Optional[float] = None
+    tolerance: Optional[float] = None
 
 class BlockOutSchema(Schema):
     id: int
     order: int
-    question: str
     type: str
+    maintext: Optional[str] = None
+    question: Optional[str] = None # Just in case to resolve conflicts
     subtext: Optional[str] = None
     image_url: Optional[str] = None
     link_url: Optional[str] = None
+    gap_text: Optional[str] = None
     answers: List[AnswerOutSchema]
 
     @staticmethod
     def resolve_answers(obj):
         # Explicitly fetch all answers to ensure it returns a list, not a Manager
         return obj.answers.all()
+    
+    @staticmethod
+    def resolve_question(obj): # Just in case to resolve conflicts (question -> maintext)
+        return obj.maintext
 
 class ProjectOutSchema(Schema):
     id: int
@@ -48,17 +58,24 @@ class ProjectOutSchema(Schema):
 #! Project JSON Input Schemas ===================================================
 class AnswerUpdateSchema(Schema):
     id: Optional[int] = None
-    text: str
+    text: Optional[str] = None
     is_correct: bool
     points: int = 1
+    order: Optional[int] = 0
+    match_text: Optional[str] = None
+    gap_index: Optional[int] = None
+    numeric_value: Optional[float] = None
+    tolerance: Optional[float] = None
 
 class BlockUpdateSchema(Schema):
     id: Optional[int] = None
-    question: str
     type: str
+    maintext: Optional[str] = None
+    question: Optional[str] = None # Just in case to resolve conflicts
     subtext: Optional[str] = None
     image_url: Optional[str] = None
     link_url: Optional[str] = None
+    gap_text: Optional[str] = None
     answers: List[AnswerUpdateSchema]
 
 class ProjectUpdateSchema(Schema):
