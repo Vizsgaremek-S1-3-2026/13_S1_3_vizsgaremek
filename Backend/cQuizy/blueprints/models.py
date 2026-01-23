@@ -41,9 +41,18 @@ class Block(models.Model):
     Represents an individual question or element within a project (test).
     """
     class BlockType(models.TextChoices):
-        TEXT_INPUT = 'TEXT', 'Text Input'
-        SINGLE_CHOICE = 'SINGLE', 'Single Choice (one correct answer)'
-        MULTIPLE_CHOICE = 'MULTIPLE', 'Multiple Choice (several correct answers)'
+        TEXT_INPUT = 'text_input', 'Text Input'
+        SINGLE_CHOICE = 'single_choice', 'Single Choice (one correct answer)'
+        MULTIPLE_CHOICE = 'multiple_choice', 'Multiple Choice (several correct answers)'
+        MATCHING = 'matching', 'Matching'
+        ORDERING = 'ordering', 'Ordering'
+        SENTENCE_ORDERING = 'sentence_ordering', 'Sentence Ordering'
+        GAP_FILL = 'gap_fill', 'Gap Fill'
+        RANGE = 'range', 'Range'
+
+        TEXT_STATIC = "text_static", "Static Text"
+        DIVIDER = "divider", "Divider"
+
 
     project = models.ForeignKey(
         Project,
@@ -51,20 +60,49 @@ class Block(models.Model):
         related_name="blocks",
         verbose_name="Project"
     )
-    order = models.PositiveIntegerField(verbose_name="Order")
+    order = models.PositiveIntegerField(
+        verbose_name="Order"
+    )
     type = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=BlockType.choices,
         default=BlockType.SINGLE_CHOICE,
         verbose_name="Block Type"
     )
-    question = models.TextField(max_length=1000, verbose_name="Question")
-    subtext = models.TextField(max_length=5000, verbose_name="Task Description, Information", blank=True, null=True)
-    image_url = models.URLField(max_length=2000, verbose_name="Optional Image URL", blank=True, null=True)
-    link_url = models.URLField(max_length=2000, verbose_name="Optional Link URL", blank=True, null=True)
+    maintext = models.TextField(
+        max_length=1000,
+        verbose_name="Question or Value",
+        blank=True,
+        null=True
+    )
+    subtext = models.TextField(
+        max_length=5000,
+        verbose_name="Task Description, Information",
+        blank=True,
+        null=True
+    )
+    image_url = models.URLField(
+        max_length=2000,
+        verbose_name="Optional Image URL",
+        blank=True,
+        null=True
+    )
+    link_url = models.URLField(
+        max_length=2000,
+        verbose_name="Optional Link URL",
+        blank=True,
+        null=True
+    )
+    gap_text = models.TextField(
+        max_length=5000,
+        verbose_name="Gap Text",
+        blank=True,
+        null=True,
+        help_text = "The task itself for Gap Fill blocks."
+    )
 
     def __str__(self):
-        return f"#{self.order}. Question: {self.question[:50]}... ({self.project.name})"
+        return f"#{self.order}. Question: {self.maintext[:50]}... ({self.project.name})"
 
     class Meta:
         verbose_name = "Block (Question)"
@@ -89,6 +127,7 @@ class Answer(models.Model):
     text = models.TextField(
         max_length=500,
         verbose_name="Option Text",
+        blank=True, null=True,
         help_text="For text input questions, the correct answer goes here. Otherwise, it can be left empty."
     )
     is_correct = models.BooleanField(
@@ -101,10 +140,37 @@ class Answer(models.Model):
         verbose_name="Points",
         help_text="How many points is this answer worth? (Can be 0 or negative for penalties)"
     )
-
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Order",
+        help_text="The order of this answer in the block."
+    )
+    match_text = models.TextField(
+        max_length=500, 
+        verbose_name="Match Pair (Right Side)", 
+        blank=True, null=True,
+        help_text="Used for Matching type blocks."
+    )
+    gap_index = models.PositiveIntegerField(
+        verbose_name="Gap Index", 
+        blank=True, null=True,
+        help_text="Used for Gap Fill. Indicates which placeholder {1}, {2} this answer fills."
+    )
+    numeric_value = models.FloatField(
+        verbose_name="Correct Numeric Value", 
+        blank=True, null=True,
+        help_text="Used for Range/Estimation questions."
+    )
+    tolerance = models.FloatField(
+        verbose_name="Tolerance (+/-)", 
+        blank=True, null=True,
+        help_text="Used for Range/Estimation. How much deviation is allowed?"
+    )
+    
     def __str__(self):
-        return f"Answer: {self.text[:50]}... (for: {self.block.question[:30]}...)"
+        return f"Answer: {self.text[:50]}... (for: {self.block.maintext[:30]}...)"
 
     class Meta:
         verbose_name = "Answer (Option)"
         verbose_name_plural = "Answers (Options)"
+        ordering = ['block', 'order']
