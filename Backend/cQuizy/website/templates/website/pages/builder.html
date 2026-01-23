@@ -1,10 +1,65 @@
-<!-- templates/builder.html -->
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     {% include "website/components/head.html" %}
     <title>TF | cQuizy | Builder</title>
+    <style>
+        /* Basic styling for the builder to make complex types readable */
+        .block-item {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .block-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            background: #eee;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .drag-handle { cursor: move; font-size: 20px; color: #555; }
+        
+        textarea, input[type="text"], input[type="url"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 5px;
+            box-sizing: border-box;
+        }
+
+        /* Visibility classes */
+        .hidden { display: none !important; }
+        
+        /* Answer Row Styling */
+        .answer-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+            padding: 5px;
+            background: #fff;
+            border: 1px solid #ddd;
+        }
+        
+        /* Specific inputs for different types */
+        .field-gap-text { border: 2px solid #007bff; }
+        .answer-inputs-group {
+            display: flex; 
+            flex-grow: 1; 
+            gap: 5px;
+        }
+        .answer-inputs-group input { margin-bottom: 0; }
+        
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 60%; max-width: 800px; border-radius: 8px; }
+        .close-modal { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .search-result-item { border: 1px solid #eee; padding: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    </style>
 </head>
 <body>
     {% include "website/components/header.html" %}
