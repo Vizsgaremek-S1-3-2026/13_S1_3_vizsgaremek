@@ -1,47 +1,178 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     {% include "website/components/head.html" %}
     <title>TF | cQuizy Exam</title>
+    <!-- SortableJS is required for Ordering/Sentence questions -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <style>
+        /* Quiz Specific Styles */
+        .question-block {
+            background: #fff;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #007bff;
+        }
+
+        .question-text {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .subtext {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+
+        /* Options Styling */
+        .quiz-option-label {
+            display: block;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .quiz-option-label:hover {
+            background: #e9ecef;
+        }
+
+        .quiz-option-label input {
+            margin-right: 10px;
+        }
+
+        /* Ordering/Sentence Styles */
+        .sortable-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sortable-item {
+            background: #fff;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            cursor: move;
+            display: flex;
+            align-items: center;
+        }
+
+        .sortable-item::before {
+            content: "☰";
+            margin-right: 10px;
+            color: #888;
+        }
+
+        .sortable-ghost {
+            opacity: 0.4;
+            background: #c8ebfb;
+        }
+
+        /* Matching Styles */
+        .matching-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+
+        .matching-left {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .matching-right {
+            flex: 1;
+        }
+
+        /* Gap Fill Styles */
+        .gap-fill-content {
+            line-height: 2;
+            font-size: 1.1rem;
+        }
+
+        .gap-select {
+            padding: 5px;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            margin: 0 5px;
+            background: #f0f8ff;
+        }
+
+        /* Divider/Static */
+        .block-divider {
+            border-bottom: 2px solid #ccc;
+            margin: 30px 0;
+            text-align: center;
+            color: #555;
+        }
+
+        .block-text-static {
+            background: #e9ecef;
+            border-left: 5px solid #6c757d;
+        }
+    </style>
 </head>
+
 <body>
     <!-- LOCK OVERLAY -->
-    <div id="lockOverlay">
-        <div class="lock-icon">🔒</div>
+    <div id="lockOverlay"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+        <div class="lock-icon" style="font-size:4rem; margin-bottom:20px;">🔒</div>
         <h1 style="color:#ff4747; margin:0;">EXAM LOCKED</h1>
         <p style="color:#ccc; font-size:1.2rem;">System Integrity Violation Detected.</p>
         <p style="color:#888; margin-top:0;">You switched tabs or lost focus.</p>
-        <p id="lockStatusText" style="margin-top:20px; color:white; font-weight:bold; background:#333; padding:10px 20px; border-radius:50px;">Waiting for teacher approval...</p>
+        <p id="lockStatusText"
+            style="margin-top:20px; color:white; font-weight:bold; background:#333; padding:10px 20px; border-radius:50px;">
+            Waiting for teacher approval...</p>
     </div>
 
     <!-- MAIN APP -->
-    <div class="container" id="quizApp" style="display:none; max-width:800px;">
-        
-        <div id="quizHeader">
+    <div class="container" id="quizApp" style="display:none; max-width:800px; padding-bottom:100px;">
+
+        <div id="quizHeader"
+            style="display:flex; justify-content:space-between; align-items:center; padding:20px 0; border-bottom:1px solid #eee; margin-bottom:20px;">
             <div>
                 <h2 id="quizTitle" style="margin:0; font-size:1.5rem;">Quiz Title</h2>
                 <div id="quizModeBadge" style="font-size:0.8rem; color:#888; margin-top:5px;"></div>
             </div>
-            <div id="timerBadge" class="timer-badge">--:--</div>
+            <div id="timerBadge"
+                style="background:#333; color:white; padding:5px 15px; border-radius:5px; font-weight:bold; font-family:monospace; font-size:1.2rem;">
+                --:--</div>
         </div>
 
         <div id="questionsContainer">
             <!-- Questions injected here -->
         </div>
 
-        <div class="submit-container" style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
-            <button class="btn btn-secondary" onclick="document.documentElement.requestFullscreen()">⛶ Fullscreen</button>
-            <button class="btn btn-primary" id="submitQuizBtn" style="padding:15px 40px; font-size:1.2rem;">Submit Exam</button>
+        <div class="submit-container"
+            style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
+            <button class="btn btn-secondary" onclick="document.documentElement.requestFullscreen()">⛶
+                Fullscreen</button>
+            <button class="btn btn-primary" id="submitQuizBtn" style="padding:15px 40px; font-size:1.2rem;">Submit
+                Exam</button>
         </div>
     </div>
 
     <!-- LOADING/START SCREEN -->
-    <div id="loadingMessage" style="height:100vh; display:flex; justify-content:center; align-items:center; flex-direction:column;">
+    <div id="loadingMessage"
+        style="height:100vh; display:flex; justify-content:center; align-items:center; flex-direction:column;">
         <h1>Loading Exam...</h1>
         <div class="loader"></div>
     </div>
 
     <script src="{% static 'js/quiz.js' %}"></script>
 </body>
+
 </html>
