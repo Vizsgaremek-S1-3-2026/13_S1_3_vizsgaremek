@@ -58,7 +58,11 @@ def create_quiz(request, payload: QuizCreateSchema):
     if not is_admin and not current_user.is_superuser:
         raise HttpError(403, "You must be a group admin to assign quizzes.")
 
-    # 3. Create the Quiz
+    # 3. Logic Validation: End Date must be after Start Date
+    if payload.date_end <= payload.date_start:
+        raise HttpError(400, "The end date must be after the start date.")
+
+    # 4. Create the Quiz
     quiz = Quiz.objects.create(
         group=group,
         project=project,
@@ -73,7 +77,9 @@ def create_quiz(request, payload: QuizCreateSchema):
 def update_quiz(request, quiz_id: int, payload: QuizUpdateSchema):
     """
     Updates an existing Quiz session.
-    Requires the user to be an ADMIN of the target group.
+    Constraints: 
+    1. Can only DELAY the start date (cannot make it earlier).
+    2. End date must be after start date.
     """
     current_user = request.auth
     quiz = get_object_or_404(Quiz, id=quiz_id)
@@ -88,12 +94,50 @@ def update_quiz(request, quiz_id: int, payload: QuizUpdateSchema):
     if not is_admin and not current_user.is_superuser:
         raise HttpError(403, "You must be a group admin to update quizzes.")
 
-    # 2. Update the Quiz
+    # 2. Logic Validation: Prevent moving date earlier (Only Delay allowed)
+    if payload.date_start < quiz.date_start:
+        raise HttpError(400, "You cannot make the start date earlier than it currently is. You can only delay it.")
+
+    # 3. Logic Validation: End Date must be after Start Date
+    if payload.date_end <= payload.date_start:
+        raise HttpError(400, "The end date must be after the start date.")
+
+    # 4. Update the Quiz
     quiz.date_start = payload.date_start
     quiz.date_end = payload.date_end
     quiz.save()
 
     return quiz
+
+#? Delete Quiz
+@router.delete("/{quiz_id}", response={204: None}, summary="Teacher: Delete a pending quiz")
+def delete_quiz(request, quiz_id: int):
+    """
+    Deletes a quiz session.
+    Constraint: Can ONLY delete a quiz if it has not started yet.
+    """
+    current_user = request.auth
+    quiz = get_object_or_404(Quiz, id=quiz_id)
+
+    # 1. Authorization Check (Must be Group Admin)
+    is_admin = GroupMember.objects.filter(
+        group=quiz.group, 
+        user=current_user, 
+        rank='ADMIN'
+    ).exists()
+
+    if not is_admin and not current_user.is_superuser:
+        raise HttpError(403, "You must be a group admin to delete quizzes.")
+
+    # 2. Time Validation (Cannot delete if started)
+    # If now is greater than or equal to start date, it's too late.
+    if timezone.now() >= quiz.date_start:
+        raise HttpError(400, "Cannot delete a quiz that has already started.")
+
+    # 3. Perform Deletion
+    quiz.delete()
+    
+    return 204, None
 
 #? Get all Quizzes for a Group
 @router.get("/group/{group_id}", response=List[QuizOutSchema], summary="List quizzes for a group")

@@ -6,6 +6,16 @@ from typing import Optional
 from datetime import datetime
 import re
 
+#! Helper Functions ==================================================
+def format_title_case(value: str) -> Optional[str]:
+    """
+    Helper to convert "matt smitH" -> "Matt Smith".
+    Handles multiple names like "Mary Jane" or "Jean-Luc" correctly.
+    """
+    if value:
+        return value.strip().title()
+    return value
+
 #! User Output Schema ==================================================
 # This is now the primary schema for displaying user data.
 class UserOut(Schema):
@@ -29,6 +39,10 @@ class UpdateUserSchema(Schema):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
 
+    @field_validator('first_name', 'last_name')
+    def capitalize_names(cls, value):
+        return format_title_case(value)
+
 class UpdateEmailSchema(Schema):
     email: str
     password: str 
@@ -49,6 +63,10 @@ class RegisterSchema(Schema):
     email: EmailStr
     password: str
     pfp_url: Optional[str] = None
+
+    @field_validator('first_name', 'last_name')
+    def capitalize_names(cls, value):
+        return format_title_case(value)
 
     @field_validator('username')
     def validate_username(cls, value):
