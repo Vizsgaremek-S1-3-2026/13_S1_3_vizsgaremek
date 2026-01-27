@@ -6,6 +6,8 @@ import 'providers/user_provider.dart';
 import 'theme.dart';
 import 'dart:math' as math;
 
+import 'developer_console.dart';
+
 const double kSettingsDesktopBreakpoint = 700.0;
 
 class SettingsPage extends StatefulWidget {
@@ -109,6 +111,7 @@ class _SettingsPageState extends State<SettingsPage>
 
   String _selectedSection = 'Profil';
   late AnimationController _waveController;
+  int _devModeTapCount = 0;
 
   @override
   void initState() {
@@ -225,6 +228,13 @@ class _SettingsPageState extends State<SettingsPage>
             Icons.settings,
             isDesktop: isDesktop,
           ),
+          if (Provider.of<UserProvider>(context).isDeveloperMode)
+            _buildNavItem(
+              context,
+              'Fejlesztői lehetőségek',
+              Icons.bug_report,
+              isDesktop: isDesktop,
+            ),
           const Spacer(),
           // Logo
           Row(
@@ -692,9 +702,57 @@ class _SettingsPageState extends State<SettingsPage>
         return _buildNotificationSettings(context);
       case 'Kisegítő lehetőségek':
         return _buildAccessibilitySettings(context);
+      case 'Fejlesztői lehetőségek':
+        return _buildDeveloperSettings(context);
       default:
         return Container();
     }
+  }
+
+  Widget _buildDeveloperSettings(BuildContext context) {
+    final theme = Theme.of(context);
+    final userProvider = Provider.of<UserProvider>(context);
+
+    return ListView(
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 24.0,
+        bottom: 100.0,
+      ),
+      children: [
+        _buildSettingsCard(
+          context,
+          title: 'Fejlesztői mód',
+          subtitle: 'Hibakeresési eszközök engedélyezése',
+          trailing: Switch(
+            value: userProvider.isDeveloperMode,
+            activeColor: theme.primaryColor,
+            onChanged: (val) {
+              if (!val) {
+                userProvider.toggleDeveloperMode();
+                setState(() {
+                  _selectedSection = 'Általános';
+                });
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingsCard(
+          context,
+          title: 'Fejlesztői Konzol',
+          subtitle: 'Napló megtekintése és hibakeresés',
+          trailing: Icon(Icons.terminal, color: theme.primaryColor),
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (context) => const Dialog(child: DeveloperConsole()),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   Widget _buildGeneralSettings(BuildContext context) {
@@ -718,6 +776,28 @@ class _SettingsPageState extends State<SettingsPage>
               fontSize: 14,
             ),
           ),
+          onTap: () {
+            setState(() {
+              _devModeTapCount++;
+              if (_devModeTapCount >= 5) {
+                _devModeTapCount = 0;
+                final userProvider = Provider.of<UserProvider>(
+                  context,
+                  listen: false,
+                );
+                userProvider.toggleDeveloperMode();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      userProvider.isDeveloperMode
+                          ? "Fejlesztői mód bekapcsolva"
+                          : "Fejlesztői mód kikapcsolva",
+                    ),
+                  ),
+                );
+              }
+            });
+          },
         ),
         const SizedBox(height: 12),
         _buildSettingsCard(

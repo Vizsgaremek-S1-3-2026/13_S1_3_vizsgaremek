@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 
 import 'package:printing/printing.dart';
@@ -24,174 +25,14 @@ class AdminPage extends StatefulWidget {
 class _AdminPageState extends State<AdminPage> {
   String _selectedSection = 'Felügyelet';
 
-  // Mock data for monitoring
+  // State
+  List<Map<String, dynamic>> _members = [];
+  bool _isLoading = true;
+  Timer? _pollingTimer;
+
+  // Mock data for monitoring (Legacy, keeping reference if needed but unused)
   Map<String, dynamic>? _fullQuizData;
   bool _isLoadingDetails = true;
-
-  final List<Map<String, dynamic>> _mockMembers = [
-    {
-      'name': 'Kovács Anna',
-      'status': 'writing',
-      'wasBlocked': false,
-      'score': 0,
-      'maxScore': 100,
-      'grade': null,
-      'profilePicture': 'https://i.pravatar.cc/150?u=1',
-    },
-    {
-      'name': 'Nagy Péter',
-      'status': 'blocked',
-      'wasBlocked': true,
-      'score': 15,
-      'maxScore': 100,
-      'grade': 1,
-      'profilePicture': 'https://i.pravatar.cc/150?u=2',
-    },
-    {
-      'name': 'Szabó Gábor',
-      'status': 'writing',
-      'wasBlocked': true,
-      'score': 45,
-      'maxScore': 100,
-      'grade': null,
-      'profilePicture': 'https://i.pravatar.cc/150?u=3',
-    },
-    {
-      'name': 'Varga Éva',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 85,
-      'maxScore': 100,
-      'grade': 5,
-      'profilePicture': 'https://i.pravatar.cc/150?u=4',
-    },
-    {
-      'name': 'Tóth Balázs',
-      'status': 'closed',
-      'wasBlocked': false,
-      'score': 62,
-      'maxScore': 100,
-      'grade': 3,
-      'profilePicture': 'https://i.pravatar.cc/150?u=5',
-    },
-    {
-      'name': 'Kiss József',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 74,
-      'maxScore': 100,
-      'grade': 4,
-      'profilePicture': 'https://i.pravatar.cc/150?u=6',
-    },
-    {
-      'name': 'Molnár Ádám',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 92,
-      'maxScore': 100,
-      'grade': 5,
-      'profilePicture': 'https://i.pravatar.cc/150?u=7',
-    },
-    {
-      'name': 'Fekete Bence',
-      'status': 'closed',
-      'wasBlocked': false,
-      'score': 33,
-      'maxScore': 100,
-      'grade': 2,
-      'profilePicture': 'https://i.pravatar.cc/150?u=8',
-    },
-    {
-      'name': 'Horváth Júlia',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 88,
-      'maxScore': 100,
-      'grade': 5,
-      'profilePicture': 'https://i.pravatar.cc/150?u=9',
-    },
-    {
-      'name': 'Takács Roland',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 71,
-      'maxScore': 100,
-      'grade': 4,
-      'profilePicture': 'https://i.pravatar.cc/150?u=10',
-    },
-    {
-      'name': 'Németh Eszter',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 55,
-      'maxScore': 100,
-      'grade': 3,
-      'profilePicture': 'https://i.pravatar.cc/150?u=11',
-    },
-    {
-      'name': 'Szalai Dávid',
-      'status': 'closed',
-      'wasBlocked': false,
-      'score': 25,
-      'maxScore': 100,
-      'grade': 2,
-      'profilePicture': 'https://i.pravatar.cc/150?u=12',
-    },
-    {
-      'name': 'Kocsis Réka',
-      'status': 'blocked',
-      'wasBlocked': true,
-      'score': 0,
-      'maxScore': 100,
-      'grade': 1,
-      'profilePicture': 'https://i.pravatar.cc/150?u=13',
-    },
-    {
-      'name': 'Pintér Tamás',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 81,
-      'maxScore': 100,
-      'grade': 4,
-      'profilePicture': 'https://i.pravatar.cc/150?u=14',
-    },
-    {
-      'name': 'Veres Zsófia',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 95,
-      'maxScore': 100,
-      'grade': 5,
-      'profilePicture': 'https://i.pravatar.cc/150?u=15',
-    },
-    {
-      'name': 'Lakatos Gergő',
-      'status': 'idle',
-      'wasBlocked': false,
-      'score': 0,
-      'maxScore': 100,
-      'grade': null,
-      'profilePicture': 'https://i.pravatar.cc/150?u=16',
-    },
-    {
-      'name': 'Nagy Timea',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 68,
-      'maxScore': 100,
-      'grade': 3,
-      'profilePicture': 'https://i.pravatar.cc/150?u=17',
-    },
-    {
-      'name': 'Kovács Zolta',
-      'status': 'submitted',
-      'wasBlocked': false,
-      'score': 79,
-      'maxScore': 100,
-      'grade': 4,
-      'profilePicture': 'https://i.pravatar.cc/150?u=18',
-    },
-  ];
 
   // Export Configuration State
   bool _exportIncludeStats = true;
@@ -238,6 +79,91 @@ class _AdminPageState extends State<AdminPage> {
   void initState() {
     super.initState();
     _fetchProjectDetails();
+    _fetchData();
+    // Poll every 10 seconds
+    _pollingTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _fetchData(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchData() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final api = ApiService();
+    final quizId = widget.quiz['id'];
+
+    if (quizId == null) return;
+
+    try {
+      // Fetch submissions
+      final submissions = await api.getQuizSubmissions(token, quizId);
+      // Fetch events/alerts
+      final events = await api.getQuizEvents(token, quizId);
+
+      // Merge data to create the member list
+      // In a real scenario, we should also fetch the Group Members to show those who haven't started.
+      // For now, we show those with submissions or events.
+
+      final Map<String, Map<String, dynamic>> studentMap = {};
+
+      // Process submissions
+      for (var sub in submissions) {
+        final userId = sub['user_id'].toString(); // Assuming user_id exists
+        // Normalize status
+        String status = 'writing';
+        if (sub['finished_at'] != null) status = 'submitted';
+
+        // Calculate score if available
+        // ...
+
+        studentMap[userId] = {
+          'name':
+              sub['user_name'] ??
+              'Diák $userId', // Replace with real name if available
+          'status': status,
+          'wasBlocked': false, // Default
+          'score': sub['score'] ?? 0,
+          'maxScore': 100, // Should come from quiz details
+          'grade': sub['grade'],
+          'profilePicture':
+              sub['user_avatar'] ?? 'https://i.pravatar.cc/150?u=$userId',
+          'submission_id': sub['id'],
+          'user_id': sub['user_id'],
+        };
+      }
+
+      // Process events to update status (blocked, etc)
+      for (var event in events) {
+        final userId = event['user_id'].toString();
+        if (!studentMap.containsKey(userId)) continue;
+
+        if (event['type'] == 'blur' || event['type'] == 'cheat') {
+          studentMap[userId]!['wasBlocked'] = true;
+          if (event['resolved'] != true) {
+            studentMap[userId]!['status'] = 'blocked';
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _members = studentMap.values.toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading admin data: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _fetchProjectDetails() async {
@@ -272,7 +198,7 @@ class _AdminPageState extends State<AdminPage> {
     final blocks = _fullQuizData!['blocks'] as List;
 
     // Assign mock answers to each student
-    for (var member in _mockMembers) {
+    for (var member in _members) {
       final answers = <Map<String, dynamic>>[];
       for (var block in blocks) {
         // Randomly decide if student answered correctly, incorrectly, or skipped
@@ -697,9 +623,7 @@ class _AdminPageState extends State<AdminPage> {
   Widget _buildGradesSection(BuildContext context) {
     final theme = Theme.of(context);
     // Filter graded students
-    final gradedStudents = _mockMembers
-        .where((m) => m['grade'] != null)
-        .toList();
+    final gradedStudents = _members.where((m) => m['grade'] != null).toList();
 
     // Calculate Stats
     final gradeCounts = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
@@ -715,7 +639,7 @@ class _AdminPageState extends State<AdminPage> {
         ? totalGradeSum / gradedStudents.length
         : 0.0;
 
-    final int missingCount = _mockMembers.length - gradedStudents.length;
+    final int missingCount = _members.length - gradedStudents.length;
 
     // Determine max frequency for distribution bar
     int maxFreq = 0;
@@ -758,7 +682,7 @@ class _AdminPageState extends State<AdminPage> {
                         _buildSummaryItem(
                           context,
                           'Összesen',
-                          '${_mockMembers.length} fő',
+                          '${_members.length} fő',
                           theme.textTheme.bodyLarge?.color ?? Colors.black,
                         ),
                         const SizedBox(width: 24),
@@ -836,9 +760,9 @@ class _AdminPageState extends State<AdminPage> {
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _mockMembers.length,
+            itemCount: _members.length,
             itemBuilder: (context, index) {
-              final member = _mockMembers[index];
+              final member = _members[index];
               final grade = member['grade'] as int?;
               final score = member['score'] as int? ?? 0;
               final maxScore = member['maxScore'] as int? ?? 100;
@@ -1041,11 +965,11 @@ class _AdminPageState extends State<AdminPage> {
   Widget _buildSubmittedExamsSection(BuildContext context) {
     final theme = Theme.of(context);
 
-    final submittedGroup = _mockMembers
+    final submittedGroup = _members
         .where((m) => m['status'] == 'submitted' || m['status'] == 'closed')
         .toList();
 
-    final notSubmittedGroup = _mockMembers
+    final notSubmittedGroup = _members
         .where((m) => m['status'] != 'submitted' && m['status'] != 'closed')
         .toList();
 
@@ -1279,9 +1203,7 @@ class _AdminPageState extends State<AdminPage> {
 
   Widget _buildMonitoringSection(BuildContext context) {
     // Csak azokat jelenítjük meg, akik már elkezdték (nem 'idle')
-    final activeMembers = _mockMembers
-        .where((m) => m['status'] != 'idle')
-        .toList();
+    final activeMembers = _members.where((m) => m['status'] != 'idle').toList();
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -1335,18 +1257,12 @@ class _AdminPageState extends State<AdminPage> {
 
   Widget _buildDashboardBar(BuildContext context) {
     final theme = Theme.of(context);
-    final writingCount = _mockMembers
-        .where((m) => m['status'] == 'writing')
-        .length;
-    final blockedCount = _mockMembers
-        .where((m) => m['status'] == 'blocked')
-        .length;
-    final submittedCount = _mockMembers
+    final writingCount = _members.where((m) => m['status'] == 'writing').length;
+    final blockedCount = _members.where((m) => m['status'] == 'blocked').length;
+    final submittedCount = _members
         .where((m) => m['status'] == 'submitted')
         .length;
-    final closedCount = _mockMembers
-        .where((m) => m['status'] == 'closed')
-        .length;
+    final closedCount = _members.where((m) => m['status'] == 'closed').length;
 
     return Column(
       children: [
@@ -1973,22 +1889,22 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Map<String, dynamic> _calculateStats() {
-    int total = _mockMembers.length;
-    int submitted = _mockMembers
+    int total = _members.length;
+    int submitted = _members
         .where((m) => m['status'] == 'closed' || m['status'] == 'submitted')
         .length;
-    int rated = _mockMembers.where((m) => m['grade'] != null).length;
+    int rated = _members.where((m) => m['grade'] != null).length;
 
     double average = 0;
     if (rated > 0) {
-      final sum = _mockMembers
+      final sum = _members
           .where((m) => m['grade'] != null)
           .fold(0, (prev, m) => prev + (m['grade'] as int));
       average = sum / rated;
     }
 
     Map<int, int> distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-    for (var m in _mockMembers) {
+    for (var m in _members) {
       if (m['grade'] != null) {
         int g = m['grade'];
         distribution[g] = (distribution[g] ?? 0) + 1;
@@ -2207,7 +2123,7 @@ class _AdminPageState extends State<AdminPage> {
                   final pdf = await PdfService.generateGradesReport(
                     quizTitle: widget.quiz['project_name'] ?? 'Teszt',
                     groupName: widget.groupName ?? '',
-                    students: _mockMembers,
+                    students: _members,
                     stats: stats,
                     quizData: _fullQuizData,
                     includeStats: _exportIncludeStats,

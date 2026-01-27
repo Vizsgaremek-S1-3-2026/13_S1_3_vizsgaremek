@@ -20,18 +20,21 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart';
 import 'package:scribble/scribble.dart';
 
+import 'package:provider/provider.dart';
+import 'providers/user_provider.dart';
+
 class TestTakingPage extends StatefulWidget {
   final Map<String, dynamic> quiz;
   final String groupName;
-  final bool anticheat; // Védett mód (screenshot, volume, focus protection)
-  final bool kiosk; // Zárolt mód (fullscreen lock)
+  final bool anticheat;
+  final bool kiosk;
 
   const TestTakingPage({
     super.key,
     required this.quiz,
     required this.groupName,
-    this.anticheat = false, // Default: no protection
-    this.kiosk = false, // Default disabled
+    this.anticheat = false,
+    this.kiosk = false,
   });
 
   @override
@@ -50,10 +53,10 @@ class _TestTakingPageState extends State<TestTakingPage>
   StreamSubscription<double>? _volumeSubscription;
 
   // --- UI/Logic State ---
+  bool _isLoading = true;
   List<Map<String, dynamic>> _questions = [];
   final Map<int, dynamic> _userAnswers = {};
-  final Map<int, List<String>> _shuffledOptions =
-      {}; // Stores stable random order for word banks
+  final Map<int, List<String>> _shuffledOptions = {};
   final ScrollController _scrollController = ScrollController();
 
   // --- Notepad (scratchpad) for desktop ---
@@ -100,14 +103,12 @@ class _TestTakingPageState extends State<TestTakingPage>
   // --- Mock Data Generator ---
   List<Map<String, dynamic>> _generateMockQuestions() {
     return [
-      // Intro text block at the very top
       {
         'id': 100,
         'type': 'text_block',
         'content':
             'Üdvözöllek a próba dolgozatban!\n\nEz a teszt bemutatja az összes elérhető kérdéstípust. Olvasd el figyelmesen a kérdéseket és válaszolj a legjobb tudásod szerint.',
       },
-      // Section 1: Basic questions
       {'id': 'div1', 'type': 'divider', 'content': '1. Rész - Alapkérdések'},
       {
         'id': 101,
@@ -140,7 +141,6 @@ class _TestTakingPageState extends State<TestTakingPage>
         'image_url': 'https://picsum.photos/id/1011/800/600',
         'answer': null,
       },
-      // Section 2: Advanced questions
       {
         'id': 'div2',
         'type': 'divider',
@@ -178,7 +178,6 @@ class _TestTakingPageState extends State<TestTakingPage>
         'text': 'Ég a napmelegtől a kopár {1} Tikkadt {2} legelész a tarlón.',
         'options': ['szík', 'nyáj', 'rét', 'mén'],
       },
-      // Info text block
       {
         'id': 'info1',
         'type': 'text_block',
@@ -193,7 +192,6 @@ class _TestTakingPageState extends State<TestTakingPage>
         'max': 50,
         'step': 1,
       },
-      // Section 3
       {'id': 'div3', 'type': 'divider', 'content': '3. Rész - Drag & Drop'},
       {
         'id': 108,
@@ -215,9 +213,7 @@ class _TestTakingPageState extends State<TestTakingPage>
         'question': 'Alkoss értelmes mondatot a szavakból!',
         'words': ['A', 'macska', 'felmászott', 'a', 'fára', 'és', 'dorombol.'],
       },
-      // Simple divider without text
       {'id': 'div4', 'type': 'divider', 'content': ''},
-      // Closing text
       {
         'id': 'outro',
         'type': 'text_block',
@@ -241,9 +237,7 @@ class _TestTakingPageState extends State<TestTakingPage>
       ..setBackgroundColor(const Color(0x00000000))
       ..setNavigationDelegate(
         NavigationDelegate(
-          onProgress: (int progress) {
-            // Update loading bar or state if needed
-          },
+          onProgress: (int progress) {},
           onPageStarted: (String url) {},
           onPageFinished: (String url) {},
           onWebResourceError: (WebResourceError error) {},
@@ -253,7 +247,6 @@ class _TestTakingPageState extends State<TestTakingPage>
         ),
       );
 
-    // Initial load
     final urls = _allowedUrls;
     if (urls.isNotEmpty) {
       _selectedWebUrl = urls.first;
@@ -275,57 +268,90 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-  void _initQuestions() {
-    // In a real scenario, we would parse widget.quiz['questions']
-    // For this demo, we use the hardcoded mock generator
-    final allQuestions = _generateMockQuestions();
-
-    // Check if test contains structural elements (text_block, divider)
-    // If so, preserve original order to maintain section structure
-    final hasStructuralElements = allQuestions.any(
-      (q) => q['type'] == 'text_block' || q['type'] == 'divider',
-    );
-
-    if (!hasStructuralElements) {
-      // Only shuffle if there are no structural elements
-      allQuestions.shuffle(Random());
-    }
-
-    setState(() {
-      _questions = allQuestions;
-    });
-  }
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Initialize Mock Questions
-    _initQuestions();
+    // Initial API Load
+    _loadQuiz();
 
-    // Only enable focus monitoring if anticheat is enabled (Védett or Zárolt mode)
+    // Only enable focus monitoring... (rest of initState)
     if (widget.anticheat) {
       windowManager.addListener(this);
     }
-
-    // Only enter fullscreen if kiosk mode is enabled
     if (widget.kiosk) {
       _enterFullscreen();
     }
-
     _initializeWebView();
-    // Only setup web protections if anticheat is enabled
     if (kIsWeb && widget.anticheat) {
       _setupWebProtections();
     }
-
-    // Setup protections based on anticheat setting
     if (widget.anticheat) {
       _setupAdvancedProtections();
     } else {
-      // Only init timer for non-protected mode
       _initPersistentTimer();
+    }
+  }
+
+  Future<void> _loadQuiz() async {
+    final quizId = widget.quiz['id'];
+    if (quizId == null) {
+      // Fallback for demo mode if no ID
+      _initMockQuestions();
+      return;
+    }
+
+    // Get token
+    // We need to access UserProvider, but it might be better to get token from SharedPrefs for reliability in test mode
+    // or just use Provider if available. UserProvider is at top level.
+    final token = context.read<UserProvider>().token;
+    if (token == null) {
+      // Handle error - logged out?
+      _initMockQuestions();
+      return;
+    }
+
+    try {
+      final api = ApiService();
+      // Check lock status first? Or just start?
+      // Let's call startQuiz
+      final data = await api.startQuiz(token, quizId);
+
+      if (data != null && data['blocks'] != null) {
+        final List<dynamic> blocks = data['blocks'];
+        setState(() {
+          _questions = blocks.cast<Map<String, dynamic>>();
+          // Initialize shuffled options if needed logic here
+          _isLoading = false;
+        });
+      } else {
+        // Fallback
+        _initMockQuestions();
+      }
+    } catch (e) {
+      debugPrint('Error loading quiz: $e');
+      _initMockQuestions();
+    }
+  }
+
+  void _initMockQuestions() {
+    // Use the old mock generator as fallback
+    final allQuestions = _generateMockQuestions();
+    // ... shuffle logic ...
+    final hasStructuralElements = allQuestions.any(
+      (q) => q['type'] == 'text_block' || q['type'] == 'divider',
+    );
+
+    if (!hasStructuralElements) {
+      allQuestions.shuffle(Random());
+    }
+
+    if (mounted) {
+      setState(() {
+        _questions = allQuestions;
+        _isLoading = false;
+      });
     }
   }
 
@@ -531,22 +557,25 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   // Report network issue to teacher (doesn't block student)
   void _reportNetworkIssue(String issueType) async {
+    _reportEvent('network', issueType);
+  }
+
+  // Helper to report any event
+  Future<void> _reportEvent(String type, String desc) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
+      final token = context.read<UserProvider>().token;
       final quizId = widget.quiz['id'];
 
       if (token != null && quizId != null) {
-        // Fire and forget - don't wait for response
-        ApiService().reportNetworkIssue(
-          token: token,
-          quizId: quizId,
-          issueType: issueType,
-        );
+        // Fire and forget
+        ApiService().reportEvent(token, {
+          'quiz_id': quizId,
+          'type': type,
+          'desc': desc,
+        });
       }
     } catch (e) {
-      // Silent fail - don't disrupt the student's test
-      debugPrint('Hálózati probléma jelentése sikertelen: $e');
+      debugPrint('Esemény jelentése sikertelen: $e');
     }
   }
 
@@ -2213,17 +2242,7 @@ class _TestTakingPageState extends State<TestTakingPage>
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _exitFullscreen().then((_) {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                        builder: (c) => GroupPage(
-                          group: widget.quiz['group_obj'],
-                          onTestExpired: (g) {},
-                        ),
-                      ),
-                      (route) => false,
-                    );
-                  });
+                  _submitTest();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.primaryColor,
@@ -2244,6 +2263,78 @@ class _TestTakingPageState extends State<TestTakingPage>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
+  }
+
+  Future<void> _submitTest() async {
+    final token = context.read<UserProvider>().token;
+    if (token == null) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // Prepare answers
+    final List<Map<String, dynamic>> answers = [];
+    _userAnswers.forEach((index, value) {
+      if (index < _questions.length) {
+        final q = _questions[index];
+        final qId = q['id'];
+
+        // Skip structural elements just in case, though they shouldn't be in _userAnswers
+        if (q['type'] == 'text_block' || q['type'] == 'divider') return;
+
+        answers.add({
+          'block_id': qId,
+          'answer_text': jsonEncode(
+            value,
+          ), // Send as JSON string for flexibility
+        });
+      }
+    });
+
+    final submissionData = {'quiz_id': widget.quiz['id'], 'answers': answers};
+
+    try {
+      final response = await ApiService().submitQuiz(token, submissionData);
+
+      // Close loading
+      if (mounted) Navigator.pop(context);
+
+      if (response != null) {
+        // Success
+        await _exitFullscreen();
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (c) => GroupPage(
+                group:
+                    widget.quiz['group_obj'] ??
+                    widget
+                        .groupName, // Hopefully group object is passed or we fetch it
+                onTestExpired: (g) {},
+              ),
+            ),
+            (route) => false,
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Hiba a beadás során. Próbáld újra!')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Hálózati hiba: $e')));
+      }
+    }
   }
 
   Widget _buildQuestionCard(Map<String, dynamic> question, int index) {

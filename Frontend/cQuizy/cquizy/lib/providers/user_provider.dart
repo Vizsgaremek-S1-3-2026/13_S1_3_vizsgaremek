@@ -16,6 +16,12 @@ class UserProvider extends ChangeNotifier {
   bool get isLoggedIn => _token != null;
   bool get isLoading => _isLoading;
 
+  // Developer Mode
+  bool _isDeveloperMode = false;
+  final List<String> _logs = [];
+  bool get isDeveloperMode => _isDeveloperMode;
+  List<String> get logs => List.unmodifiable(_logs);
+
   /// Try to auto-login using stored token
   Future<void> tryAutoLogin() async {
     _isLoading = true;
@@ -159,5 +165,27 @@ class UserProvider extends ChangeNotifier {
       debugPrint('Error deleting account: $e');
     }
     return false;
+  }
+
+  void toggleDeveloperMode() {
+    _isDeveloperMode = !_isDeveloperMode;
+    notifyListeners();
+  }
+
+  void addLog(String message) {
+    // Only log if enabled or keep a buffer? Keeping buffer is safer for debugging just-happened issues.
+    // Timestamp
+    final now = DateTime.now();
+    final timeStr = "${now.hour}:${now.minute}:${now.second}";
+    _logs.add('[$timeStr] $message');
+    if (_logs.length > 200) {
+      _logs.removeAt(0);
+    }
+    notifyListeners();
+  }
+
+  void clearLogs() {
+    _logs.clear();
+    notifyListeners();
   }
 }

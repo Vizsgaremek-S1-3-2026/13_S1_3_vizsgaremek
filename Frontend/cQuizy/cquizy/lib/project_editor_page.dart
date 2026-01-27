@@ -694,57 +694,100 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
     setState(() => _isSaving = true);
 
-    // Clean up blocks for API - ensure proper structure
+    // Clean up blocks for API - ensure ALL fields match schema exactly
     final cleanedBlocks = _blocks.asMap().entries.map((entry) {
       final block = Map<String, dynamic>.from(entry.value);
 
-      // Remove order field as it's not in the update request schema/example
-      block.remove('order');
+      // Build a clean block matching the API schema exactly
+      final cleanBlock = <String, dynamic>{};
 
-      // For new blocks, set id to 0 (backend will generate real id)
-      block['id'] ??= 0;
+      // Note: NOT including 'id' - server uses URL parameter for identification
 
-      // Ensure required fields exist, but set empty optionals to null
-      block['question'] ??= '';
-      block['type'] ??= 'single';
+      // type: required, default to 'single'
+      cleanBlock['type'] = block['type']?.toString() ?? 'single';
 
-      // Optional fields should be null if empty string
-      block['subtext'] = (block['subtext'] == '') ? null : block['subtext'];
-      block['image_url'] = (block['image_url'] == '')
-          ? null
-          : block['image_url'];
-      block['link_url'] = (block['link_url'] == '') ? null : block['link_url'];
+      // maintext: required string - use question as fallback if empty
+      final maintext = block['maintext']?.toString() ?? '';
+      cleanBlock['maintext'] = maintext.isEmpty
+          ? (block['question']?.toString() ?? '')
+          : maintext;
 
-      // Clean up answers
+      // question: required string
+      cleanBlock['question'] = block['question']?.toString() ?? '';
+
+      // subtext: required string (empty if not set)
+      cleanBlock['subtext'] = block['subtext']?.toString() ?? '';
+
+      // image_url: required string (empty if not set)
+      cleanBlock['image_url'] = block['image_url']?.toString() ?? '';
+
+      // link_url: required string (empty if not set)
+      cleanBlock['link_url'] = block['link_url']?.toString() ?? '';
+
+      // gap_text: required string (empty if not set)
+      cleanBlock['gap_text'] = block['gap_text']?.toString() ?? '';
+
+      // Clean up answers with ALL required fields
       final answers = List<Map<String, dynamic>>.from(block['answers'] ?? []);
-      block['answers'] = answers.map((answer) {
-        final cleanAnswer = Map<String, dynamic>.from(answer);
-        // For new answers, set id to 0 (backend will generate real id)
-        cleanAnswer['id'] ??= 0;
-        cleanAnswer['text'] ??= '';
-        cleanAnswer['is_correct'] ??= false;
-        cleanAnswer['points'] ??= 0;
+      cleanBlock['answers'] = answers.asMap().entries.map((answerEntry) {
+        final answer = answerEntry.value;
+        final int answerIndex = answerEntry.key;
+
+        final cleanAnswer = <String, dynamic>{};
+
+        // Note: NOT including 'id' - server manages IDs
+
+        // text: required string
+        cleanAnswer['text'] = answer['text']?.toString() ?? '';
+
+        // is_correct: required bool
+        cleanAnswer['is_correct'] = answer['is_correct'] == true;
+
+        // points: required int
+        cleanAnswer['points'] = (answer['points'] as num?)?.toInt() ?? 0;
+
+        // order: required int - MUST be sequential
+        cleanAnswer['order'] = answerIndex;
+
+        // match_text: required string (for matching questions)
+        cleanAnswer['match_text'] = answer['match_text']?.toString() ?? '';
+
+        // gap_index: required int (for gap-fill questions)
+        cleanAnswer['gap_index'] = (answer['gap_index'] as num?)?.toInt() ?? 0;
+
+        // numeric_value: required int (for numeric questions)
+        cleanAnswer['numeric_value'] =
+            (answer['numeric_value'] as num?)?.toInt() ?? 0;
+
+        // tolerance: required int (for numeric questions)
+        cleanAnswer['tolerance'] = (answer['tolerance'] as num?)?.toInt() ?? 0;
+
         return cleanAnswer;
       }).toList();
 
-      return block;
+      return cleanBlock;
     }).toList();
 
     final data = {
       'name': _nameController.text,
-      'desc': _descController.text,
+      'desc': _descController.text.isEmpty ? '-' : _descController.text,
       'blocks': cleanedBlocks,
     };
 
     final api = ApiService();
-    final result = await api.updateProject(token, widget.projectId, data);
 
-    if (!mounted) return;
+    // Log payload to Developer Console for debugging
+    if (userProvider.isDeveloperMode) {
+      userProvider.addLog('PAYLOAD: ${data.toString()}');
+    }
 
-    setState(() => _isSaving = false);
+    try {
+      await api.updateProject(token, widget.projectId, data);
 
-    if (result != null) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
       setState(() => _hasUnsavedChanges = false);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Projekt sikeresen mentve!'),
@@ -755,15 +798,26 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
           ),
         ),
       );
-    } else {
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+
+      final msg = e.toString();
+      userProvider.addLog(msg); // Log to developer console
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Hiba a projekt mentésekor'),
+          content: Text(
+            userProvider.isDeveloperMode
+                ? 'Hiba: $msg'
+                : 'Hiba a projekt mentésekor',
+          ),
           backgroundColor: Colors.red.shade600,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
