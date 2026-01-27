@@ -30,6 +30,7 @@ async function handleApiError(response) {
 
 async function triggerLockout(reason) {
     if (isLocked) return;
+    // Only trigger if enabled in quiz settings
     if (!quizData || !quizData.anticheat_enabled) return;
 
     isLocked = true;
@@ -130,52 +131,137 @@ function renderBlocks(blocks) {
     container.innerHTML = '';
 
     blocks.forEach((block, index) => {
+        // --- Static Types (Divider / Text Block) ---
+        if (block.type === 'divider') {
+            const hr = document.createElement('div');
+            hr.className = 'block-divider';
+            hr.innerHTML = `<h3>${block.maintext || 'Section'}</h3>`;
+            container.appendChild(hr);
+            return;
+        }
+
+        if (block.type === 'text_block') {
+            const staticTxt = document.createElement('div');
+            staticTxt.className = 'question-block block-text-static';
+            staticTxt.innerHTML = `<div style="white-space: pre-wrap;">${block.maintext}</div>`;
+            container.appendChild(staticTxt);
+            return;
+        }
+
+        // --- Standard Questions ---
         const blockDiv = document.createElement('div');
         blockDiv.className = 'question-block';
         blockDiv.dataset.blockId = block.id;
         blockDiv.dataset.type = block.type;
 
-        let html = `<div class="question-text">${index + 1}. ${block.question}</div>`;
-
-        if (block.subtext) {
-            html += `<div class="subtext">${block.subtext}</div>`;
-        }
-        if (block.image_url) {
-            html += `<img src="${block.image_url}" style="max-width:100%; margin-bottom:15px; border-radius:5px;">`;
-        }
-        if (block.link_url) {
-            html += `<div style="margin-bottom:15px;"><a href="${block.link_url}" target="_blank" rel="noopener noreferrer">Attached Resource Link</a></div>`;
+        // Header Logic (Gap Fill hides standard question usually)
+        let headerHtml = '';
+        if (block.type !== 'gap_fill') {
+            headerHtml = `<div class="question-text">${index + 1}. ${block.maintext || block.question}</div>`;
+        } else {
+            headerHtml = `<div class="question-text">${index + 1}. Fill in the blanks:</div>`;
         }
 
-        html += `<div class="options-container">`;
+        let contentHtml = headerHtml;
+        if (block.subtext) contentHtml += `<div class="subtext">${block.subtext}</div>`;
+        if (block.image_url) contentHtml += `<img src="${block.image_url}" style="max-width:100%; margin-bottom:15px; border-radius:5px;">`;
+        if (block.link_url) contentHtml += `<div style="margin-bottom:15px;"><a href="${block.link_url}" target="_blank">Resource Link</a></div>`;
 
-        if (block.type === 'TEXT') {
-            html += `<textarea class="quiz-input" rows="3" style="width:100%; padding:10px; border-radius:5px; border:1px solid #ccc;" placeholder="Type your answer here..."></textarea>`;
+        contentHtml += `<div class="options-container">`;
+
+        // --- INPUT RENDERING ---
+
+        // 1. Text Input / Range (Free text/number)
+        if (block.type === 'text' || block.type === 'range') {
+            const typeAttr = block.type === 'range' ? 'number step="any"' : 'text';
+            contentHtml += `<input type="${typeAttr}" class="quiz-input form-control" style="width:100%; padding:10px;" placeholder="Your Answer...">`;
         }
-        else if (block.type === 'SINGLE') {
+
+        // 2. Choice (Single / Multiple)
+        else if (block.type === 'single' || block.type === 'multiple') {
+            const inputType = block.type === 'single' ? 'radio' : 'checkbox';
             block.answers.forEach(opt => {
-                html += `
-                    <label>
-                        <input type="radio" name="block_${block.id}" value="${opt.text}" class="quiz-input">
+                contentHtml += `
+                    <label class="quiz-option-label">
+                        <input type="${inputType}" name="block_${block.id}" value="${opt.id}" class="quiz-input-choice">
                         ${opt.text}
                     </label>
                 `;
             });
         }
-        else if (block.type === 'MULTIPLE') {
-            block.answers.forEach(opt => {
-                html += `
-                    <label>
-                        <input type="checkbox" name="block_${block.id}" value="${opt.text}" class="quiz-input">
-                        ${opt.text}
-                    </label>
+
+        // 3. Ordering / Sentence Ordering (Drag & Drop)
+        else if (block.type === 'ordering' || block.type === 'sentence_ordering') {
+            contentHtml += `<ul class="sortable-list" id="sortable_${block.id}">`;
+            // Randomize display order so user has to do work
+            const shuffledAnswers = [...block.answers].sort(() => Math.random() - 0.5);
+
+            shuffledAnswers.forEach(opt => {
+                contentHtml += `<li class="sortable-item" data-option-id="${opt.id}">${opt.text}</li>`;
+            });
+            contentHtml += `</ul>`;
+        }
+
+        // 4. Matching (Left text -> Right dropdown)
+        else if (block.type === 'matching') {
+            // Right Side Options (The values to match against)
+            // Extract unique match texts from answers
+            const rightOptions = block.answers.map(a => ({ text: a.match_text })).filter(a => a.text);
+            // Randomize right side
+            rightOptions.sort(() => Math.random() - 0.5);
+
+            block.answers.forEach(leftItem => {
+                if (!leftItem.text) return; // Skip invalid rows
+
+                let optionsHtml = `<option value="">-- Select --</option>`;
+                rightOptions.forEach(opt => {
+                    optionsHtml += `<option value="${opt.text}">${opt.text}</option>`;
+                });
+
+                // We attach the ID of the answer (Left side) to the row
+                contentHtml += `
+                    <div class="matching-row" data-answer-id="${leftItem.id}">
+                        <div class="matching-left">${leftItem.text}</div>
+                        <div class="matching-right">
+                             <select class="quiz-input-matching" style="width:100%; padding:8px;">${optionsHtml}</select>
+                        </div>
+                    </div>
                 `;
             });
         }
 
-        html += `</div>`;
-        blockDiv.innerHTML = html;
+        // 5. Gap Fill (Text with {1} -> Dropdowns)
+        else if (block.type === 'gap_fill') {
+            let text = block.gap_text || "";
+            // Replace {1}, {2} placeholders with Select inputs
+            text = text.replace(/{(\d+)}/g, (match, number) => {
+                const index = parseInt(number);
+                const gapOptions = block.answers.filter(a => a.gap_index === index);
+
+                if (gapOptions.length === 0) return `[Gap ${index}]`;
+
+                let opts = `<option value="">?</option>`;
+                gapOptions.forEach(opt => {
+                    opts += `<option value="${opt.id}">${opt.text}</option>`;
+                });
+
+                return `<select class="quiz-input-gap gap-select" data-gap-index="${index}">${opts}</select>`;
+            });
+
+            contentHtml += `<div class="gap-fill-content">${text}</div>`;
+        }
+
+        contentHtml += `</div>`;
+        blockDiv.innerHTML = contentHtml;
         container.appendChild(blockDiv);
+
+        // Activate SortableJS if needed
+        if (block.type === 'ordering' || block.type === 'sentence_ordering') {
+            new Sortable(blockDiv.querySelector('.sortable-list'), {
+                animation: 150,
+                ghostClass: 'sortable-ghost'
+            });
+        }
     });
 }
 
@@ -184,7 +270,7 @@ function renderBlocks(blocks) {
 async function initQuiz() {
     quizId = getQuizIdFromUrl();
     if (!quizId || !getToken()) {
-        alert("Invalid access. Please ensure you are logged in and using a valid link.");
+        alert("Invalid access.");
         window.location.href = '/groups/';
         return;
     }
@@ -207,20 +293,20 @@ async function initQuiz() {
         document.getElementById('quizApp').style.display = 'block';
 
         let badges = "";
-        if (quizData.anticheat_enabled) badges += "🔒 Anti-Cheat Active ";
-        if (quizData.kiosk_enabled) badges += "📱 Kiosk Mode ";
+        if (quizData.anticheat_enabled) badges += "🔒 Anti-Cheat ";
+        if (quizData.kiosk_enabled) badges += "📱 Kiosk ";
         document.getElementById('quizModeBadge').textContent = badges;
 
         renderBlocks(quizData.blocks);
         startTimer(quizData.date_end);
 
+        // Setup Listeners for Anti-Cheat
         if (quizData.anticheat_enabled) {
             document.addEventListener('visibilitychange', () => {
-                if (document.hidden) triggerLockout("Tab switched / Minimized");
+                if (document.hidden) triggerLockout("Tab switched");
             });
-
             window.addEventListener('blur', () => {
-                triggerLockout("Focus lost (Clicked outside)");
+                triggerLockout("Focus lost");
             });
         }
 
@@ -235,29 +321,72 @@ async function submitQuiz(forced = false) {
         return;
     }
 
-    const answers = [];
+    const answersPayload = [];
     const blockDivs = document.querySelectorAll('.question-block');
 
     blockDivs.forEach(div => {
         const blockId = parseInt(div.dataset.blockId);
         const type = div.dataset.type;
-        const inputs = div.querySelectorAll('.quiz-input');
 
-        if (type === 'TEXT') {
-            const val = inputs[0].value.trim();
-            if (val) answers.push({ block_id: blockId, answer_text: val });
+        // 1. TEXT / RANGE
+        if (type === 'text' || type === 'range') {
+            const input = div.querySelector('.quiz-input');
+            if (input && input.value.trim()) {
+                answersPayload.push({
+                    block_id: blockId,
+                    answer_text: input.value.trim()
+                });
+            }
         }
-        else if (type === 'SINGLE') {
-            inputs.forEach(radio => {
-                if (radio.checked) {
-                    answers.push({ block_id: blockId, answer_text: radio.value });
+
+        // 2. SINGLE / MULTIPLE CHOICE
+        else if (type === 'single' || type === 'multiple') {
+            const inputs = div.querySelectorAll('.quiz-input-choice:checked');
+            inputs.forEach(inp => {
+                answersPayload.push({
+                    block_id: blockId,
+                    option_id: parseInt(inp.value)
+                });
+            });
+        }
+
+        // 3. ORDERING (Visual Order)
+        else if (type === 'ordering' || type === 'sentence_ordering') {
+            const items = div.querySelectorAll('.sortable-item');
+            items.forEach((item) => {
+                answersPayload.push({
+                    block_id: blockId,
+                    option_id: parseInt(item.dataset.optionId)
+                });
+            });
+        }
+
+        // 4. MATCHING
+        else if (type === 'matching') {
+            const rows = div.querySelectorAll('.matching-row');
+            rows.forEach(row => {
+                const select = row.querySelector('select');
+                const leftId = row.dataset.answerId;
+
+                if (select && select.value) {
+                    answersPayload.push({
+                        block_id: blockId,
+                        option_id: parseInt(leftId),     // ID of the Left Side (Database Row ID)
+                        answer_text: select.value        // String value of Right Side
+                    });
                 }
             });
         }
-        else if (type === 'MULTIPLE') {
-            inputs.forEach(chk => {
-                if (chk.checked) {
-                    answers.push({ block_id: blockId, answer_text: chk.value });
+
+        // 5. GAP FILL
+        else if (type === 'gap_fill') {
+            const selects = div.querySelectorAll('.quiz-input-gap');
+            selects.forEach(sel => {
+                if (sel.value) {
+                    answersPayload.push({
+                        block_id: blockId,
+                        option_id: parseInt(sel.value) // ID of the option selected
+                    });
                 }
             });
         }
@@ -273,7 +402,7 @@ async function submitQuiz(forced = false) {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
             body: JSON.stringify({
                 quiz_id: parseInt(quizId),
-                answers: answers
+                answers: answersPayload
             })
         });
 
@@ -281,7 +410,7 @@ async function submitQuiz(forced = false) {
 
         const result = await response.json();
 
-        // FIXED: Using result.group_id from the response
+        // Success UI
         document.getElementById('quizApp').innerHTML = `
             <div style="text-align:center; padding:50px;">
                 <h1 style="color:green; font-size:3em;">✓ Submitted!</h1>
@@ -290,7 +419,7 @@ async function submitQuiz(forced = false) {
                     <h2 style="margin-top:0;">Result: ${result.percentage.toFixed(1)}%</h2>
                     ${result.grade_value
                 ? `<h3 style="color:#007bff; font-size: 2em; margin: 10px 0;">Grade: ${result.grade_value}</h3>`
-                : '<p><em>(No grade assigned for this percentage)</em></p>'
+                : '<p><em>(No grade assigned)</em></p>'
             }
                     <p style="color:#666; font-size:0.9em;">Submitted on: ${new Date(result.date_submitted).toLocaleString()}</p>
                 </div>

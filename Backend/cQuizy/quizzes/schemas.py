@@ -33,21 +33,30 @@ class QuizOutSchema(Schema):
 # --- Safe Schemas for taking a test ---
 class StudentOptionSchema(Schema):
     id: int
-    text: str 
+    text: Optional[str] = None
+
+    match_text: Optional[str] = None
+    gap_index: Optional[int] = None
 
 class StudentBlockSchema(Schema):
     id: int
     order: int
     type: str
-    question: str
+    maintext: Optional[str] = None
+    question: Optional[str] = None # Just in case to resolve conflicts
     subtext: Optional[str] = None
     image_url: Optional[str] = None
     link_url: Optional[str] = None
+    gap_text: Optional[str] = None
     answers: List[StudentOptionSchema]
 
     @staticmethod
     def resolve_answers(obj):
         return obj.answers.all()
+
+    @staticmethod
+    def resolve_question(obj): # Just in case to resolve conflicts (question -> maintext)
+        return obj.maintext
 
 class QuizContentSchema(Schema):
     id: int
@@ -113,7 +122,8 @@ class ResolveEventSchema(Schema):
 #! Submission Schemas
 class AnswerInputSchema(Schema):
     block_id: int
-    answer_text: str
+    answer_text: Optional[str] = ""
+    option_id: Optional[int] = None
 
 class SubmissionCreateSchema(Schema):
     quiz_id: int
@@ -155,7 +165,7 @@ class SubmittedAnswerDetailSchema(Schema):
 
     @staticmethod
     def resolve_block_question(obj):
-        return obj.block.question
+        return obj.block.maintext
 
     @staticmethod
     def resolve_student_answer(obj):
