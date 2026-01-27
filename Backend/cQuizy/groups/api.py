@@ -17,12 +17,15 @@ from .schemas import (
     GroupTransferSchema,
     GroupCreateSchema,
     GroupJoinSchema,
+    GroupDeleteSchema,
 )
 
 from users.auth import JWTAuth
 
 #? Instead of NinjaAPI, we use Router
 router = Router(tags=['Groups'])  # The 'tags' are great for organizing docs
+
+
 
 #! Static Group Handleing Endpoints ==================================================
 #? Creation
@@ -346,27 +349,30 @@ def update_group_settings(request, group_id: int, payload: GroupUpdateSchema):
 
 #? Deletion
 @router.delete("/{group_id}", auth=JWTAuth(), summary="Delete a group")
-def delete_group(request, group_id: int):
+def delete_group(request, group_id: int, payload: GroupDeleteSchema): # <--- Add payload argument
     """
     Soft-deletes a group and all of its current memberships.
-
-    Requires the user to be a superuser or an 'ADMIN' of the group.
+    Requires password confirmation.
     """
     current_user = request.auth
     group = get_object_or_404(Group, id=group_id)
 
-    # Authorization Check
+    # 1. Authorization Check (Check this FIRST to prevent unauthorized password guessing)
     is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
 
     if not current_user.is_superuser and not is_admin:
         return 403, {"detail": "You do not have permission to delete this group."}
 
-    # If authorized, soft-delete the group.
-    ### CHANGE: Replace hard delete with soft delete.
+    # 2. Password Confirmation
+    # The 'check_password' method handles the hashing comparison securely
+    if not current_user.check_password(payload.password):
+        return 403, {"detail": "Invalid password. Group deletion canceled."}
+
+    # 3. Soft-delete the group
     group.date_deleted = timezone.now()
     group.save()
     
-    # Also soft-delete all active memberships in the group.
+    # 4. Soft-delete all active memberships
     current_memberships = GroupMember.objects.filter(group=group)
     for member in current_memberships:
         member.date_left = timezone.now()
