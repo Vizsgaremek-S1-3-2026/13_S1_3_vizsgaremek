@@ -75,10 +75,7 @@ class _DeveloperConsoleState extends State<DeveloperConsole> {
             ),
           ),
 
-          // Debug Toggles (e.g. Detailed Logging) - Placeholder for now
-          // We can add checkboxes here if user wants specific settings.
-
-          // Logs List
+          
           Expanded(
             child: logs.isEmpty
                 ? Center(
@@ -91,15 +88,8 @@ class _DeveloperConsoleState extends State<DeveloperConsole> {
                     padding: const EdgeInsets.all(16),
                     itemCount: logs.length,
                     reverse:
-                        true, // Show newest at bottom (or top if we handle list right)
-                    // Usually logs are appended. last item is newest.
-                    // If we want newest at top:
-                    // logs is a list. index 0 is oldest (if logs.add appends).
-                    // I'll display in normal order but auto-scroll?
-                    // Or reverse: true and access logs[logs.length - 1 - index].
-                    // Let's just do standard order.
+                        true, 
                     itemBuilder: (context, index) {
-                      // Show newest first?
                       final log = logs[logs.length - 1 - index];
                       final isError =
                           log.contains('Hiba') ||

@@ -490,6 +490,10 @@ class ApiService {
     String? color,
     bool? anticheat,
     bool? kiosk,
+    int? grade2Limit,
+    int? grade3Limit,
+    int? grade4Limit,
+    int? grade5Limit,
   }) async {
     final url = Uri.parse('$_baseUrl/groups/$groupId');
 
@@ -498,6 +502,10 @@ class ApiService {
     if (color != null) body['color'] = color;
     if (anticheat != null) body['anticheat'] = anticheat;
     if (kiosk != null) body['kiosk'] = kiosk;
+    if (grade2Limit != null) body['grade2_limit'] = grade2Limit;
+    if (grade3Limit != null) body['grade3_limit'] = grade3Limit;
+    if (grade4Limit != null) body['grade4_limit'] = grade4Limit;
+    if (grade5Limit != null) body['grade5_limit'] = grade5Limit;
 
     try {
       final response = await http.patch(

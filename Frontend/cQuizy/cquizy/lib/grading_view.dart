@@ -4,10 +4,19 @@ class GradingView extends StatefulWidget {
   final Map<String, dynamic> student;
   final String quizTitle;
 
+  final int grade2Limit;
+  final int grade3Limit;
+  final int grade4Limit;
+  final int grade5Limit;
+
   const GradingView({
     super.key,
     required this.student,
     required this.quizTitle,
+    this.grade2Limit = 40,
+    this.grade3Limit = 55,
+    this.grade4Limit = 70,
+    this.grade5Limit = 85,
   });
 
   @override
@@ -51,10 +60,10 @@ class _GradingViewState extends State<GradingView> {
 
   // Grade thresholds (percentage based)
   // Grade 5: >= _grade5Min, Grade 4: >= _grade4Min, etc.
-  int _grade5Min = 90; // 90-100% = 5
-  int _grade4Min = 75; // 75-89% = 4
-  int _grade3Min = 60; // 60-74% = 3
-  int _grade2Min = 40; // 40-59% = 2
+  late int _grade5Min;
+  late int _grade4Min;
+  late int _grade3Min;
+  late int _grade2Min;
   // Below _grade2Min = 1
 
   // Validation helpers
@@ -89,11 +98,21 @@ class _GradingViewState extends State<GradingView> {
       },
       {'id': 4, 'name': 'Tóth Balázs', 'grade': 2, 'cheatingStatus': 'none'},
       {'id': 5, 'name': 'Varga Éva', 'grade': 4, 'cheatingStatus': 'none'},
+      {'id': 5, 'name': 'Varga Éva', 'grade': 4, 'cheatingStatus': 'none'},
+      {'id': 999, 'name': 'Teszt Elek', 'grade': 5, 'cheatingStatus': 'none'},
     ];
     // Sort alphabetically by name
     _submittedStudents.sort(
       (a, b) => (a['name'] as String).compareTo(b['name'] as String),
     );
+
+    // Find the index of the passed student
+    final index = _submittedStudents.indexWhere(
+      (s) => s['name'] == widget.student['name'],
+    );
+    if (index != -1) {
+      _selectedStudentIndex = index;
+    }
   }
 
   Map<String, dynamic> get _currentStudent =>
@@ -141,6 +160,12 @@ class _GradingViewState extends State<GradingView> {
   @override
   void initState() {
     super.initState();
+    // Init thresholds from widget
+    _grade2Min = widget.grade2Limit;
+    _grade3Min = widget.grade3Limit;
+    _grade4Min = widget.grade4Limit;
+    _grade5Min = widget.grade5Limit;
+
     _initStudents();
     _loadMockData();
   }
@@ -1167,7 +1192,7 @@ class _GradingViewState extends State<GradingView> {
 
   Widget _buildGradeSettingsPanel(ThemeData theme, bool isMobile) {
     return Container(
-      width: isMobile ? double.infinity : 300,
+      width: isMobile ? double.infinity : 350,
       margin: isMobile
           ? EdgeInsets.zero
           : const EdgeInsets.only(top: 120, left: 24, bottom: 120),
@@ -1210,99 +1235,97 @@ class _GradingViewState extends State<GradingView> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // Warning if thresholds are invalid
-                if (!_areThresholdsValid)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.red,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'A ponthatárok hibásak! Javítsd, mielőtt folytatnád.',
-                            style: TextStyle(
-                              color: Colors.red.shade700,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                Text(
+                  'Állítsd be a százalékos határokat az osztályzatokhoz (Minimum %).',
+                  style: TextStyle(
+                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+                    fontSize: 12,
                   ),
-                _buildThresholdRow(theme, 5, _grade5Min, _isGrade5Valid, (val) {
-                  // Grade 5: must be between (grade4 + 1) and 100
-                  final clamped = val.clamp(_grade4Min + 1, 100);
-                  setState(() => _grade5Min = clamped);
-                }),
-                _buildThresholdRow(theme, 4, _grade4Min, _isGrade4Valid, (val) {
-                  // Grade 4: must be between (grade3 + 1) and (grade5 - 1)
-                  final clamped = val.clamp(_grade3Min + 1, _grade5Min - 1);
-                  setState(() => _grade4Min = clamped);
-                }),
-                _buildThresholdRow(theme, 3, _grade3Min, _isGrade3Valid, (val) {
-                  // Grade 3: must be between (grade2 + 1) and (grade4 - 1)
-                  final clamped = val.clamp(_grade2Min + 1, _grade4Min - 1);
-                  setState(() => _grade3Min = clamped);
-                }),
-                _buildThresholdRow(theme, 2, _grade2Min, _isGrade2Valid, (val) {
-                  // Grade 2: must be between 1 and (grade3 - 1)
-                  final clamped = val.clamp(1, _grade3Min - 1);
-                  setState(() => _grade2Min = clamped);
-                }),
-                // Grade 1 is implicit (below _grade2Min)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.scaffoldBackgroundColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '1',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '0% - ${_grade2Min - 1}%',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: theme.textTheme.bodyMedium?.color,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildSliderForGrade(
+                  theme: theme,
+                  grade: 2,
+                  value: _grade2Min,
+                  color: Colors.red,
+                  onChanged: (val) {
+                    setState(() {
+                      _grade2Min = val.toInt().clamp(0, 100);
+                      // Ensure logical order
+                      if (_grade2Min >= _grade3Min) {
+                        _grade3Min = (_grade2Min + 1).clamp(0, 100);
+                      }
+                      if (_grade3Min >= _grade4Min) {
+                        _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                      }
+                      if (_grade4Min >= _grade5Min) {
+                        _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                _buildSliderForGrade(
+                  theme: theme,
+                  grade: 3,
+                  value: _grade3Min,
+                  color: Colors.amber,
+                  onChanged: (val) {
+                    setState(() {
+                      _grade3Min = val.toInt().clamp(0, 100);
+                      if (_grade3Min <= _grade2Min) {
+                        _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                      }
+                      if (_grade3Min >= _grade4Min) {
+                        _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                      }
+                      if (_grade4Min >= _grade5Min) {
+                        _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                _buildSliderForGrade(
+                  theme: theme,
+                  grade: 4,
+                  value: _grade4Min,
+                  color: Colors.lightGreen,
+                  onChanged: (val) {
+                    setState(() {
+                      _grade4Min = val.toInt().clamp(0, 100);
+                      if (_grade4Min <= _grade3Min) {
+                        _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                      }
+                      if (_grade3Min <= _grade2Min) {
+                        _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                      }
+                      if (_grade4Min >= _grade5Min) {
+                        _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                _buildSliderForGrade(
+                  theme: theme,
+                  grade: 5,
+                  value: _grade5Min,
+                  color: Colors.green,
+                  onChanged: (val) {
+                    setState(() {
+                      _grade5Min = val.toInt().clamp(0, 100);
+                      if (_grade5Min <= _grade4Min) {
+                        _grade4Min = (_grade5Min - 1).clamp(0, 100);
+                      }
+                      if (_grade4Min <= _grade3Min) {
+                        _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                      }
+                      if (_grade3Min <= _grade2Min) {
+                        _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                      }
+                    });
+                  },
                 ),
               ],
             ),
@@ -1312,122 +1335,65 @@ class _GradingViewState extends State<GradingView> {
     );
   }
 
-  Widget _buildThresholdRow(
-    ThemeData theme,
-    int grade,
-    int minPercent,
-    bool isValid,
-    ValueChanged<int> onChanged,
-  ) {
-    final colors = {
-      5: Colors.green,
-      4: Colors.lightGreen,
-      3: Colors.amber,
-      2: Colors.orange,
-    };
-    final maxPercent = grade == 5
-        ? 100
-        : grade == 4
-        ? _grade5Min - 1
-        : grade == 3
-        ? _grade4Min - 1
-        : _grade3Min - 1;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isValid
-            ? theme.scaffoldBackgroundColor
-            : Colors.red.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: isValid ? null : Border.all(color: Colors.red, width: 2),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: isValid
-                  ? colors[grade]!.withOpacity(0.2)
-                  : Colors.red.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Center(
+  Widget _buildSliderForGrade({
+    required ThemeData theme,
+    required int grade,
+    required int value,
+    required Color color,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Text(
-                '$grade',
+                '$grade-es (Minimum)',
                 style: TextStyle(
+                  color: color,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: colors[grade],
+                  fontSize: 12,
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 50,
-                  child: TextFormField(
-                    initialValue: '$minPercent',
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: theme.textTheme.bodyMedium?.color,
-                    ),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        borderSide: BorderSide(
-                          color: theme.dividerColor,
-                          width: 1,
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        borderSide: BorderSide(
-                          color: theme.dividerColor,
-                          width: 1,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        borderSide: BorderSide(
-                          color: theme.primaryColor,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    onChanged: (value) {
-                      final parsed = int.tryParse(value);
-                      if (parsed != null && parsed >= 0 && parsed <= 100) {
-                        onChanged(parsed);
-                      }
-                    },
-                  ),
-                ),
-                Text(
-                  '% - $maxPercent%',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: theme.textTheme.bodyMedium?.color,
-                  ),
-                ),
-              ],
+            Text(
+              '$value%',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
             ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: color.withOpacity(0.5),
+            inactiveTrackColor: theme.dividerColor,
+            thumbColor: color,
+            overlayColor: color.withOpacity(0.2),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            trackHeight: 4,
+            valueIndicatorColor: color,
           ),
-        ],
-      ),
+          child: Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            label: '$value%',
+            onChanged: onChanged,
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 

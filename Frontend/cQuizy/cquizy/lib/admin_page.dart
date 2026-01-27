@@ -15,8 +15,20 @@ const double kAdminDesktopBreakpoint = 700.0;
 class AdminPage extends StatefulWidget {
   final Map<String, dynamic> quiz;
   final String? groupName;
+  final int grade2Limit;
+  final int grade3Limit;
+  final int grade4Limit;
+  final int grade5Limit;
 
-  const AdminPage({super.key, required this.quiz, this.groupName});
+  const AdminPage({
+    super.key,
+    required this.quiz,
+    this.groupName,
+    this.grade2Limit = 40,
+    this.grade3Limit = 55,
+    this.grade4Limit = 70,
+    this.grade5Limit = 85,
+  });
 
   @override
   State<AdminPage> createState() => _AdminPageState();
@@ -1087,20 +1099,30 @@ class _AdminPageState extends State<AdminPage> {
                 width: 250,
                 height: 56, // Match Menu button height
                 child: ElevatedButton.icon(
-                  onPressed: submittedGroup.isNotEmpty
-                      ? () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => GradingView(
-                                student: submittedGroup.first,
-                                quizTitle:
-                                    widget.quiz['project_name'] ?? 'Teszt',
-                              ),
-                            ),
-                          );
-                        }
-                      : null,
+                  onPressed: () {
+                    final studentToPass = submittedGroup.isNotEmpty
+                        ? submittedGroup.first
+                        : {
+                            'id': 999,
+                            'name': 'Teszt Elek',
+                            'grade': 5,
+                            'cheatingStatus': 'none',
+                          };
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => GradingView(
+                          student: studentToPass,
+                          quizTitle: widget.quiz['project_name'] ?? 'Teszt',
+                          grade2Limit: widget.grade2Limit,
+                          grade3Limit: widget.grade3Limit,
+                          grade4Limit: widget.grade4Limit,
+                          grade5Limit: widget.grade5Limit,
+                        ),
+                      ),
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.primaryColor,
                     foregroundColor: Colors.white,

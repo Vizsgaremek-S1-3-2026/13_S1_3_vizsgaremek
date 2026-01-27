@@ -4,7 +4,7 @@ import 'package:window_manager/window_manager.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'group_page.dart';
@@ -100,128 +100,6 @@ class _TestTakingPageState extends State<TestTakingPage>
     return urls;
   }
 
-  // --- Mock Data Generator ---
-  List<Map<String, dynamic>> _generateMockQuestions() {
-    return [
-      {
-        'id': 100,
-        'type': 'text_block',
-        'content':
-            'Üdvözöllek a próba dolgozatban!\n\nEz a teszt bemutatja az összes elérhető kérdéstípust. Olvasd el figyelmesen a kérdéseket és válaszolj a legjobb tudásod szerint.',
-      },
-      {'id': 'div1', 'type': 'divider', 'content': '1. Rész - Alapkérdések'},
-      {
-        'id': 101,
-        'type': 'single',
-        'question': 'Mi Magyarország fővárosa?',
-        'image_url': 'https://picsum.photos/id/237/800/600',
-        'answers': [
-          {'id': 1, 'text': 'Debrecen'},
-          {'id': 2, 'text': 'Budapest', 'is_correct': true},
-          {'id': 3, 'text': 'Szeged'},
-          {'id': 4, 'text': 'Pécs'},
-        ],
-      },
-      {
-        'id': 102,
-        'type': 'multiple',
-        'question': 'Melyek prím számok az alábbiak közül?',
-        'answers': [
-          {'id': 5, 'text': '2', 'is_correct': true},
-          {'id': 6, 'text': '4'},
-          {'id': 7, 'text': '7', 'is_correct': true},
-          {'id': 8, 'text': '9'},
-          {'id': 9, 'text': '11', 'is_correct': true},
-        ],
-      },
-      {
-        'id': 103,
-        'type': 'text',
-        'question': 'Ki írta a "Pál utcai fiúk" című regényt?',
-        'image_url': 'https://picsum.photos/id/1011/800/600',
-        'answer': null,
-      },
-      {
-        'id': 'div2',
-        'type': 'divider',
-        'content': '2. Rész - Összetett feladatok',
-      },
-      {
-        'id': 104,
-        'type': 'matching',
-        'question': 'Párosítsd az országokat a fővárosaikkal!',
-        'image_url': 'https://picsum.photos/id/1015/800/600',
-        'pairs': [
-          {'left': 'Franciaország', 'right': 'Párizs'},
-          {'left': 'Németország', 'right': 'Berlin'},
-          {'left': 'Olaszország', 'right': 'Róma'},
-        ],
-      },
-      {
-        'id': 105,
-        'type': 'ordering',
-        'question': 'Rendezd történelmi sorrendbe az eseményeket!',
-        'image_url': 'https://picsum.photos/id/1016/800/600',
-        'link_url': 'https://www.youtube.com/',
-        'items': [
-          {'id': 'e1', 'text': 'Honfoglalás (895)'},
-          {'id': 'e2', 'text': 'Államalapítás (1000)'},
-          {'id': 'e3', 'text': 'Mohácsi vész (1526)'},
-          {'id': 'e4', 'text': 'Rákóczi-szabadságharc (1703)'},
-        ],
-      },
-      {
-        'id': 106,
-        'type': 'gap_fill',
-        'question': 'Egészítsd ki a Toldi versrészletet!',
-        'image_url': 'https://picsum.photos/id/1018/800/600',
-        'text': 'Ég a napmelegtől a kopár {1} Tikkadt {2} legelész a tarlón.',
-        'options': ['szík', 'nyáj', 'rét', 'mén'],
-      },
-      {
-        'id': 'info1',
-        'type': 'text_block',
-        'content':
-            'A következő feladatokban számokat és kategóriákat kell megadnod.',
-      },
-      {
-        'id': 107,
-        'type': 'range',
-        'question': 'Hány megyéje van Magyarországnak?',
-        'min': 0,
-        'max': 50,
-        'step': 1,
-      },
-      {'id': 'div3', 'type': 'divider', 'content': '3. Rész - Drag & Drop'},
-      {
-        'id': 108,
-        'type': 'category',
-        'question': 'Húzd a gyümölcsöket és zöldségeket a megfelelő kosárba!',
-        'image_url': 'https://picsum.photos/id/1025/800/600',
-        'link_url': 'https://szbi-pg.hu',
-        'categories': ['Gyümölcs', 'Zöldség'],
-        'items': [
-          {'id': 'c1', 'text': 'Alma', 'category': 'Gyümölcs'},
-          {'id': 'c2', 'text': 'Répa', 'category': 'Zöldség'},
-          {'id': 'c3', 'text': 'Körte', 'category': 'Gyümölcs'},
-          {'id': 'c4', 'text': 'Paprika', 'category': 'Zöldség'},
-        ],
-      },
-      {
-        'id': 109,
-        'type': 'sentence_ordering',
-        'question': 'Alkoss értelmes mondatot a szavakból!',
-        'words': ['A', 'macska', 'felmászott', 'a', 'fára', 'és', 'dorombol.'],
-      },
-      {'id': 'div4', 'type': 'divider', 'content': ''},
-      {
-        'id': 'outro',
-        'type': 'text_block',
-        'content': 'A dolgozat végére értél. Ellenőrizd a válaszaidat!',
-      },
-    ];
-  }
-
   void _initializeWebView() {
     if (!kIsWeb && Platform.isWindows) {
       final urls = _allowedUrls;
@@ -297,61 +175,56 @@ class _TestTakingPageState extends State<TestTakingPage>
   Future<void> _loadQuiz() async {
     final quizId = widget.quiz['id'];
     if (quizId == null) {
-      // Fallback for demo mode if no ID
-      _initMockQuestions();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Hiba: Nincs kvíz ID')));
+        Navigator.pop(context);
+      }
       return;
     }
 
-    // Get token
-    // We need to access UserProvider, but it might be better to get token from SharedPrefs for reliability in test mode
-    // or just use Provider if available. UserProvider is at top level.
     final token = context.read<UserProvider>().token;
     if (token == null) {
-      // Handle error - logged out?
-      _initMockQuestions();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Hiba: Nincs bejelentkezve')),
+        );
+        Navigator.pop(context);
+      }
       return;
     }
 
     try {
       final api = ApiService();
-      // Check lock status first? Or just start?
-      // Let's call startQuiz
       final data = await api.startQuiz(token, quizId);
 
       if (data != null && data['blocks'] != null) {
         final List<dynamic> blocks = data['blocks'];
-        setState(() {
-          _questions = blocks.cast<Map<String, dynamic>>();
-          // Initialize shuffled options if needed logic here
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _questions = blocks.cast<Map<String, dynamic>>();
+            _isLoading = false;
+          });
+        }
       } else {
-        // Fallback
-        _initMockQuestions();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Hiba a teszt betöltésekor: Üres válasz'),
+            ),
+          );
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       debugPrint('Error loading quiz: $e');
-      _initMockQuestions();
-    }
-  }
-
-  void _initMockQuestions() {
-    // Use the old mock generator as fallback
-    final allQuestions = _generateMockQuestions();
-    // ... shuffle logic ...
-    final hasStructuralElements = allQuestions.any(
-      (q) => q['type'] == 'text_block' || q['type'] == 'divider',
-    );
-
-    if (!hasStructuralElements) {
-      allQuestions.shuffle(Random());
-    }
-
-    if (mounted) {
-      setState(() {
-        _questions = allQuestions;
-        _isLoading = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hiba a teszt betöltésekor: $e')),
+        );
+        Navigator.pop(context);
+      }
     }
   }
 
@@ -675,7 +548,6 @@ class _TestTakingPageState extends State<TestTakingPage>
           '-command',
           '(New-Object -ComObject Shell.Application).MinimizeAll()',
         ]);
-
         // Give OS a tiny bit of time to process, then bring ourselves back
         await Future.delayed(const Duration(milliseconds: 300));
         await windowManager.show();
