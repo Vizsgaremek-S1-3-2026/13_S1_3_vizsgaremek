@@ -3,6 +3,7 @@
 from ninja import Schema
 from typing import Optional, List
 from datetime import datetime
+from django.utils import timezone # Needed for server_now
 
 #! Quiz Schemas (Linking Project to a Group)
 class QuizCreateSchema(Schema):
@@ -34,16 +35,15 @@ class QuizOutSchema(Schema):
 class StudentOptionSchema(Schema):
     id: int
     text: Optional[str] = None
-
     match_text: Optional[str] = None
     gap_index: Optional[int] = None
 
 class StudentBlockSchema(Schema):
     id: int
     order: int
-    type: str
+    type: str # <--- Resolves to frontend short-code
     maintext: Optional[str] = None
-    question: Optional[str] = None # Just in case to resolve conflicts
+    question: Optional[str] = None 
     subtext: Optional[str] = None
     image_url: Optional[str] = None
     link_url: Optional[str] = None
@@ -55,8 +55,30 @@ class StudentBlockSchema(Schema):
         return obj.answers.all()
 
     @staticmethod
-    def resolve_question(obj): # Just in case to resolve conflicts (question -> maintext)
+    def resolve_question(obj): 
         return obj.maintext
+
+    @staticmethod
+    def resolve_type(obj):
+        """
+        Maps Backend DB types back to Frontend Short Codes.
+        CRITICAL FOR FRONTEND RENDERING.
+        """
+        mapping = {
+            'single_choice': 'single',
+            'multiple_choice': 'multiple',
+            'text_input': 'text',
+            'text_static': 'text_block',
+            
+            'divider': 'divider',
+            'matching': 'matching',
+            'ordering': 'ordering',
+            'sentence_ordering': 'sentence_ordering',
+            'gap_fill': 'gap_fill',
+            'range': 'range',
+        }
+        # Return mapped value, or original if not found
+        return mapping.get(obj.type, obj.type)
 
 class QuizContentSchema(Schema):
     id: int
@@ -64,7 +86,8 @@ class QuizContentSchema(Schema):
     desc: Optional[str] = None
     anticheat_enabled: bool
     kiosk_enabled: bool
-    date_end: datetime 
+    date_end: datetime
+    server_now: datetime # <--- CRITICAL FOR TIMER SYNC
     blocks: List[StudentBlockSchema]
 
     @staticmethod
@@ -86,6 +109,11 @@ class QuizContentSchema(Schema):
     @staticmethod
     def resolve_blocks(obj):
         return obj.project.blocks.all()
+    
+    @staticmethod
+    def resolve_server_now(obj):
+        # Returns current server time every time this endpoint is hit
+        return timezone.now()
 
 
 #! Event Schemas
@@ -157,10 +185,10 @@ class SubmissionOutSchema(Schema):
 # --- Detailed View for Teachers ---
 class SubmittedAnswerDetailSchema(Schema):
     id: int
-    block_id: int          # Computed via resolver
-    block_order: int       # Computed via resolver
-    block_question: str    # Computed via resolver
-    student_answer: str    # Computed via resolver
+    block_id: int
+    block_order: int
+    block_question: str
+    student_answer: str
     points_awarded: int
 
     @staticmethod
@@ -184,7 +212,7 @@ class SubmissionDetailSchema(Schema):
     student_name: str
     percentage: float
     grade_value: Optional[str] = None
-    group_id: int          # Computed via resolver
+    group_id: int
     answers: List[SubmittedAnswerDetailSchema]
 
     @staticmethod
