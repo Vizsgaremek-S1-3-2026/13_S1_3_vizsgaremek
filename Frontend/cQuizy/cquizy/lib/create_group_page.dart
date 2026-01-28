@@ -17,8 +17,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   final _groupNameController = TextEditingController();
 
   Color _selectedColor = const Color(0xFFE57373); // Default red
-  bool _kioskMode = false;
-  bool _antiCheat = true;
+  int _protectionLevel = 1; // 0=Nyitott, 1=Védett, 2=Zárolt
   bool _isCreating = false;
 
   // HSL color picker state
@@ -257,23 +256,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           // Settings
           _buildSectionLabel('BEÁLLÍTÁSOK', theme),
           const SizedBox(height: 16),
-          _buildSettingTile(
-            theme: theme,
-            title: 'Kiosk Mód',
-            subtitle: 'Teljes képernyős mód tesztek során',
-            value: _kioskMode,
-            onChanged: (val) => setState(() => _kioskMode = val),
-            icon: Icons.fullscreen,
-          ),
-          const SizedBox(height: 12),
-          _buildSettingTile(
-            theme: theme,
-            title: 'Anti Cheat',
-            subtitle: 'Csalásmegelőzés bekapcsolása',
-            value: _antiCheat,
-            onChanged: (val) => setState(() => _antiCheat = val),
-            icon: Icons.security,
-          ),
+          _buildProtectionSlider(theme),
 
           const SizedBox(height: 48),
 
@@ -670,6 +653,137 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     return luminance > 0.5 ? Colors.black : Colors.white;
   }
 
+  Widget _buildProtectionSlider(ThemeData theme) {
+    final labels = ['Nyitott', 'Védett', 'Zárolt'];
+    final icons = [
+      Icons.lock_open_rounded,
+      Icons.shield_rounded,
+      Icons.lock_rounded,
+    ];
+    final colors = [Colors.green, Colors.orange, Colors.red];
+    final descriptions = [
+      'Nincs védelem - házi feladat, gyakorlás',
+      'Csalásmegelőzés - screenshot, hangerő, fókusz figyelés',
+      'Teljes zárolás - kiosk mód + csalásmegelőzés',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Label row with icons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(3, (index) {
+              final isSelected = _protectionLevel == index;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _protectionLevel = index),
+                  child: Column(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? colors[index].withOpacity(0.2)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected
+                                ? colors[index]
+                                : theme.dividerColor,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Icon(
+                          icons[index],
+                          color: isSelected
+                              ? colors[index]
+                              : theme.iconTheme.color?.withOpacity(0.5),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        labels[index],
+                        style: TextStyle(
+                          color: isSelected
+                              ? colors[index]
+                              : theme.textTheme.bodyMedium?.color?.withOpacity(
+                                  0.6,
+                                ),
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 16),
+          // Slider
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: colors[_protectionLevel],
+              inactiveTrackColor: theme.dividerColor,
+              thumbColor: colors[_protectionLevel],
+              overlayColor: colors[_protectionLevel].withOpacity(0.2),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+              trackHeight: 6,
+            ),
+            child: Slider(
+              value: _protectionLevel.toDouble(),
+              min: 0,
+              max: 2,
+              divisions: 2,
+              onChanged: (value) =>
+                  setState(() => _protectionLevel = value.toInt()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Description
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors[_protectionLevel].withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: colors[_protectionLevel],
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    descriptions[_protectionLevel],
+                    style: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSettingTile({
     required ThemeData theme,
     required String title,
@@ -831,14 +945,12 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 Icons.calendar_today,
                 'Létrehozva: ${_formatDate(DateTime.now())}',
               ),
-              if (_kioskMode)
-                _buildInfoBadge(theme, Icons.fullscreen, 'Kiosk mód aktív'),
-              if (_antiCheat)
-                _buildInfoBadge(
-                  theme,
-                  Icons.verified_user,
-                  'Csalásmegelőzés be',
-                ),
+              if (_protectionLevel >= 2)
+                _buildInfoBadge(theme, Icons.lock, 'Zárolt mód'),
+              if (_protectionLevel >= 1 && _protectionLevel < 2)
+                _buildInfoBadge(theme, Icons.shield, 'Védett mód'),
+              if (_protectionLevel == 0)
+                _buildInfoBadge(theme, Icons.lock_open, 'Nyitott mód'),
             ],
           ),
         ],
