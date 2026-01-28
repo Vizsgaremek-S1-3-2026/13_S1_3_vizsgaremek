@@ -14,8 +14,7 @@ class ApiException implements Exception {
 class ApiService {
   // Az API alap URL-je. Győződj meg róla, hogy a szerver ezen a címen fut.
   //static const String _baseUrl = 'http://127.0.0.1:8000/api';
-  static const String _baseUrl =
-      'https://3dp1tfq4-8000.euw.devtunnels.ms/api';
+  static const String _baseUrl = 'https://gs097dlb-8000.euw.devtunnels.ms/api';
 
   // Bejelentkezési funkció
   // Visszatérési érték: A szervertől kapott token, ha sikeres, egyébként null.
@@ -991,8 +990,12 @@ class ApiService {
     String token,
     Map<String, dynamic> submissionData,
   ) async {
-    final url = Uri.parse('$_baseUrl/quizzes/submit');
+    final url = Uri.parse('$_baseUrl/quizzes/submit/');
     try {
+      debugPrint('=== SUBMIT QUIZ DEBUG ===');
+      debugPrint('URL: $url');
+      debugPrint('PAYLOAD: ${jsonEncode(submissionData)}');
+
       final response = await http.post(
         url,
         headers: {
@@ -1002,16 +1005,20 @@ class ApiService {
         body: jsonEncode(submissionData),
       );
 
+      debugPrint('STATUS CODE: ${response.statusCode}');
+      debugPrint('RESPONSE BODY: ${response.body}');
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(utf8.decode(response.bodyBytes));
       } else {
         debugPrint(
-          'Kvíz beadása hiba: ${response.statusCode} - ${response.body}',
+          '!!! Kvíz beadása HIBA: ${response.statusCode} - ${response.body}',
         );
         return null;
       }
-    } catch (e) {
-      debugPrint('Hálózati hiba kvíz beadása során: $e');
+    } catch (e, stackTrace) {
+      debugPrint('!!! Hálózati hiba kvíz beadása során: $e');
+      debugPrint('Stack trace: $stackTrace');
       return null;
     }
   }

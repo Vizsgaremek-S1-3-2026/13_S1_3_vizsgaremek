@@ -2040,71 +2040,199 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildSubmitButton(ThemeData theme) {
     return ElevatedButton.icon(
       onPressed: () {
-        // Count actual questions (exclude text_block and divider)
-        int totalQuestions = 0;
-        int answeredQuestions = 0;
+        // Check each question and collect unanswered ones
+        List<Map<String, dynamic>> unansweredQuestions = [];
+        int questionNumber = 0;
 
         for (int i = 0; i < _questions.length; i++) {
-          final type = _questions[i]['type']?.toString().toLowerCase() ?? '';
+          final question = _questions[i];
+          final type = question['type']?.toString().toLowerCase() ?? '';
+          final questionId = question['id'];
+
+          // Skip non-question types
           if (type == 'text_block' || type == 'divider') continue;
-          totalQuestions++;
-          if (_userAnswers.containsKey(i) && _userAnswers[i] != null) {
-            final answer = _userAnswers[i];
-            bool hasAnswer = false;
-            if (answer is String && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is List && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is Map && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is num)
-              hasAnswer = true;
-            if (hasAnswer) answeredQuestions++;
+          questionNumber++;
+
+          // Ordering and sentence_ordering always have answers (auto-initialized)
+          if (type == 'ordering' || type == 'sentence_ordering') {
+            continue; // Always accepted
+          }
+
+          // Check if user provided an answer
+          final answer = _userAnswers[questionId];
+          bool hasAnswer = false;
+
+          if (answer != null) {
+            switch (type) {
+              case 'single':
+                hasAnswer = answer is int;
+                break;
+              case 'multiple':
+                hasAnswer = answer is List && answer.isNotEmpty;
+                break;
+              case 'text':
+                hasAnswer = answer is String && answer.trim().isNotEmpty;
+                break;
+              case 'range':
+                hasAnswer = answer is num;
+                break;
+              case 'matching':
+                if (answer is Map && answer.isNotEmpty) {
+                  final answers = question['answers'] as List? ?? [];
+                  // Check if ALL pairs have non-empty values
+                  hasAnswer = answers.every((pair) {
+                    final pairId = pair['id']; // Use ID for lookup
+                    final userVal = answer[pairId];
+                    return userVal != null &&
+                        userVal.toString().trim().isNotEmpty;
+                  });
+                }
+                break;
+              case 'gap_fill':
+                if (answer is Map) {
+                  final answers = question['answers'] as List? ?? [];
+                  final gapIndices = answers
+                      .map((a) => a['gap_index']?.toString())
+                      .where((idx) => idx != null)
+                      .toSet();
+                  hasAnswer =
+                      gapIndices.isNotEmpty &&
+                      gapIndices.every((idx) {
+                        final val = answer[idx];
+                        return val != null && val.toString().trim().isNotEmpty;
+                      });
+                }
+                break;
+              case 'category':
+                if (answer is Map && answer.isNotEmpty) {
+                  final items = question['items'] as List? ?? [];
+                  // Check if ALL items are categorized
+                  hasAnswer = items.every((item) {
+                    final itemId = item['id']?.toString();
+                    return answer.containsKey(itemId);
+                  });
+                }
+                break;
+              default:
+                if (answer is String && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is List && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is Map && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is num)
+                  hasAnswer = true;
+            }
+          }
+
+          if (!hasAnswer) {
+            final questionText =
+                question['question']?.toString() ?? 'Kérdés #$questionNumber';
+            final shortText = questionText.length > 40
+                ? '${questionText.substring(0, 40)}...'
+                : questionText;
+            unansweredQuestions.add({
+              'number': questionNumber,
+              'text': shortText,
+              'type': type,
+            });
           }
         }
 
-        final unansweredCount = totalQuestions - answeredQuestions;
-        final hasUnanswered = unansweredCount > 0;
+        final hasUnanswered = unansweredQuestions.isNotEmpty;
 
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Dolgozat beadása'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (hasUnanswered) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.orange,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasUnanswered) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.3),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Nem válaszoltál minden kérdésre!\n$unansweredCount megválaszolatlan kérdés.',
-                            style: const TextStyle(
-                              color: Colors.orange,
-                              fontWeight: FontWeight.w500,
-                            ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.orange,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${unansweredQuestions.length} hiányzó válasz:',
+                                style: const TextStyle(
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          ...unansweredQuestions
+                              .take(5)
+                              .map(
+                                (q) => Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 8,
+                                    top: 4,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '#${q['number']} ',
+                                        style: const TextStyle(
+                                          color: Colors.orange,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          q['text'],
+                                          style: TextStyle(
+                                            color: Colors.orange.shade700,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          if (unansweredQuestions.length > 5)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, top: 8),
+                              child: Text(
+                                '...és még ${unansweredQuestions.length - 5} további',
+                                style: TextStyle(
+                                  color: Colors.orange.shade600,
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
+                  const Text('Biztosan be szeretnéd adni a dolgozatot?'),
                 ],
-                const Text('Biztosan be szeretnéd adni a dolgozatot?'),
-              ],
+              ),
             ),
             actions: [
               TextButton(
@@ -2148,44 +2276,121 @@ class _TestTakingPageState extends State<TestTakingPage>
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
     );
 
-    // Prepare answers
-    final List<Map<String, dynamic>> answers = [];
-    _userAnswers.forEach((index, value) {
-      if (index < _questions.length) {
-        final q = _questions[index];
-        final qId = q['id'];
+    // Prepare answers in the flattened format the Backend expects
+    final List<Map<String, dynamic>> formattedAnswers = [];
 
-        // Skip structural elements just in case, though they shouldn't be in _userAnswers
-        if (q['type'] == 'text_block' || q['type'] == 'divider') return;
+    // Iterate through the User Answers map
+    // Key is the Block ID (int), Value is the user's input
+    _userAnswers.forEach((key, value) {
+      final int blockId = key;
 
-        answers.add({
-          'block_id': qId,
-          'answer_text': jsonEncode(
-            value,
-          ), // Send as JSON string for flexibility
+      // FIX: Find the question object by ID, don't use the ID as an index
+      final Map<String, dynamic> q = _questions.firstWhere(
+        (element) => element['id'] == blockId,
+        orElse: () => {},
+      );
+
+      // If question not found or value is null, skip
+      if (q.isEmpty || value == null) return;
+
+      final String type = q['type'] ?? '';
+
+      // --- 1. Single Choice ---
+      if (type == 'single') {
+        formattedAnswers.add({
+          'block_id': blockId,
+          'option_id': value as int,
+          'answer_text': '',
         });
+      }
+      // --- 2. Multiple Choice ---
+      else if (type == 'multiple') {
+        final selectedIds = (value as List).cast<int>();
+        for (var id in selectedIds) {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'option_id': id,
+            'answer_text': '',
+          });
+        }
+      }
+      // --- 3. Text Input & Range ---
+      else if (type == 'text' || type == 'range') {
+        formattedAnswers.add({
+          'block_id': blockId,
+          'answer_text': value.toString(),
+          'option_id': null,
+        });
+      }
+      // --- 4. Matching ---
+      else if (type == 'matching') {
+        // value is Map<dynamic, dynamic> -> { Left_Side_ID : User_Input_String }
+        final userMap = (value as Map);
+        userMap.forEach((leftId, userString) {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'option_id': leftId, // The ID of the pair row
+            'answer_text': userString,
+          });
+        });
+      }
+      // --- 5. Ordering ---
+      else if (type == 'ordering') {
+        // value is List<dynamic> of items in the user's order
+        final orderedItems = (value as List);
+        for (var item in orderedItems) {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'option_id':
+                item['id'], // We send the IDs in the sequence they appear
+            'answer_text': '',
+          });
+        }
+      }
+      // --- 6. Gap Fill ---
+      else if (type == 'gap_fill') {
+        final gapsMap = (value as Map);
+        // Sort keys "1", "2" to ensure order matches structure
+        final sortedKeys = gapsMap.keys.toList()
+          ..sort(
+            (a, b) =>
+                int.parse(a.toString()).compareTo(int.parse(b.toString())),
+          );
+
+        for (var key in sortedKeys) {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'answer_text': gapsMap[key],
+            'option_id': null,
+          });
+        }
+      }
+      // --- 7. Sentence Ordering ---
+      else if (type == 'sentence_ordering') {
+        final words = (value as List).cast<String>();
+        for (var word in words) {
+          formattedAnswers.add({'block_id': blockId, 'answer_text': word});
+        }
       }
     });
 
-    final submissionData = {'quiz_id': widget.quiz['id'], 'answers': answers};
+    final submissionData = {
+      'quiz_id': widget.quiz['id'],
+      'answers': formattedAnswers,
+    };
 
     try {
       final response = await ApiService().submitQuiz(token, submissionData);
 
-      // Close loading
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context); // Close loading
 
       if (response != null) {
-        // Success
         await _exitFullscreen();
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (c) => GroupPage(
-                group:
-                    widget.quiz['group_obj'] ??
-                    widget
-                        .groupName, // Hopefully group object is passed or we fetch it
+                group: widget.quiz['group_obj'] ?? widget.groupName,
                 onTestExpired: (g) {},
               ),
             ),
@@ -2193,19 +2398,17 @@ class _TestTakingPageState extends State<TestTakingPage>
           );
         }
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Hiba a beadás során. Próbáld újra!')),
-          );
-        }
+        if (mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Hiba a beadás során.')));
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Close loading
-      if (mounted) {
+      if (mounted) Navigator.pop(context);
+      if (mounted)
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Hálózati hiba: $e')));
-      }
+        ).showSnackBar(SnackBar(content: Text('Hiba: $e')));
     }
   }
 
@@ -2392,7 +2595,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildTextBlock(Map<String, dynamic> question) {
-    final content = question['content'] ?? '';
+    final content = question['maintext']?.toString() ?? '';
     final theme = Theme.of(context);
 
     return Container(
@@ -2418,7 +2621,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildDivider(Map<String, dynamic> question) {
-    final content = question['content'] ?? '';
+    final content = question['maintext']?.toString() ?? '';
     final theme = Theme.of(context);
 
     if (content.isEmpty) {
@@ -2602,14 +2805,20 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildMatching(Map<String, dynamic> question) {
-    // Structure of userAnswers: { left_text: right_text, ... }
-    final pairs = (question['pairs'] as List);
+    // Read from 'answers' (as backend sends answers, not pairs)
+    final List pairs = (question['answers'] as List?) ?? [];
+
+    // User answers map: { pair_id : user_text_input }
+    // We cast to Map<dynamic, dynamic> to handle potential int/string key issues safely
     final userMap = (_userAnswers[question['id']] as Map?) ?? {};
 
     return Column(
       children: pairs.map<Widget>((pair) {
-        final String leftTxt = pair['left'];
-        final String? selectedRight = userMap[leftTxt];
+        final String leftTxt = pair['text']?.toString() ?? '';
+        final int pairId = pair['id']; // We MUST use this ID as the key
+
+        // Retrieve answer using the ID, not the Text
+        final String? selectedRight = userMap[pairId];
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -2658,10 +2867,12 @@ class _TestTakingPageState extends State<TestTakingPage>
                           _userAnswers[question['id']] is! Map) {
                         _userAnswers[question['id']] = {};
                       }
-                      final newMap = Map<String, dynamic>.from(
+
+                      // CRITICAL FIX: Use pairId (int) as the key, NOT the text
+                      final newMap = Map<dynamic, dynamic>.from(
                         _userAnswers[question['id']],
                       );
-                      newMap[leftTxt] = val;
+                      newMap[pairId] = val;
                       _userAnswers[question['id']] = newMap;
                     });
                   },
@@ -2678,13 +2889,9 @@ class _TestTakingPageState extends State<TestTakingPage>
     // Initialize items if not yet in userAnswers
     List<dynamic> currentOrder;
     if (_userAnswers[question['id']] == null) {
-      currentOrder = List.from(question['items']);
+      currentOrder = List.from(question['answers']);
       if (currentOrder.length > 1) {
-        // Shuffle strictly until NO item is in its original place (Derangement)
-        // Complexity:
-        // - Random shuffle: ~36% chance of derangement for n >= 4.
-        // - We retry up to 20 times to be safe.
-        final original = List.from(question['items']);
+        final original = List.from(question['answers']);
         bool hasMatch = true;
         int attempts = 0;
 
@@ -3046,7 +3253,8 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     // Initialize stable shuffled pool if not present
     if (!_shuffledOptions.containsKey(question['id'])) {
-      final words = List<String>.from(question['words']);
+      final answersList = question['answers'] as List? ?? [];
+      final words = answersList.map((a) => a['text'].toString()).toList();
       words.shuffle(); // Shuffle once
       _shuffledOptions[question['id']] = words;
     }
@@ -3221,7 +3429,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildGapFill(Map<String, dynamic> question) {
     // Text: "Aaa {1} bbb {2}."
     // Normalize whitespace: replace newlines and multiple spaces with single space
-    final text = (question['text'] as String)
+    final text = (question['gap_text'] as String)
         .replaceAll('\n', ' ')
         .replaceAll('\r', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
