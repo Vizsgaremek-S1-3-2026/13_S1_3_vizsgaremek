@@ -42,6 +42,27 @@ class BlockOutSchema(Schema):
     @staticmethod
     def resolve_question(obj): # Just in case to resolve conflicts (question -> maintext)
         return obj.maintext
+    
+    @staticmethod
+    def resolve_type(obj):
+        """
+        Maps Backend DB types back to Frontend Short Codes.
+        """
+        # DB Value -> Frontend Value
+        mapping = {
+            'single_choice': 'single',
+            'multiple_choice': 'multiple',
+            'text_input': 'text',
+            'text_static': 'text_block',
+
+            'divider': 'divider',
+            'matching': 'matching',
+            'ordering': 'ordering',
+            'sentence_ordering': 'sentence_ordering',
+            'gap_fill': 'gap_fill',
+            'range': 'range',
+        }
+        return mapping.get(obj.type, obj.type)
 
 class ProjectOutSchema(Schema):
     id: int
