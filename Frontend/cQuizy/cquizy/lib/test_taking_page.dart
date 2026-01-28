@@ -2380,8 +2380,6 @@ class _TestTakingPageState extends State<TestTakingPage>
         return _buildGapFill(question);
       case 'range':
         return _buildRangeInput(question);
-      case 'category':
-        return _buildCategory(question);
       case 'sentence_ordering':
         return _buildSentenceOrdering(question);
       case 'text_block':
@@ -2554,12 +2552,18 @@ class _TestTakingPageState extends State<TestTakingPage>
         decimal: true,
         signed: true,
       ),
+      inputFormatters: [
+        // Allow digits, dot, comma (for European decimal), and minus sign
+        FilteringTextInputFormatter.allow(RegExp(r'[\d.,\-]')),
+      ],
       controller: TextEditingController(text: currentVal)
         ..selection = TextSelection.fromPosition(
           TextPosition(offset: currentVal.length),
         ),
       onChanged: (value) {
-        final parsed = num.tryParse(value);
+        // Normalize comma to dot for parsing (European decimal format)
+        final normalizedValue = value.replaceAll(',', '.');
+        final parsed = num.tryParse(normalizedValue);
         setState(() {
           _userAnswers[question['id']] = parsed;
         });

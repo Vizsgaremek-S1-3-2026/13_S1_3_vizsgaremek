@@ -62,6 +62,8 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     'range',
     'category',
     'sentence_ordering',
+    'text_block',
+    'divider',
   ];
   final Map<String, String> _typeLabels = {
     'single': 'Egyszeres választás',
@@ -71,7 +73,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     'ordering': 'Sorba rendezés',
     'gap_fill': 'Kitöltős szöveg',
     'range': 'Intervallum válasz',
-    'category': 'Kategorizálás',
     'sentence_ordering': 'Mondat újrarendezés',
   };
 
@@ -194,7 +195,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         for (var i = 0; i < answers.length; i++) {
           final a = answers[i];
           if ((a['text'] ?? '').trim().isEmpty ||
-              (a['match'] ?? '').trim().isEmpty) {
+              (a['match_text'] ?? '').trim().isEmpty) {
             errors.add(
               'A(z) ${i + 1}. párosítás hiányos (fogalom vagy definíció hiányzik).',
             );
@@ -565,6 +566,11 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                 if (!_questionTypes.contains(block['type'])) {
                   block['type'] = 'single';
                 }
+                // For divider and text_block, set content from maintext
+                final blockType = block['type'];
+                if (blockType == 'divider' || blockType == 'text_block') {
+                  block['content'] = block['maintext']?.toString() ?? '';
+                }
                 if (block['answers'] != null) {
                   block['answers'] = List<Map<String, dynamic>>.from(
                     (block['answers'] as List).map((a) {
@@ -704,13 +710,23 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
       // Note: NOT including 'id' - server uses URL parameter for identification
 
       // type: required, default to 'single'
-      cleanBlock['type'] = block['type']?.toString() ?? 'single';
+      final blockType = block['type']?.toString() ?? 'single';
+      cleanBlock['type'] = blockType;
 
-      // maintext: required string - use question as fallback if empty
+      // maintext: required string
+      // For dividers, use 'content' field; for others, use 'question' as fallback
       final maintext = block['maintext']?.toString() ?? '';
-      cleanBlock['maintext'] = maintext.isEmpty
-          ? (block['question']?.toString() ?? '')
-          : maintext;
+      if (blockType == 'divider' || blockType == 'text_block') {
+        // For divider/text_block, use content field for maintext
+        cleanBlock['maintext'] = maintext.isEmpty
+            ? (block['content']?.toString() ?? '')
+            : maintext;
+      } else {
+        // For regular questions, use question as fallback
+        cleanBlock['maintext'] = maintext.isEmpty
+            ? (block['question']?.toString() ?? '')
+            : maintext;
+      }
 
       // question: required string
       cleanBlock['question'] = block['question']?.toString() ?? '';
@@ -972,24 +988,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                   _addRangeQuestion();
                 },
               ),
-              ListTile(
-                leading: Icon(Icons.category, color: theme.primaryColor),
-                title: Text(
-                  'Kategorizálás',
-                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-                ),
-                subtitle: Text(
-                  'Elemek csoportosítása kategóriákba',
-                  style: TextStyle(
-                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
-                    fontSize: 12,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _addCategoryQuestion();
-                },
-              ),
+
               ListTile(
                 leading: Icon(Icons.sort_by_alpha, color: theme.primaryColor),
                 title: Text(
@@ -1314,8 +1313,8 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         'image_url': '',
         'link_url': '',
         'answers': [
-          {'text': '', 'match': '', 'points': 1},
-          {'text': '', 'match': '', 'points': 1},
+          {'text': '', 'match_text': '', 'points': 1},
+          {'text': '', 'match_text': '', 'points': 1},
         ],
       });
     });
@@ -1385,28 +1384,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
             'points': 1,
           },
         ],
-      });
-    });
-  }
-
-  void _addCategoryQuestion() {
-    _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
-    setState(() {
-      _blocks.add({
-        'order': _blocks.length,
-        'question': '',
-        'type': 'category',
-        'subtext': '',
-        'image_url': '',
-        'link_url': '',
-        // Categories with items
-        'categories': [
-          {'name': 'Kategória 1', 'items': []},
-          {'name': 'Kategória 2', 'items': []},
-        ],
-        'points_per_item': 1,
       });
     });
   }
@@ -1780,10 +1757,10 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                   flex: 3,
                   child: TextField(
                     controller: TextEditingController(
-                      text: answer['match'] ?? '',
+                      text: answer['match_text'] ?? '',
                     ),
                     onChanged: (val) {
-                      _blocks[blockIndex]['answers'][idx]['match'] = val;
+                      _blocks[blockIndex]['answers'][idx]['match_text'] = val;
                     },
                     style: TextStyle(
                       color: theme.textTheme.bodyLarge?.color,
@@ -1881,7 +1858,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
       final answers = List<Map<String, dynamic>>.from(
         _blocks[blockIndex]['answers'] ?? [],
       );
-      answers.add({'text': '', 'match': '', 'points': 1});
+      answers.add({'text': '', 'match_text': '', 'points': 1});
       _blocks[blockIndex]['answers'] = answers;
     });
   }
@@ -2374,9 +2351,10 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
   ) {
     final answer = answers.isNotEmpty
         ? answers[0]
-        : {'correct_value': 0, 'tolerance': 0, 'points': 1};
-    final correctValue = answer['correct_value'] ?? 0;
-    final tolerance = answer['tolerance'] ?? 0;
+        : {'correct_value': 0.0, 'tolerance': 0.0, 'points': 1};
+    // Use num to support both int and double
+    final num correctValue = (answer['correct_value'] as num?) ?? 0.0;
+    final num tolerance = (answer['tolerance'] as num?) ?? 0.0;
     final points = answer['points'] ?? 1;
 
     return Padding(
@@ -2397,14 +2375,19 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                     const SizedBox(height: 4),
                     _AnswerTextField(
                       text: correctValue.toString(),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                        signed: true,
+                      ),
                       onChanged: (val) {
-                        final newVal = num.tryParse(val) ?? 0;
+                        final newVal =
+                            num.tryParse(val.replaceAll(',', '.')) ?? 0.0;
                         setState(() {
                           if (answers.isEmpty) {
                             _blocks[blockIndex]['answers'] = [
                               {
                                 'correct_value': newVal,
-                                'tolerance': 0,
+                                'tolerance': 0.0,
                                 'points': 1,
                               },
                             ];
@@ -2419,7 +2402,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
-                      decoration: _inputDecoration(hint: '100', theme: theme),
+                      decoration: _inputDecoration(hint: '3.14', theme: theme),
                     ),
                   ],
                 ),
@@ -2436,13 +2419,18 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                     const SizedBox(height: 4),
                     _AnswerTextField(
                       text: tolerance.toString(),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                        signed: true,
+                      ),
                       onChanged: (val) {
-                        final newVal = num.tryParse(val) ?? 0;
+                        final newVal =
+                            num.tryParse(val.replaceAll(',', '.')) ?? 0.0;
                         setState(() {
                           if (answers.isEmpty) {
                             _blocks[blockIndex]['answers'] = [
                               {
-                                'correct_value': 0,
+                                'correct_value': 0.0,
                                 'tolerance': newVal,
                                 'points': 1,
                               },
@@ -2457,7 +2445,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                         color: theme.textTheme.bodyLarge?.color,
                         fontSize: 16,
                       ),
-                      decoration: _inputDecoration(hint: '5', theme: theme),
+                      decoration: _inputDecoration(hint: '0.1', theme: theme),
                     ),
                   ],
                 ),
@@ -5406,7 +5394,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
           final points = (ans['points'] as num? ?? 0).toInt();
           totalPoints += points;
           if ((ans['text'] ?? '').trim().isEmpty) emptyFields++;
-          if ((ans['match'] ?? '').trim().isEmpty) emptyFields++;
+          if ((ans['match_text'] ?? '').trim().isEmpty) emptyFields++;
         }
       } else if (type == 'sentence_ordering') {
         final answers = block['answers'] as List? ?? [];
@@ -5753,7 +5741,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
       'matching': 'Párosítás',
       'ordering': 'Sorrend',
       'gap_fill': 'Hiányos szöveg',
-      'category': 'Kategorizálás',
       'range': 'Intervallum',
       'sentence_ordering': 'Mondatrendezés',
     };
@@ -5806,6 +5793,7 @@ class _AnswerTextField extends StatefulWidget {
   final InputDecoration decoration;
   final TextStyle? style;
   final int maxLines;
+  final TextInputType? keyboardType;
 
   const _AnswerTextField({
     Key? key,
@@ -5814,6 +5802,7 @@ class _AnswerTextField extends StatefulWidget {
     required this.decoration,
     this.style,
     this.maxLines = 1,
+    this.keyboardType,
   }) : super(key: key);
 
   @override
@@ -5854,6 +5843,7 @@ class _AnswerTextFieldState extends State<_AnswerTextField> {
       decoration: widget.decoration,
       style: widget.style,
       maxLines: widget.maxLines,
+      keyboardType: widget.keyboardType,
     );
   }
 }
