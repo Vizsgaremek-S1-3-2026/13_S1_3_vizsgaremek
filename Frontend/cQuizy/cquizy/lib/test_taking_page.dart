@@ -11,6 +11,7 @@ import 'group_page.dart';
 import 'api_service.dart';
 import 'package:kiosk_mode/kiosk_mode.dart';
 import 'utils/web_protections.dart';
+import 'home_page.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -2388,12 +2389,7 @@ class _TestTakingPageState extends State<TestTakingPage>
         await _exitFullscreen();
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (c) => GroupPage(
-                group: widget.quiz['group_obj'] ?? widget.groupName,
-                onTestExpired: (g) {},
-              ),
-            ),
+            MaterialPageRoute(builder: (c) => HomePage(onLogout: () {})),
             (route) => false,
           );
         }
