@@ -1,5 +1,6 @@
 # quizzes/api.py
 
+from decimal import Decimal
 from typing import List, Dict, Set
 from collections import defaultdict
 from ninja import Router
@@ -222,73 +223,86 @@ def resolve_event(request, event_id: int, payload: ResolveEventSchema):
 
 
 #! Submission & Grading Endpoints ==================================================
-
-@router.post("/submit", response=SubmissionOutSchema, summary="Student: Submit quiz")
+#? Submit Quiz
+@router.post("/submit/", response=SubmissionOutSchema, summary="Student: Submit quiz")
 def submit_quiz(request, payload: SubmissionCreateSchema):
     """
-    Submits a quiz and calculates score based on Block Type logic (Range, Matching, etc.).
+    Submits a quiz and calculates score based on Block Type logic.
+    Saves human-readable answers for teachers to review.
     """
     current_user = request.auth
     quiz = get_object_or_404(Quiz, id=payload.quiz_id)
 
     # 1. Validation
     now = timezone.now()
-    if now < quiz.date_start:
-        raise HttpError(400, "Quiz not started.")
-    if now > quiz.date_end:
-        raise HttpError(400, "Deadline passed.")
-    if Submission.objects.filter(quiz=quiz, student=current_user).exists():
-        raise HttpError(400, "Already submitted.")
+    # Allow 2 minute buffer for network latency
+    if now > (quiz.date_end + timezone.timedelta(minutes=2)):
+        raise HttpError(400, "A határidő lejárt.")
 
-    # 2. Prepare Grading Data
+    if Submission.objects.filter(quiz=quiz, student=current_user).exists():
+        raise HttpError(400, "Ezt a tesztet már beküldted.")
+
+    # 2. Prepare Data
     project = quiz.project
-    blocks = project.blocks.prefetch_related('answers')
+    blocks = project.blocks.all().prefetch_related('answers')
     
-    # Organize student answers by Block ID
-    # A student might submit multiple entries for one block (e.g., Gap Fill, Multiple Choice)
     student_submissions_map = defaultdict(list)
     for ans in payload.answers:
         student_submissions_map[ans.block_id].append(ans)
 
-    total_earned_points = 0
-    total_max_points = 0
+    total_earned_points = 0.0
+    total_max_points = 0.0
     submitted_answers_to_create = []
 
+    # 3. Grading Loop
     with transaction.atomic():
         for block in blocks:
-            # Skip static blocks for scoring
-            if block.type in [Block.BlockType.TEXT_STATIC, Block.BlockType.DIVIDER]:
+            # Skip static blocks
+            if block.type in ['text_static', 'divider', 'text_block']:
                 continue
 
             block_answers_db = list(block.answers.all())
             student_inputs = student_submissions_map.get(block.id, [])
             
-            # -- A. Calculate Max Points for Block --
-            max_points = 0
-            if block.type == Block.BlockType.MULTIPLE_CHOICE:
+            # --- A. Calculate Max Points ---
+            max_points = 0.0
+            if block.type == 'multiple_choice':
                 max_points = sum(a.points for a in block_answers_db if a.is_correct and a.points > 0)
-            elif block.type in [Block.BlockType.SINGLE_CHOICE, Block.BlockType.TEXT_INPUT, Block.BlockType.RANGE]:
-                # Max is the highest possible single option point
+            elif block.type in ['single_choice', 'text_input', 'range']:
                 max_points = max((a.points for a in block_answers_db), default=1)
             else:
-                # Matching, Ordering, Gap Fill: Sum of all parts
+                # Matching, Ordering, Gap Fill, Sentence Ordering: Sum of all parts
                 max_points = sum(a.points for a in block_answers_db)
             
             total_max_points += max_points
 
-            # -- B. Grade Student Input --
-            points_for_block = 0
+            # --- B. Grade Student Input ---
+            points_for_block = 0.0
             
-            # Helper: Find DB Answer by ID
             def get_db_ans(opt_id):
                 return next((a for a in block_answers_db if a.id == opt_id), None)
 
-            # --- LOGIC PER TYPE ---
-            
-            # 1. RANGE (Numeric Tolerance)
-            if block.type == Block.BlockType.RANGE:
+            # 1. CHOICE TYPES
+            if block.type in ['single_choice', 'multiple_choice']:
+                for inp in student_inputs:
+                    if inp.option_id:
+                        db_ans = get_db_ans(inp.option_id)
+                        if db_ans and db_ans.is_correct:
+                            points_for_block += db_ans.points
+
+            # 2. TEXT INPUT
+            elif block.type == 'text_input':
                 if student_inputs:
-                    inp = student_inputs[0] # Take first input
+                    user_text = (student_inputs[0].answer_text or "").strip().lower()
+                    for ans in block_answers_db:
+                        if ans.is_correct and ans.text.strip().lower() == user_text:
+                            points_for_block = float(ans.points)
+                            break 
+
+            # 3. RANGE
+            elif block.type == 'range':
+                if student_inputs:
+                    inp = student_inputs[0]
                     db_ans = block_answers_db[0] if block_answers_db else None
                     if db_ans and db_ans.numeric_value is not None:
                         try:
@@ -297,87 +311,86 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
                             if (db_ans.numeric_value - tol) <= val <= (db_ans.numeric_value + tol):
                                 points_for_block += db_ans.points
                         except (ValueError, TypeError):
-                            pass # Invalid number = 0 points
+                            pass 
 
-            # 2. MATCHING (Left ID + Right Text)
-            elif block.type == Block.BlockType.MATCHING:
+            # 4. MATCHING
+            elif block.type == 'matching':
                 for inp in student_inputs:
-                    # option_id = ID of the Answer Row (Left Side)
-                    # answer_text = The string the student dragged there (Right Side)
                     if inp.option_id:
                         db_ans = get_db_ans(inp.option_id)
                         if db_ans and db_ans.match_text:
-                            # Check if the text matches (case insensitive stripped)
-                            if inp.answer_text and inp.answer_text.strip().lower() == db_ans.match_text.strip().lower():
+                            user_val = (inp.answer_text or "").strip().lower()
+                            correct_val = db_ans.match_text.strip().lower()
+                            if user_val == correct_val:
                                 points_for_block += db_ans.points
 
-            # 3. ORDERING (Sequence check)
-            elif block.type == Block.BlockType.ORDERING:
-                # We expect the student to send inputs in the *visual order* they arranged them.
-                # db answers have 'order' field (1, 2, 3...)
-                # We check if inp[0] corresponds to order=1, inp[1] to order=2...
+            # 5. ORDERING
+            elif block.type == 'ordering':
                 sorted_db_answers = sorted(block_answers_db, key=lambda x: x.order)
                 for i, inp in enumerate(student_inputs):
                     if i < len(sorted_db_answers):
                         target_ans = sorted_db_answers[i]
-                        # If the student placed the correct ID in this slot
                         if inp.option_id == target_ans.id:
                             points_for_block += target_ans.points
 
-            # 4. GAP FILL (Positional or ID check)
-            elif block.type == Block.BlockType.GAP_FILL:
-                # Assumption: inputs are sent in Gap Index order (Gap 1, Gap 2...)
-                # OR we match strictly by text if option_id is missing. 
-                # Better: Check if the provided option_id actually belongs to the gap_index corresponding to this input's position.
+            # 6. GAP FILL
+            elif block.type == 'gap_fill':
                 sorted_db_gaps = sorted(block_answers_db, key=lambda x: x.gap_index or 0)
-                
-                # Create map of correct text for each gap index
-                gap_map = {a.gap_index: a for a in block_answers_db}
-                
-                # We iterate inputs. If input has 'option_id', we check if that option belongs to the current gap.
-                # Since schema is generic, we assume inputs are ordered by gap appearance.
                 for i, inp in enumerate(student_inputs):
-                    current_gap_index = i + 1
-                    correct_ans_for_gap = gap_map.get(current_gap_index)
-                    
-                    if correct_ans_for_gap:
-                        # Check by Text (simplest for Fill in Blank)
-                        if inp.answer_text and inp.answer_text.strip().lower() == correct_ans_for_gap.text.strip().lower():
-                            points_for_block += correct_ans_for_gap.points
-
-            # 5. TEXT INPUT (String Match)
-            elif block.type == Block.BlockType.TEXT_INPUT:
-                 if student_inputs:
-                    text_val = student_inputs[0].answer_text.strip().lower()
-                    # Check against ANY correct option (synonyms)
-                    for ans in block_answers_db:
-                        if ans.is_correct and ans.text.strip().lower() == text_val:
-                            points_for_block += ans.points
-                            break # Only award once
-
-            # 6. CHOICE (Single/Multiple)
-            else: 
-                # Check IDs
-                for inp in student_inputs:
-                    if inp.option_id:
-                        db_ans = get_db_ans(inp.option_id)
-                        if db_ans and db_ans.is_correct:
-                            points_for_block += db_ans.points
+                    if i < len(sorted_db_gaps):
+                        target_gap = sorted_db_gaps[i]
+                        user_val = (inp.answer_text or "").strip().lower()
+                        correct_val = (target_gap.text or "").strip().lower()
+                        if user_val == correct_val:
+                            points_for_block += target_gap.points
+            
+            # 7. SENTENCE ORDERING
+            elif block.type == 'sentence_ordering':
+                sorted_db_words = sorted(block_answers_db, key=lambda x: x.order)
+                for i, inp in enumerate(student_inputs):
+                    if i < len(sorted_db_words):
+                        target_word = sorted_db_words[i]
+                        user_val = (inp.answer_text or "").strip()
+                        correct_val = (target_word.text or "").strip()
+                        if user_val == correct_val:
+                            points_for_block += target_word.points
 
             total_earned_points += points_for_block
 
-            # Create Record for Review (Flattened)
-            # We store all text provided by student for this block
-            combined_text = " | ".join([x.answer_text or str(x.option_id) for x in student_inputs])
+            # --- C. Create Record for Review (Human Readable Way) ---
+            combined_display = []
+            for x in student_inputs:
+                # 1. Use typed text if available (Text, Gap, Range, Matching-User-Input)
+                if x.answer_text and x.answer_text.strip() and block.type != 'matching':
+                    combined_display.append(x.answer_text.strip())
+                
+                # 2. Look up the text for ID-based answers (Choice, Ordering, Matching-Left)
+                elif x.option_id:
+                    db_ans = get_db_ans(x.option_id)
+                    if db_ans:
+                        # For matching, format as "Pair Text: User Input"
+                        if block.type == 'matching' and x.answer_text:
+                            combined_display.append(f"{db_ans.text}: {x.answer_text}")
+                        else:
+                            combined_display.append(db_ans.text)
+                    else:
+                        combined_display.append(f"[ID:{x.option_id}]")
+
+            # Final string formatting
+            if block.type in ['ordering', 'sentence_ordering']:
+                display_string = " → ".join(combined_display)
+            else:
+                display_string = ", ".join(combined_display)
+
             submitted_answers_to_create.append({
                 "block": block,
-                "answer_text": combined_text,
-                "points": points_for_block
+                "answer_text": display_string,
+                "points": int(points_for_block)
             })
 
-        # -- C. Calculate Final Grade --
-        percentage = (total_earned_points / total_max_points * 100) if total_max_points > 0 else 0.0
-        percentage = max(0.0, min(100.0, percentage))
+        # --- D. Finalize Submission ---
+        raw_percentage = (total_earned_points / total_max_points * 100) if total_max_points > 0 else 0.0
+        percentage = Decimal(min(100.0, max(0.0, raw_percentage)))
 
         assigned_grade = None
         grade_rule = GradePercentage.objects.filter(
@@ -389,18 +402,21 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
 
         if grade_rule:
             admin_member = GroupMember.objects.filter(group=quiz.group, rank='ADMIN').first()
-            if admin_member:
-                assigned_grade = Grade.objects.create(
-                    group=quiz.group,
-                    student=current_user,
-                    value=grade_rule.name,
-                    teacher=admin_member.user
-                )
+            teacher_user = admin_member.user if admin_member else current_user
+            assigned_grade = Grade.objects.create(
+                group=quiz.group,
+                student=current_user,
+                value=grade_rule.name,
+                teacher=teacher_user
+            )
 
+        # NOTE: If you haven't run migrations for 'max_points', 
+        # remove that specific line from the create call below.
         submission = Submission.objects.create(
             quiz=quiz,
             student=current_user,
             percentage=percentage,
+            # max_points=total_max_points, 
             grade=assigned_grade
         )
 
