@@ -4,9 +4,12 @@ import 'providers/user_provider.dart';
 import 'group_page.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'api_service.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 
 class CreateGroupPage extends StatefulWidget {
-  const CreateGroupPage({super.key});
+  final bool tutorialMode;
+
+  const CreateGroupPage({super.key, this.tutorialMode = false});
 
   @override
   State<CreateGroupPage> createState() => _CreateGroupPageState();
@@ -25,6 +28,24 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   double _saturation = 0.7; // 0-1
   double _lightness = 0.6; // 0-1
   bool _showCustomColorPicker = false;
+
+  // Tutorial GlobalKeys
+  final GlobalKey _groupNameKey = GlobalKey();
+  final GlobalKey _colorPickerKey = GlobalKey();
+  final GlobalKey _protectionSliderKey = GlobalKey();
+  final GlobalKey _previewKey = GlobalKey();
+  final GlobalKey _createButtonKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    // Start tutorial after widget is built
+    if (widget.tutorialMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startTutorial();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -210,6 +231,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           _buildSectionLabel('CSOPORT NEVE', theme),
           const SizedBox(height: 12),
           TextFormField(
+            key: _groupNameKey,
             controller: _groupNameController,
             style: TextStyle(color: theme.textTheme.bodyLarge?.color),
             decoration: _buildInputDecoration(
@@ -264,6 +286,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
+              key: _createButtonKey,
               onPressed: _isCreating ? null : _createGroup,
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
@@ -387,6 +410,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     ];
 
     return Column(
+      key: _colorPickerKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Preset colors
@@ -668,6 +692,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     ];
 
     return Container(
+      key: _protectionSliderKey,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.cardColor,
@@ -863,6 +888,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     );
 
     return Container(
+      key: _previewKey,
       constraints: const BoxConstraints(maxWidth: 500),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -989,6 +1015,246 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
   String _formatDate(DateTime date) {
     return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}.';
+  }
+
+  void _startTutorial() {
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // 1. Group Name Field
+    targets.add(
+      TargetFocus(
+        identify: "group_name",
+        keyTarget: _groupNameKey,
+        alignSkip: Alignment.topRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Csoport Neve",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Add meg a csoport nevét. Ez az alapvető azonosító, amely megjelenik a csoportkártyán. Például: 'Matematika 9.A' vagy 'Fizika emelt'.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 2. Color Picker
+    targets.add(
+      TargetFocus(
+        identify: "color_picker",
+        keyTarget: _colorPickerKey,
+        alignSkip: Alignment.topLeft,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Színválasztás",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Válassz egy színt a csoportnak! Használhatsz előre definiált színeket, vagy alkoss sajátot az egyedi HSL (Árnyalat, Telítettség, Világosság) csúszkákkal.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 3. Protection Level Slider
+    targets.add(
+      TargetFocus(
+        identify: "protection_slider",
+        keyTarget: _protectionSliderKey,
+        alignSkip: Alignment.topLeft,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Védelmi Szint",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Állítsd be a csoport védelmi szintjét:\n• Nyitott: Nincs védelem, ideális házi feladathoz\n• Védett: Csalásmegelőzés (screenshot blokkolás, fókusz figyelés)\n• Zárolt: Teljes zárolás kiosk móddal + minden védelemmel",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 4. Preview
+    targets.add(
+      TargetFocus(
+        identify: "preview",
+        keyTarget: _previewKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Előnézet",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Itt láthatod élő előnézetben, hogyan fog kinézni a csoportkártya a főoldalon. Minden változtatás azonnal megjelenik!",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 5. Create Button
+    targets.add(
+      TargetFocus(
+        identify: "create_button",
+        keyTarget: _createButtonKey,
+        alignSkip: Alignment.topRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        contents: [
+          TargetContent(
+            align: ContentAlign.top,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Csoport Létrehozása",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Ha minden beállítás rendben van, kattints ide a csoport létrehozásához! A csoport azonnal megjelenik a főoldalon, és megoszthatod a meghívó kódot a diákokkal.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("TUTORIAL: Create group tutorial finished");
+        _finishTutorial();
+      },
+      onClickTarget: (target) {
+        debugPrint("onClickTarget: $target");
+      },
+      onSkip: () {
+        debugPrint("TUTORIAL: Tutorial skipped");
+        _finishTutorial();
+        return true;
+      },
+    );
+
+    // Add a slight delay before showing to ensure rendering is complete
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        tutorialCoachMark.show(context: context);
+      }
+    });
+  }
+
+  bool _isNavigating = false;
+
+  void _finishTutorial() {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    // Show feedback
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Útmutató befejezve. Visszatérés..."),
+          duration: Duration(milliseconds: 1000),
+        ),
+      );
+    }
+
+    // Simple delay to let the snackbar appear and overlay to close
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        debugPrint("TUTORIAL: Popping CreateGroupPage now");
+        Navigator.of(
+          context,
+        ).maybePop(true); // Return true to indicate tutorial completion
+      }
+    });
   }
 
   Future<void> _createGroup() async {

@@ -52,13 +52,17 @@ class _HomePageState extends State<HomePage>
 
   // New GlobalKeys for Tutorial
   final GlobalKey _tutorialButtonKey = GlobalKey();
-  final GlobalKey _addProjectKey = GlobalKey();
+  final GlobalKey _createGroupButtonKey = GlobalKey();
+  final GlobalKey _speedDialKey = GlobalKey();
   final GlobalKey _sideNavKey = GlobalKey();
+  final GlobalKey _projectsNavKey = GlobalKey();
+  final GlobalKey _createProjectButtonKey = GlobalKey();
 
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
   bool _isSpeedDialOpen = false;
   bool _showProjects = false;
+  bool _isInProjectTutorial = false; // Flag for project creation tutorial
   int _projectsRefreshKey = 0;
 
   Timer? _refreshTimer;
@@ -468,6 +472,10 @@ class _HomePageState extends State<HomePage>
         identify: "tutorial_btn",
         keyTarget: _tutorialButtonKey,
         alignSkip: Alignment.bottomRight,
+        enableOverlayTab: true,
+        enableTargetTab: true,
+        shape: ShapeLightFocus.Circle,
+        radius: 10,
         contents: [
           TargetContent(
             align: ContentAlign.bottom,
@@ -486,7 +494,7 @@ class _HomePageState extends State<HomePage>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    "Ez az interaktív bemutató végigvezet a legfontosabb funkciókon. Bármikor újraindíthatod ezzel a gombbal.",
+                    "Ez az interaktív bemutató végigvezet a legfontosabb funkciókon, beleértve a csoport létrehozását is. Bármikor újraindíthatod ezzel a gombbal.",
                     style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ],
@@ -503,6 +511,8 @@ class _HomePageState extends State<HomePage>
         identify: "side_nav",
         keyTarget: _sideNavKey,
         alignSkip: Alignment.topRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 10,
         contents: [
           TargetContent(
             align: ContentAlign.right,
@@ -521,7 +531,7 @@ class _HomePageState extends State<HomePage>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    "Itt válthatsz a Projekt szerkesztő, Csoportok és Beállítások között. Itt látod majd az eppen futó teszteket is.",
+                    "Itt válthatsz a Projekt szerkesztő, Csoportok és Beállítások között. Itt látod majd az éppen futó teszteket is.",
                     style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ],
@@ -532,13 +542,14 @@ class _HomePageState extends State<HomePage>
       ),
     );
 
-    // 3. Add Project / Action Button
+    // 3. Speed Dial Button
     targets.add(
       TargetFocus(
-        identify: "add_project",
-        keyTarget:
-            _addProjectKey, // Will assign this key to the main toggle button
+        identify: "speed_dial",
+        keyTarget: _speedDialKey,
         alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.Circle,
+        radius: 10,
         contents: [
           TargetContent(
             align: ContentAlign.left,
@@ -548,7 +559,7 @@ class _HomePageState extends State<HomePage>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    "Műveletek",
+                    "Műveletek Menü",
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -557,7 +568,7 @@ class _HomePageState extends State<HomePage>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    "Itt hozhatsz létre új projekteket, csoportokat, vagy csatlakozhatsz meglévőkhöz.",
+                    "Kattints ide a műveletek megnyitásához. Itt hozhatsz létre új projekteket, csoportokat, vagy csatlakozhatsz meglévőkhöz.",
                     style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ],
@@ -572,10 +583,61 @@ class _HomePageState extends State<HomePage>
       targets: targets,
       colorShadow: Colors.black,
       textSkip: "Kihagyás",
-      paddingFocus: 10,
-      opacityShadow: 0.8,
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
       onFinish: () {
-        debugPrint("Tutorial finished");
+        debugPrint("Tutorial finished - opening speed dial");
+        // Open speed dial after tutorial finishes
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = true;
+            });
+          }
+        });
+        // Wait longer for SpeedDial animation to finish to avoid "target position" errors
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          try {
+            if (mounted && _isSpeedDialOpen) {
+              // Helper function to check if widget is visible and laid out
+              bool isKeyReady(GlobalKey key) {
+                final context = key.currentContext;
+                if (context == null) return false;
+                final renderBox = context.findRenderObject() as RenderBox?;
+                if (renderBox == null || !renderBox.hasSize) return false;
+                return renderBox.size.width > 0 && renderBox.size.height > 0;
+              }
+
+              // Check if the key exists AND has a valid size
+              if (isKeyReady(_createGroupButtonKey)) {
+                _showCreateGroupTutorial();
+              } else {
+                debugPrint(
+                  "Target key not ready (null or 0 size), retrying...",
+                );
+                Future.delayed(const Duration(milliseconds: 600), () {
+                  try {
+                    if (mounted &&
+                        _isSpeedDialOpen &&
+                        isKeyReady(_createGroupButtonKey)) {
+                      _showCreateGroupTutorial();
+                    } else {
+                      debugPrint(
+                        "Target key still not ready, skipping tutorial step to avoid crash.",
+                      );
+                    }
+                  } catch (e) {
+                    debugPrint("TUTORIAL ERROR in retry: $e");
+                  }
+                });
+              }
+            }
+          } catch (e, s) {
+            debugPrint("TUTORIAL ERROR in HomePage onFinish: $e");
+            debugPrint(s.toString());
+          }
+        });
       },
       onClickTarget: (target) {
         debugPrint("onClickTarget: $target");
@@ -591,6 +653,232 @@ class _HomePageState extends State<HomePage>
 
     tutorialCoachMark.show(context: context);
   }
+
+  void _showCreateGroupTutorial() {
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // Highlight the Create Group button
+    targets.add(
+      TargetFocus(
+        identify: "create_group_btn",
+        keyTarget: _createGroupButtonKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.Circle,
+        contents: [
+          TargetContent(
+            align: ContentAlign.left,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "Csoport Létrehozás",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Kattints ide egy új csoport létrehozásához! Most végigvezetlek a teljes folyamaton.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("Create group tutorial flow finished");
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = false;
+            });
+          }
+        });
+      },
+      onClickTarget: (target) async {
+        debugPrint("onClickTarget: $target");
+        // Prevent double navigation if onFinish fires
+        if (_isNavigatingToCreateGroup) return;
+        _isNavigatingToCreateGroup = true;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = false;
+            });
+          }
+        });
+
+        // Navigate immediately when user clicks the button
+        bool? result;
+        try {
+          result = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CreateGroupPage(tutorialMode: true),
+            ),
+          );
+        } finally {
+          _isNavigatingToCreateGroup = false;
+        }
+
+        // If tutorial finished successfully, continue to Project Creation
+        if (result == true && mounted) {
+          // Small delay to allow UI to settle
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) _showCreateProjectTutorial();
+          });
+        }
+
+        _fetchGroups();
+      },
+      onSkip: () {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = false;
+            });
+          }
+        });
+        return true;
+      },
+    );
+
+    tutorialCoachMark.show(context: context);
+  }
+
+  void _showCreateProjectTutorial() {
+    _isInProjectTutorial = true;
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // 1. Projects Tab
+    targets.add(
+      TargetFocus(
+        identify: "projects_tab",
+        keyTarget: _projectsNavKey,
+        alignSkip: Alignment.centerRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 10,
+        contents: [
+          TargetContent(
+            align: ContentAlign.right,
+            builder: (context, controller) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Projektek",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Kattints ide a Projektek nézet megnyitásához! Itt hozhatod létre és kezelheted a feladatsorokat.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 2. Create Project Button
+    targets.add(
+      TargetFocus(
+        identify: "create_project_btn",
+        keyTarget: _createProjectButtonKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.Circle,
+        contents: [
+          TargetContent(
+            align: ContentAlign.left,
+            builder: (context, controller) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "Új Projekt",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Kattints ide egy új projekt létrehozásához! Adj neki nevet és leírást.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("Project tutorial finished");
+        _isInProjectTutorial = false;
+      },
+      onClickTarget: (target) {
+        if (target.identify == "projects_tab") {
+          // Ensure we switch to projects tab
+          if (mounted) {
+            setState(() {
+              _showProjects = true;
+              _selectedGroup = null;
+              // Open speed dial for next step
+              Future.delayed(const Duration(milliseconds: 500), () {
+                if (mounted) setState(() => _isSpeedDialOpen = true);
+              });
+            });
+          }
+        }
+      },
+      onSkip: () {
+        return true;
+      },
+    );
+
+    // Ensure speed dial is closed initially so user focuses on SideNav
+    if (_isSpeedDialOpen) setState(() => _isSpeedDialOpen = false);
+
+    tutorialCoachMark.show(context: context);
+  }
+
+  bool _isNavigatingToCreateGroup = false;
 
   void _toggleSpeedDial() {
     ThemeInherited.of(context).triggerHaptic();
@@ -823,6 +1111,7 @@ class _HomePageState extends State<HomePage>
           child: Tooltip(
             message: 'Új projekt létrehozása',
             child: InkWell(
+              key: _createProjectButtonKey,
               onTap: () async {
                 final result = await showGeneralDialog<Map<String, String>>(
                   context: context,
@@ -837,7 +1126,9 @@ class _HomePageState extends State<HomePage>
                       scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
                       child: FadeTransition(
                         opacity: a1,
-                        child: const CreateProjectDialog(),
+                        child: CreateProjectDialog(
+                          tutorialMode: _isInProjectTutorial,
+                        ),
                       ),
                     );
                   },
@@ -1026,6 +1317,7 @@ class _HomePageState extends State<HomePage>
                               Tooltip(
                                 message: 'Csoport létrehozása',
                                 child: InkWell(
+                                  key: _createGroupButtonKey,
                                   onTap: () async {
                                     ThemeInherited.of(context).triggerHaptic();
                                     setState(() {
@@ -1075,7 +1367,7 @@ class _HomePageState extends State<HomePage>
         Tooltip(
           message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
           child: InkWell(
-            key: _addProjectKey,
+            key: _speedDialKey,
             onTap: _toggleSpeedDial,
             customBorder: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16.0),
@@ -1219,6 +1511,7 @@ class _HomePageState extends State<HomePage>
                   ),
                   const SizedBox(height: 8),
                   SideNavItem(
+                    key: _projectsNavKey,
                     label: 'Projektek',
                     icon: Icons.folder,
                     isSelected: _showProjects,
