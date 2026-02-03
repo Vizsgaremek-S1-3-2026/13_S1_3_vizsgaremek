@@ -5,7 +5,7 @@ import 'group_page.dart';
 import 'settings_page.dart';
 import 'test_taking_page.dart';
 import 'utils/web_protections.dart';
-import 'dart:ui';
+
 import 'create_group_page.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
@@ -14,6 +14,7 @@ import 'create_project_dialog.dart';
 import 'create_quiz_dialog.dart';
 import 'theme.dart';
 import 'admin_page.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -40,10 +41,19 @@ class ActiveTestItem {
   }
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   List<Group> _myGroups = [];
   List<Group> _otherGroups = [];
+  List<ActiveTestItem> _activeTests = []; // State for active tests sidebar
+
   Group? _selectedGroup;
+  bool _isLoading = true;
+
+  // New GlobalKeys for Tutorial
+  final GlobalKey _tutorialButtonKey = GlobalKey();
+  final GlobalKey _addProjectKey = GlobalKey();
+  final GlobalKey _sideNavKey = GlobalKey();
 
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
@@ -51,7 +61,6 @@ class _HomePageState extends State<HomePage> {
   bool _showProjects = false;
   int _projectsRefreshKey = 0;
 
-  List<ActiveTestItem> _activeTests = [];
   Timer? _refreshTimer;
 
   @override
@@ -449,6 +458,140 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _showTutorial() {
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // 1. Welcome / Help Button
+    targets.add(
+      TargetFocus(
+        identify: "tutorial_btn",
+        keyTarget: _tutorialButtonKey,
+        alignSkip: Alignment.bottomRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Üdvözölleg a cQuizy-ben!",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Ez az interaktív bemutató végigvezet a legfontosabb funkciókon. Bármikor újraindíthatod ezzel a gombbal.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 2. Side Navigation
+    targets.add(
+      TargetFocus(
+        identify: "side_nav",
+        keyTarget: _sideNavKey,
+        alignSkip: Alignment.topRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.right,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Navigációs Menü",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Itt válthatsz a Projekt szerkesztő, Csoportok és Beállítások között. Itt látod majd az eppen futó teszteket is.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 3. Add Project / Action Button
+    targets.add(
+      TargetFocus(
+        identify: "add_project",
+        keyTarget:
+            _addProjectKey, // Will assign this key to the main toggle button
+        alignSkip: Alignment.topLeft,
+        contents: [
+          TargetContent(
+            align: ContentAlign.left,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "Műveletek",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Itt hozhatsz létre új projekteket, csoportokat, vagy csatlakozhatsz meglévőkhöz.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {
+        debugPrint("Tutorial finished");
+      },
+      onClickTarget: (target) {
+        debugPrint("onClickTarget: $target");
+      },
+      onSkip: () {
+        debugPrint("Tutorial skipped");
+        return true;
+      },
+      onClickOverlay: (target) {
+        debugPrint("onClickOverlay: $target");
+      },
+    );
+
+    tutorialCoachMark.show(context: context);
+  }
+
   void _toggleSpeedDial() {
     ThemeInherited.of(context).triggerHaptic();
     setState(() {
@@ -469,7 +612,7 @@ class _HomePageState extends State<HomePage> {
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             body: Row(
               children: [
-                _buildSideNav(_activeTests),
+                Container(key: _sideNavKey, child: _buildSideNav(_activeTests)),
                 Expanded(
                   child: Stack(
                     children: [
@@ -496,6 +639,33 @@ class _HomePageState extends State<HomePage> {
                             child: _buildSpeedDial(
                               context,
                               isGroupView: isGroupView,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Tutorial / Help Button (Top Right)
+                      Positioned(
+                        top: 24,
+                        right: 24,
+                        child: Material(
+                          color: Theme.of(context).cardColor,
+                          elevation: 4,
+                          type: MaterialType.circle,
+                          child: Tooltip(
+                            message: 'Interaktív Súgó',
+                            child: InkWell(
+                              key: _tutorialButtonKey,
+                              onTap: _showTutorial,
+                              customBorder: const CircleBorder(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Icon(
+                                  Icons.help_outline_rounded,
+                                  color: Theme.of(context).primaryColor,
+                                  size: 24,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -905,6 +1075,7 @@ class _HomePageState extends State<HomePage> {
         Tooltip(
           message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
           child: InkWell(
+            key: _addProjectKey,
             onTap: _toggleSpeedDial,
             customBorder: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16.0),

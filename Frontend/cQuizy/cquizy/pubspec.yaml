@@ -31,6 +31,8 @@ dependencies:
   scribble: ^0.2.0
   flutter_localizations:
     sdk: flutter
+  file_picker: ^10.3.10
+  tutorial_coach_mark: ^1.3.3
 
 
 dev_dependencies:

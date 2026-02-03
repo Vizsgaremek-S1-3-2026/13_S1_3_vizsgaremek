@@ -4,6 +4,10 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'dart:io';
 import 'project_editor_page.dart';
 
 class ProjectsPage extends StatefulWidget {
@@ -315,6 +319,148 @@ class _ProjectsPageState extends State<ProjectsPage> {
     }
   }
 
+  Future<void> _exportProject(Map<String, dynamic> project) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    try {
+      final api = ApiService();
+      // Fetch full details including blocks
+      final fullProject = await api.getProjectDetails(token, project['id']);
+      if (fullProject == null) {
+        throw Exception('Nem sikerült betölteni a projekt adatait.');
+      }
+
+      final Map<String, dynamic> projectData = {
+        'name': fullProject['name'],
+        'desc': fullProject['desc'],
+        'blocks': fullProject['blocks'] ?? [],
+      };
+
+      final String jsonString = jsonEncode(projectData);
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Projekt exportálása',
+        fileName:
+            '${(fullProject['name'] as String).replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')}.cq',
+        allowedExtensions: ['cq'],
+        type: FileType.custom,
+      );
+
+      if (outputFile != null) {
+        // Enforce extension
+        if (!outputFile.endsWith('.cq')) {
+          outputFile += '.cq';
+        }
+        final File file = File(outputFile);
+        await file.writeAsString(jsonString);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Projekt sikeresen exportálva!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hiba az exportálás során: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importProject() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    try {
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Projekt importálása',
+        type: FileType.custom,
+        allowedExtensions: ['cq'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final File file = File(result.files.single.path!);
+        final String content = await file.readAsString();
+        final Map<String, dynamic> data = jsonDecode(content);
+
+        final api = ApiService();
+        // Create new project
+        final name = data['name'] ?? 'Importált projekt';
+        final desc = data['desc'] ?? '';
+        final newProject = await api.createProject(token, name, desc);
+
+        if (newProject != null) {
+          final newId = newProject['id'];
+          // Update blocks
+          if (data['blocks'] != null) {
+            final blocks = List<Map<String, dynamic>>.from(
+              (data['blocks'] as List).map((item) {
+                // Deep copy and reset IDs
+                final block = jsonDecode(jsonEncode(item));
+                block['id'] = 0;
+                if (block['answers'] != null) {
+                  for (var ans in block['answers']) {
+                    ans['id'] = 0;
+                  }
+                }
+                return block;
+              }),
+            );
+            await api.updateProject(token, newId, {
+              'name': name,
+              'desc': desc,
+              'blocks': blocks,
+            });
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Projekt sikeresen importálva!'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+            _fetchProjects();
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hiba az importálás során: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildInlineActionButton({
     required IconData icon,
     required String label,
@@ -365,13 +511,25 @@ class _ProjectsPageState extends State<ProjectsPage> {
             // Header title
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'Projektek',
-                style: TextStyle(
-                  color: theme.textTheme.titleMedium?.color?.withOpacity(0.8),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Projektek',
+                    style: TextStyle(
+                      color: theme.textTheme.titleMedium?.color?.withOpacity(
+                        0.8,
+                      ),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.upload_file, color: theme.primaryColor),
+                    tooltip: 'Projekt importálása',
+                    onPressed: _importProject,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 8),
@@ -711,6 +869,20 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                   onTap: () {
                                     setState(() => _expandedProjectId = null);
                                     _duplicateProject(project);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Export button
+                              Expanded(
+                                child: _buildInlineActionButton(
+                                  icon: Icons.download,
+                                  label: 'Export',
+                                  color: Colors.blueAccent,
+                                  isDark: isDark,
+                                  onTap: () {
+                                    setState(() => _expandedProjectId = null);
+                                    _exportProject(project);
                                   },
                                 ),
                               ),
