@@ -383,84 +383,6 @@ class _ProjectsPageState extends State<ProjectsPage> {
     }
   }
 
-  Future<void> _importProject() async {
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final token = userProvider.token;
-    if (token == null) return;
-
-    try {
-      final FilePickerResult? result = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Projekt importálása',
-        type: FileType.custom,
-        allowedExtensions: ['cq'],
-      );
-
-      if (result != null && result.files.single.path != null) {
-        final File file = File(result.files.single.path!);
-        final String content = await file.readAsString();
-        final Map<String, dynamic> data = jsonDecode(content);
-
-        final api = ApiService();
-        // Create new project
-        final name = data['name'] ?? 'Importált projekt';
-        final desc = data['desc'] ?? '';
-        final newProject = await api.createProject(token, name, desc);
-
-        if (newProject != null) {
-          final newId = newProject['id'];
-          // Update blocks
-          if (data['blocks'] != null) {
-            final blocks = List<Map<String, dynamic>>.from(
-              (data['blocks'] as List).map((item) {
-                // Deep copy and reset IDs
-                final block = jsonDecode(jsonEncode(item));
-                block['id'] = 0;
-                if (block['answers'] != null) {
-                  for (var ans in block['answers']) {
-                    ans['id'] = 0;
-                  }
-                }
-                return block;
-              }),
-            );
-            await api.updateProject(token, newId, {
-              'name': name,
-              'desc': desc,
-              'blocks': blocks,
-            });
-          }
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Projekt sikeresen importálva!'),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            );
-            _fetchProjects();
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Hiba az importálás során: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
-    }
-  }
-
   Widget _buildInlineActionButton({
     required IconData icon,
     required String label,
@@ -523,11 +445,6 @@ class _ProjectsPageState extends State<ProjectsPage> {
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.upload_file, color: theme.primaryColor),
-                    tooltip: 'Projekt importálása',
-                    onPressed: _importProject,
                   ),
                 ],
               ),

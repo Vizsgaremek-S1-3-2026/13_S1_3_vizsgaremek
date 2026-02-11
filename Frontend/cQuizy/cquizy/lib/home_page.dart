@@ -15,6 +15,10 @@ import 'create_quiz_dialog.dart';
 import 'theme.dart';
 import 'admin_page.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'student_tests_page.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -58,10 +62,12 @@ class _HomePageState extends State<HomePage>
   final GlobalKey _projectsNavKey = GlobalKey();
   final GlobalKey _createProjectButtonKey = GlobalKey();
 
+  bool _isTutorialButtonVisible = true;
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
   bool _isSpeedDialOpen = false;
   bool _showProjects = false;
+  bool _showStudentTests = false;
   bool _isInProjectTutorial = false; // Flag for project creation tutorial
   int _projectsRefreshKey = 0;
 
@@ -654,6 +660,87 @@ class _HomePageState extends State<HomePage>
     tutorialCoachMark.show(context: context);
   }
 
+  Future<void> _importProject() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    try {
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Projekt importálása',
+        type: FileType.custom,
+        allowedExtensions: ['cq'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final File file = File(result.files.single.path!);
+        final String content = await file.readAsString();
+        final Map<String, dynamic> data = jsonDecode(content);
+
+        final api = ApiService();
+        // Create new project
+        final name = data['name'] ?? 'Importált projekt';
+        final desc = data['desc'] ?? '';
+        final newProject = await api.createProject(token, name, desc);
+
+        if (newProject != null) {
+          final newId = newProject['id'];
+          // Update blocks
+          if (data['blocks'] != null) {
+            final blocks = List<Map<String, dynamic>>.from(
+              (data['blocks'] as List).map((item) {
+                // Deep copy and reset IDs
+                final block = jsonDecode(jsonEncode(item));
+                block['id'] = 0;
+                if (block['answers'] != null) {
+                  for (var ans in block['answers']) {
+                    ans['id'] = 0;
+                  }
+                }
+                return block;
+              }),
+            );
+            await api.updateProject(token, newId, {
+              'name': name,
+              'desc': desc,
+              'blocks': blocks,
+            });
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Projekt sikeresen importálva!'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+            // Refresh projects list
+            setState(() {
+              _projectsRefreshKey++;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hiba az importálás során: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   void _showCreateGroupTutorial() {
     late TutorialCoachMark tutorialCoachMark;
     List<TargetFocus> targets = [];
@@ -916,48 +1003,57 @@ class _HomePageState extends State<HomePage>
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      Positioned(
-                        bottom: 24,
-                        right: 24,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 300),
-                          opacity: _isMemberPanelOpen ? 0.0 : 1.0,
-                          child: IgnorePointer(
-                            ignoring: _isMemberPanelOpen,
-                            child: _buildSpeedDial(
-                              context,
-                              isGroupView: isGroupView,
+                      if (!_showStudentTests)
+                        Positioned(
+                          bottom: 24,
+                          right: 24,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 300),
+                            opacity: _isMemberPanelOpen ? 0.0 : 1.0,
+                            child: IgnorePointer(
+                              ignoring: _isMemberPanelOpen,
+                              child: _buildSpeedDial(
+                                context,
+                                isGroupView: isGroupView,
+                              ),
                             ),
                           ),
                         ),
-                      ),
 
                       // Tutorial / Help Button (Top Right)
-                      Positioned(
-                        top: 24,
-                        right: 24,
-                        child: Material(
-                          color: Theme.of(context).cardColor,
-                          elevation: 4,
-                          type: MaterialType.circle,
-                          child: Tooltip(
-                            message: 'Interaktív Súgó',
-                            child: InkWell(
-                              key: _tutorialButtonKey,
-                              onTap: _showTutorial,
-                              customBorder: const CircleBorder(),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: Icon(
-                                  Icons.help_outline_rounded,
-                                  color: Theme.of(context).primaryColor,
-                                  size: 24,
+                      if (!isGroupView && !_showProjects)
+                        Positioned(
+                          top: 24,
+                          right: 24,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 200),
+                            opacity: _isTutorialButtonVisible ? 1.0 : 0.0,
+                            child: IgnorePointer(
+                              ignoring: !_isTutorialButtonVisible,
+                              child: Material(
+                                color: Theme.of(context).cardColor,
+                                elevation: 4,
+                                type: MaterialType.circle,
+                                child: Tooltip(
+                                  message: 'Interaktív Súgó',
+                                  child: InkWell(
+                                    key: _tutorialButtonKey,
+                                    onTap: _showTutorial,
+                                    customBorder: const CircleBorder(),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Icon(
+                                        Icons.help_outline_rounded,
+                                        color: Theme.of(context).primaryColor,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -1011,10 +1107,11 @@ class _HomePageState extends State<HomePage>
                                 ),
                               ),
                               const Spacer(),
-                              _buildSpeedDial(
-                                context,
-                                isGroupView: isGroupView,
-                              ),
+                              if (!_showStudentTests)
+                                _buildSpeedDial(
+                                  context,
+                                  isGroupView: isGroupView,
+                                ),
                             ],
                           ),
                         ),
@@ -1030,44 +1127,59 @@ class _HomePageState extends State<HomePage>
 
   // Az animált tartalomváltó
   Widget _buildAnimatedContent() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: _selectedGroup != null
-          ? GroupPage(
-              key: ValueKey(_selectedGroup!.title),
-              group: _selectedGroup!,
-              onTestExpired: (group) => _fetchGroups(),
-              onMemberPanelToggle: (isOpen) {
-                setState(() {
-                  _isMemberPanelOpen = isOpen;
-                });
-              },
-              onAdminTransferred: () async {
-                _unselectGroup();
-                await _fetchGroups();
-              },
-              onGroupUpdated: () async {
-                final currentGroupId = _selectedGroup?.id;
-                await _fetchGroups();
-                if (currentGroupId != null) {
-                  final allGroups = [..._myGroups, ..._otherGroups];
-                  final updatedGroup = allGroups.firstWhere(
-                    (g) => g.id == currentGroupId,
-                    orElse: () => _selectedGroup!,
-                  );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollUpdateNotification) {
+          final isVisible = notification.metrics.pixels < 50;
+          if (_isTutorialButtonVisible != isVisible) {
+            setState(() {
+              _isTutorialButtonVisible = isVisible;
+            });
+          }
+        }
+        return false;
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _selectedGroup != null
+            ? GroupPage(
+                key: ValueKey(_selectedGroup!.title),
+                group: _selectedGroup!,
+                onTestExpired: (group) => _fetchGroups(),
+                onMemberPanelToggle: (isOpen) {
                   setState(() {
-                    _selectedGroup = updatedGroup;
+                    _isMemberPanelOpen = isOpen;
                   });
-                }
-              },
-              onGroupLeft: () async {
-                _unselectGroup();
-                await _fetchGroups();
-              },
-            )
-          : _showProjects
-          ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
-          : _buildGroupList(),
+                },
+                onAdminTransferred: () async {
+                  _unselectGroup();
+                  await _fetchGroups();
+                },
+                onGroupUpdated: () async {
+                  final currentGroupId = _selectedGroup?.id;
+                  await _fetchGroups();
+                  if (currentGroupId != null) {
+                    final allGroups = [..._myGroups, ..._otherGroups];
+                    final updatedGroup = allGroups.firstWhere(
+                      (g) => g.id == currentGroupId,
+                      orElse: () => _selectedGroup!,
+                    );
+                    setState(() {
+                      _selectedGroup = updatedGroup;
+                    });
+                  }
+                },
+                onGroupLeft: () async {
+                  _unselectGroup();
+                  await _fetchGroups();
+                },
+              )
+            : _showProjects
+            ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
+            : _showStudentTests
+            ? const StudentTestsPage()
+            : _buildGroupList(),
+      ),
     );
   }
 
@@ -1101,90 +1213,241 @@ class _HomePageState extends State<HomePage>
     }
 
     if (_showProjects) {
-      return AnimatedOpacity(
-        duration: const Duration(milliseconds: 300),
-        opacity: 1.0,
-        child: AnimatedScale(
-          duration: const Duration(milliseconds: 300),
-          scale: 1.0,
-          curve: Curves.easeInOut,
-          child: Tooltip(
-            message: 'Új projekt létrehozása',
-            child: InkWell(
-              key: _createProjectButtonKey,
-              onTap: () async {
-                final result = await showGeneralDialog<Map<String, String>>(
-                  context: context,
-                  barrierDismissible: true,
-                  barrierLabel: '',
-                  transitionDuration: const Duration(milliseconds: 300),
-                  pageBuilder: (context, animation1, animation2) {
-                    return Container();
-                  },
-                  transitionBuilder: (context, a1, a2, widget) {
-                    return ScaleTransition(
-                      scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
-                      child: FadeTransition(
-                        opacity: a1,
-                        child: CreateProjectDialog(
-                          tutorialMode: _isInProjectTutorial,
-                        ),
-                      ),
-                    );
-                  },
-                );
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Import Project Button
+                AnimatedScale(
+                  scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                    child: _isSpeedDialOpen
+                        ? Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                buildLabel('Projekt importálása'),
+                                Tooltip(
+                                  message: 'Projekt importálása fájlból',
+                                  child: InkWell(
+                                    onTap: () {
+                                      ThemeInherited.of(
+                                        context,
+                                      ).triggerHaptic();
+                                      setState(() {
+                                        _isSpeedDialOpen = false;
+                                      });
+                                      _importProject();
+                                    },
+                                    customBorder: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12.0),
+                                    ),
+                                    child: Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: theme.primaryColor.withOpacity(
+                                          0.9,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          12.0,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.upload_file,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+                // Create Project Button
+                AnimatedScale(
+                  scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                    child: _isSpeedDialOpen
+                        ? Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                buildLabel('Projekt létrehozása'),
+                                Tooltip(
+                                  message: 'Új projekt létrehozása',
+                                  child: InkWell(
+                                    key: _createProjectButtonKey,
+                                    onTap: () async {
+                                      ThemeInherited.of(
+                                        context,
+                                      ).triggerHaptic();
+                                      setState(() {
+                                        _isSpeedDialOpen = false;
+                                      });
+                                      final result =
+                                          await showGeneralDialog<
+                                            Map<String, String>
+                                          >(
+                                            context: context,
+                                            barrierDismissible: true,
+                                            barrierLabel: '',
+                                            transitionDuration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            pageBuilder:
+                                                (
+                                                  context,
+                                                  animation1,
+                                                  animation2,
+                                                ) {
+                                                  return Container();
+                                                },
+                                            transitionBuilder:
+                                                (context, a1, a2, widget) {
+                                                  return ScaleTransition(
+                                                    scale: Tween<double>(
+                                                      begin: 0.5,
+                                                      end: 1.0,
+                                                    ).animate(a1),
+                                                    child: FadeTransition(
+                                                      opacity: a1,
+                                                      child: CreateProjectDialog(
+                                                        tutorialMode:
+                                                            _isInProjectTutorial,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                          );
 
-                if (result != null) {
-                  final userProvider = Provider.of<UserProvider>(
-                    context,
-                    listen: false,
-                  );
-                  final token = userProvider.token;
-                  if (token != null) {
-                    final api = ApiService();
-                    final project = await api.createProject(
-                      token,
-                      result['name']!,
-                      result['desc']!,
-                    );
-                    if (mounted) {
-                      if (project != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Projekt sikeresen létrehozva!'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                        setState(() {
-                          _projectsRefreshKey++;
-                        });
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Hiba a projekt létrehozása során'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  }
-                }
-              },
+                                      if (result != null) {
+                                        final userProvider =
+                                            Provider.of<UserProvider>(
+                                              context,
+                                              listen: false,
+                                            );
+                                        final token = userProvider.token;
+                                        if (token != null) {
+                                          final api = ApiService();
+                                          final project = await api
+                                              .createProject(
+                                                token,
+                                                result['name']!,
+                                                result['desc']!,
+                                              );
+                                          if (mounted) {
+                                            if (project != null) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Projekt sikeresen létrehozva!',
+                                                  ),
+                                                  backgroundColor: Colors.green,
+                                                ),
+                                              );
+                                              setState(() {
+                                                _projectsRefreshKey++;
+                                              });
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Hiba a projekt létrehozása során',
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    customBorder: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12.0),
+                                    ),
+                                    child: Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: theme.primaryColor.withOpacity(
+                                          0.9,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          12.0,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Main Toggle Button
+          Tooltip(
+            message: _isSpeedDialOpen ? 'Bezárás' : 'Projekt műveletek',
+            child: InkWell(
+              onTap: _toggleSpeedDial,
               customBorder: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16.0),
               ),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
                   color: theme.primaryColor,
                   borderRadius: BorderRadius.circular(16.0),
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
+                child: AnimatedRotation(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  turns: _isSpeedDialOpen ? 0.125 : 0,
+                  child: Icon(
+                    _isSpeedDialOpen ? Icons.close : Icons.add,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       );
     }
 
@@ -1498,11 +1761,17 @@ class _HomePageState extends State<HomePage>
                   SideNavItem(
                     label: 'Csoportok',
                     icon: Icons.group,
-                    isSelected: _selectedGroup == null && !_showProjects,
+                    isSelected:
+                        _selectedGroup == null &&
+                        !_showProjects &&
+                        !_showStudentTests,
                     onTap: () {
-                      if (_selectedGroup != null || _showProjects) {
+                      if (_selectedGroup != null ||
+                          _showProjects ||
+                          _showStudentTests) {
                         setState(() {
                           _showProjects = false;
+                          _showStudentTests = false;
                           _selectedGroup = null;
                         });
                       }
@@ -1519,6 +1788,7 @@ class _HomePageState extends State<HomePage>
                       if (!_showProjects) {
                         setState(() {
                           _showProjects = true;
+                          _showStudentTests = false;
                           _selectedGroup = null;
                           _isMemberPanelOpen = false;
                         });
@@ -1527,7 +1797,22 @@ class _HomePageState extends State<HomePage>
                     },
                   ),
                   const SizedBox(height: 8),
-                  SideNavItem(label: 'Tesztek', icon: Icons.quiz),
+                  SideNavItem(
+                    label: 'Tesztek',
+                    icon: Icons.quiz,
+                    isSelected: _showStudentTests,
+                    onTap: () {
+                      if (!_showStudentTests) {
+                        setState(() {
+                          _showStudentTests = true;
+                          _showProjects = false;
+                          _selectedGroup = null;
+                          _isMemberPanelOpen = false;
+                        });
+                      }
+                      if (isDrawer) Navigator.pop(context);
+                    },
+                  ),
                   const SizedBox(height: 8),
                   SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
                 ],
