@@ -193,7 +193,11 @@ def update_full_project(request, project_id: int, payload: ProjectUpdateSchema):
                 return 400, {"detail": f"Question #{q_num} (Single Choice) has no correct answer selected."}
             if correct_answers_count > 1:
                 return 400, {"detail": f"Question #{q_num} (Single Choice) can only have one correct answer."}
-        
+                
+        if clean_type == 'multiple_choice':
+             if not any(answer.is_correct for answer in block_data.answers):
+                return 400, {"detail": f"Question #{q_num} (Multiple Choice) must have at least one correct answer."}
+
         if clean_type == 'text_input':
              if any(not answer.is_correct for answer in block_data.answers):
                 return 400, {"detail": f"Question #{q_num} is a text input but has an answer marked as incorrect."}

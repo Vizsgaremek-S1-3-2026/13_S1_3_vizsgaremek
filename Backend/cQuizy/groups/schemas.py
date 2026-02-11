@@ -131,3 +131,24 @@ class GradePercentageSchema(Schema):
 
 class GradePercentageListSchema(Schema):
     grades: List[GradePercentageSchema]
+
+#! Statistics (Admin View)
+class AdminGroupOverviewSchema(Schema):
+    average_percentage: float
+    average_grade_label: str
+    total_students: int
+    total_quizzes: int
+
+class AdminStudentStatSchema(Schema):
+    student_id: int
+    name: str
+    average_percentage: float
+    average_grade_label: str
+
+class AdminQuizStatSchema(Schema):
+    quiz_id: int
+    quiz_name: str
+    date: datetime
+    average_percentage: float
+    average_grade_label: str
+    submission_count: int

@@ -82,7 +82,22 @@ class Submission(models.Model):
 
     date_submitted = models.DateTimeField(auto_now_add=True)
     
-    percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2
+    )
+    score = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=0.0,
+        verbose_name="Earned Points"
+    )
+    max_score = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=0.0,
+        verbose_name="Total Possible Points"
+    )
     
     quiz = models.ForeignKey(
         Quiz, 
