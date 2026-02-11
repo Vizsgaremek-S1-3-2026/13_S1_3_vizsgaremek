@@ -18,6 +18,9 @@ from .schemas import (
     GroupCreateSchema,
     GroupJoinSchema,
     GroupDeleteSchema,
+
+    GradePercentageSchema,
+    GradePercentageListSchema,
 )
 
 from users.auth import JWTAuth
@@ -380,3 +383,85 @@ def delete_group(request, group_id: int, payload: GroupDeleteSchema): # <--- Add
         member.save()
     
     return 200, {"success": f"Group '{group.name}' has been deleted."}
+
+
+
+#! Grading Endpoints
+#? Getting the grading scale
+@router.get("/{group_id}/grading-scale", response=List[GradePercentageSchema], auth=JWTAuth(), summary="Get grading scale")
+def get_grading_scale(request, group_id: int):
+    """
+    Returns the active grading scale for the group.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Auth Check: User must be at least a member
+    if not GroupMember.objects.filter(group=group, user=current_user).exists() and not current_user.is_superuser:
+        return 403, {"detail": "You do not have permission to view this group."}
+
+    # 2. Return active percentages
+    # We filter is_active=True in case you implement soft-delete for these later
+    return GradePercentage.objects.filter(group=group, is_active=True).order_by('-max_percentage')
+
+#? Creating/Updating the grading scale
+@router.put("/{group_id}/grading-scale", response=List[GradePercentageSchema], auth=JWTAuth(), summary="Update grading scale")
+def update_grading_scale(request, group_id: int, payload: GradePercentageListSchema):
+    """
+    Replaces the ENTIRE grading scale for the group with the new list provided.
+    
+    Logic:
+    1. Validates user is Admin.
+    2. Validates that percentages don't overlap (optional but recommended).
+    3. Deletes old active scales and creates new ones.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Auth Check: Admin only
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        return 403, {"detail": "Only admins can configure the grading scale."}
+
+    new_grades_data = payload.grades
+
+    # 2. Optional: Check for overlaps (Basic logic)
+    # Sort by min percentage to make checking easier
+    sorted_grades = sorted(new_grades_data, key=lambda x: x.min_percentage)
+    for i in range(len(sorted_grades) - 1):
+        current_grade = sorted_grades[i]
+        next_grade = sorted_grades[i+1]
+        
+        # If the max of the current overlaps with the min of the next
+        if current_grade.max_percentage > next_grade.min_percentage:
+             return 400, {
+                 "detail": f"Overlap detected between '{current_grade.name}' and '{next_grade.name}'."
+             }
+
+    # 3. Atomic Update (Delete old, Insert new)
+    with transaction.atomic():
+        # Soft delete or Hard delete existing active grades? 
+        # Since this is a configuration setting, Hard Delete (or deactivating) the old ones 
+        # and creating new ones is usually the cleanest approach for a "Replace" operation.
+        
+        # Option A: Hard Delete old configs to keep DB clean
+        GradePercentage.objects.filter(group=group).delete()
+        
+        # Option B: Soft Delete (Set is_active=False)
+        # GradePercentage.objects.filter(group=group).update(is_active=False)
+
+        # Create new ones
+        new_objects = [
+            GradePercentage(
+                group=group,
+                name=g.name,
+                min_percentage=g.min_percentage,
+                max_percentage=g.max_percentage,
+                is_active=True
+            ) for g in new_grades_data
+        ]
+        
+        GradePercentage.objects.bulk_create(new_objects)
+
+    # Return the newly created objects
+    return GradePercentage.objects.filter(group=group, is_active=True).order_by('-max_percentage')
