@@ -1,6 +1,6 @@
 from ninja import Schema
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import re
 from pydantic import validator
 
@@ -109,3 +109,46 @@ class GroupJoinSchema(Schema):
 #? Deleting a group (Input)
 class GroupDeleteSchema(Schema):
     password: str
+
+#! Grades
+#? Grade Percentages
+class GradePercentageSchema(Schema):
+    name: str
+    min_percentage: int
+    max_percentage: int
+
+    @validator('min_percentage', 'max_percentage')
+    def validate_range(cls, v):
+        if not 0 <= v <= 100:
+            raise ValueError('Percentage must be between 0 and 100')
+        return v
+
+    @validator('max_percentage')
+    def validate_max(cls, v, values):
+        if 'min_percentage' in values and v <= values['min_percentage']:
+            raise ValueError('Max percentage must be greater than Min percentage')
+        return v
+
+class GradePercentageListSchema(Schema):
+    grades: List[GradePercentageSchema]
+
+#! Statistics (Admin View)
+class AdminGroupOverviewSchema(Schema):
+    average_percentage: float
+    average_grade_label: str
+    total_students: int
+    total_quizzes: int
+
+class AdminStudentStatSchema(Schema):
+    student_id: int
+    name: str
+    average_percentage: float
+    average_grade_label: str
+
+class AdminQuizStatSchema(Schema):
+    quiz_id: int
+    quiz_name: str
+    date: datetime
+    average_percentage: float
+    average_grade_label: str
+    submission_count: int

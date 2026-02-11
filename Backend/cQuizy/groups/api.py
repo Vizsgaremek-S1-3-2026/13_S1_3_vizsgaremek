@@ -3,9 +3,12 @@
 from ninja import Router
 from django.shortcuts import get_object_or_404
 from typing import List
-from django.utils import timezone ### CHANGE: Import timezone for setting timestamps
+from django.utils import timezone
+from django.db import transaction
+from django.db.models import Avg, Count
 
 from .models import Group, GroupMember, GradePercentage
+from quizzes.models import Submission, Quiz
 from .utils import generate_invite_code
 from .schemas import (
     GroupOutSchema,
@@ -18,12 +21,39 @@ from .schemas import (
     GroupCreateSchema,
     GroupJoinSchema,
     GroupDeleteSchema,
+
+    GradePercentageSchema,
+    GradePercentageListSchema,
+
+    AdminGroupOverviewSchema,
+    AdminStudentStatSchema,
+    AdminQuizStatSchema,
 )
 
 from users.auth import JWTAuth
 
 #? Instead of NinjaAPI, we use Router
 router = Router(tags=['Groups'])  # The 'tags' are great for organizing docs
+
+
+
+#! Helper Functions
+#? Get grade label
+def get_grade_label(percentage: float, rules: list) -> str:
+    """
+    Takes a percentage and a list of GradePercentage objects.
+    Returns the name of the grade (e.g., '5', 'A', 'Excellent').
+    """
+    if percentage is None:
+        return "N/A"
+    
+    # Iterate through rules to find the match
+    # Rules should be passed in sorted order for efficiency, but logic holds regardless
+    for rule in rules:
+        if rule.min_percentage <= percentage <= rule.max_percentage:
+            return rule.name
+    
+    return "-" # No matching grade found
 
 
 
@@ -380,3 +410,203 @@ def delete_group(request, group_id: int, payload: GroupDeleteSchema): # <--- Add
         member.save()
     
     return 200, {"success": f"Group '{group.name}' has been deleted."}
+
+
+
+#! Grading Endpoints
+#? Getting the grading scale
+@router.get("/{group_id}/grading-scale", response=List[GradePercentageSchema], auth=JWTAuth(), summary="Get grading scale")
+def get_grading_scale(request, group_id: int):
+    """
+    Returns the active grading scale for the group.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Auth Check: User must be at least a member
+    if not GroupMember.objects.filter(group=group, user=current_user).exists() and not current_user.is_superuser:
+        return 403, {"detail": "You do not have permission to view this group."}
+
+    # 2. Return active percentages
+    # We filter is_active=True in case you implement soft-delete for these later
+    return GradePercentage.objects.filter(group=group, is_active=True).order_by('-max_percentage')
+
+#? Creating/Updating the grading scale
+@router.put("/{group_id}/grading-scale", response=List[GradePercentageSchema], auth=JWTAuth(), summary="Update grading scale")
+def update_grading_scale(request, group_id: int, payload: GradePercentageListSchema):
+    """
+    Replaces the ENTIRE grading scale for the group with the new list provided.
+    
+    Logic:
+    1. Validates user is Admin.
+    2. Validates that percentages don't overlap (optional but recommended).
+    3. Deletes old active scales and creates new ones.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Auth Check: Admin only
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        return 403, {"detail": "Only admins can configure the grading scale."}
+
+    new_grades_data = payload.grades
+
+    # 2. Optional: Check for overlaps (Basic logic)
+    # Sort by min percentage to make checking easier
+    sorted_grades = sorted(new_grades_data, key=lambda x: x.min_percentage)
+    for i in range(len(sorted_grades) - 1):
+        current_grade = sorted_grades[i]
+        next_grade = sorted_grades[i+1]
+        
+        # If the max of the current overlaps with the min of the next
+        if current_grade.max_percentage > next_grade.min_percentage:
+             return 400, {
+                 "detail": f"Overlap detected between '{current_grade.name}' and '{next_grade.name}'."
+             }
+
+    # 3. Atomic Update (Delete old, Insert new)
+    with transaction.atomic():
+        # Soft delete or Hard delete existing active grades? 
+        # Since this is a configuration setting, Hard Delete (or deactivating) the old ones 
+        # and creating new ones is usually the cleanest approach for a "Replace" operation.
+        
+        # Option A: Hard Delete old configs to keep DB clean
+        GradePercentage.objects.filter(group=group).delete()
+        
+        # Option B: Soft Delete (Set is_active=False)
+        # GradePercentage.objects.filter(group=group).update(is_active=False)
+
+        # Create new ones
+        new_objects = [
+            GradePercentage(
+                group=group,
+                name=g.name,
+                min_percentage=g.min_percentage,
+                max_percentage=g.max_percentage,
+                is_active=True
+            ) for g in new_grades_data
+        ]
+        
+        GradePercentage.objects.bulk_create(new_objects)
+
+    # Return the newly created objects
+    return GradePercentage.objects.filter(group=group, is_active=True).order_by('-max_percentage')
+
+
+
+#! Admin Statistics Endpoints ==================================================
+#? Stats Overview
+@router.get("/{group_id}/stats/overview", response=AdminGroupOverviewSchema, auth=JWTAuth())
+def get_group_overview(request, group_id: int):
+    """
+    Returns the 'Big Picture': Class average percentage and the resulting Grade.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Auth Check
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        raise HttpError(403, "Only admins can view statistics.")
+
+    # 2. Fetch Grading Rules (Active only)
+    rules = list(GradePercentage.objects.filter(group=group, is_active=True))
+
+    # 3. Calculate Global Average
+    stats = Submission.objects.filter(quiz__group=group).aggregate(
+        avg=Avg('percentage')
+    )
+    avg_pct = stats['avg'] or 0.0
+
+    # 4. Get Counts
+    student_count = GroupMember.objects.filter(group=group, date_left__isnull=True).count()
+    quiz_count = Quiz.objects.filter(group=group).count()
+
+    return {
+        "average_percentage": round(avg_pct, 2),
+        "average_grade_label": get_grade_label(avg_pct, rules),
+        "total_students": student_count,
+        "total_quizzes": quiz_count
+    }
+
+#? Stats Student Avarage
+@router.get("/{group_id}/stats/students", response=List[AdminStudentStatSchema], auth=JWTAuth())
+def get_student_averages(request, group_id: int):
+    """
+    Returns a list of students with their individual average + Grade Label.
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Auth Check
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        raise HttpError(403, "Only admins can view statistics.")
+
+    # 2. Fetch Rules
+    rules = list(GradePercentage.objects.filter(group=group, is_active=True))
+
+    # 3. Get Members
+    members = GroupMember.objects.filter(group=group, date_left__isnull=True).select_related('user')
+
+    results = []
+    for member in members:
+        # Calculate specific student average
+        # (Optimized: In a massive scale app, we'd use annotations, but this is fine for standard classes)
+        student_avg = Submission.objects.filter(
+            quiz__group=group, 
+            student=member.user
+        ).aggregate(avg=Avg('percentage'))['avg']
+        
+        final_avg = student_avg or 0.0
+
+        results.append({
+            "student_id": member.user.id,
+            "name": f"{member.user.last_name} {member.user.first_name}", # Hungarian name order?
+            "average_percentage": round(final_avg, 2),
+            "average_grade_label": get_grade_label(final_avg, rules)
+        })
+
+    # Sort by average (High to Low)
+    return sorted(results, key=lambda x: x['average_percentage'], reverse=True)
+
+#? Stats Quiz Avarage
+@router.get("/{group_id}/stats/quizzes", response=List[AdminQuizStatSchema], auth=JWTAuth())
+def get_quiz_averages(request, group_id: int):
+    """
+    Returns a list of quizzes with their average + Grade Label.
+    Helps identifying which tests were "Killer tests" (hard) vs "Easy A's".
+    """
+    current_user = request.auth
+    group = get_object_or_404(Group, id=group_id)
+
+    # 1. Auth Check
+    is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        raise HttpError(403, "Only admins can view statistics.")
+
+    # 2. Fetch Rules
+    rules = list(GradePercentage.objects.filter(group=group, is_active=True))
+
+    # 3. Get Quizzes
+    quizzes = Quiz.objects.filter(group=group).select_related('project').order_by('-date_end')
+
+    results = []
+    for quiz in quizzes:
+        stats = Submission.objects.filter(quiz=quiz).aggregate(
+            avg=Avg('percentage'),
+            count=Count('id')
+        )
+        final_avg = stats['avg'] or 0.0
+        
+        results.append({
+            "quiz_id": quiz.id,
+            "quiz_name": quiz.project.name,
+            "date": quiz.date_end,
+            "average_percentage": round(final_avg, 2),
+            "average_grade_label": get_grade_label(final_avg, rules),
+            "submission_count": stats['count']
+        })
+
+    return results
