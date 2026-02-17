@@ -2373,6 +2373,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                         MaterialPageRoute(
                           builder: (context) => AdminPage(
                             quiz: widget.item.quiz, // Use item quiz
+                            groupId: group.id!,
                             groupName: group.title,
                           ),
                         ),

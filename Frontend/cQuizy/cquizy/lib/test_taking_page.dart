@@ -7,7 +7,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'group_page.dart';
 import 'api_service.dart';
 import 'package:kiosk_mode/kiosk_mode.dart';
 import 'utils/web_protections.dart';
@@ -657,6 +656,9 @@ class _TestTakingPageState extends State<TestTakingPage>
         await windowManager.setPreventClose(false);
         await windowManager.setAlwaysOnTop(false);
         await windowManager.setFullScreen(false);
+        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+        // Give the window manager time to apply changes
+        await Future.delayed(const Duration(milliseconds: 200));
       } else if (!kIsWeb && (Platform.isLinux || Platform.isMacOS)) {
         await windowManager.setFullScreen(false);
       }
@@ -773,15 +775,12 @@ class _TestTakingPageState extends State<TestTakingPage>
                               Expanded(
                                 child: TextButton(
                                   onPressed: () {
-                                    // Navigator jump back to group page
+                                    // Navigate back to HomePage
                                     _exitFullscreen().then((_) {
                                       Navigator.of(context).pushAndRemoveUntil(
                                         MaterialPageRoute(
-                                          builder: (context) => GroupPage(
-                                            group: widget
-                                                .quiz['group_obj'], // We'll need to pass this
-                                            onTestExpired: (g) {},
-                                          ),
+                                          builder: (context) =>
+                                              HomePage(onLogout: () {}),
                                         ),
                                         (route) => false,
                                       );
@@ -2386,6 +2385,13 @@ class _TestTakingPageState extends State<TestTakingPage>
       if (mounted) Navigator.pop(context); // Close loading
 
       if (response != null) {
+        // Clean up all protections before navigating away
+        if (widget.anticheat) {
+          _disableScreenshotProtection();
+          _restoreVolume();
+          _cleanupDesktopKeyboardProtection();
+          _cleanupDesktopScreenProtection();
+        }
         await _exitFullscreen();
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(

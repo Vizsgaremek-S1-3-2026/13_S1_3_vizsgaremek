@@ -69,13 +69,28 @@ class _CreateQuizDialogState extends State<CreateQuizDialog> {
     final now = DateTime.now();
     final initialDate = isStart ? _startDate : _endDate;
 
+    // For new quizzes, don't allow picking dates in the past
+    final DateTime firstDate = _isEditing
+        ? now.subtract(const Duration(days: 365))
+        : DateTime(now.year, now.month, now.day);
+
+    // For end date picker, don't allow picking before start date's day
+    final DateTime effectiveFirstDate = isStart
+        ? firstDate
+        : (_startDate.isAfter(firstDate)
+              ? DateTime(_startDate.year, _startDate.month, _startDate.day)
+              : firstDate);
+
+    // Ensure initialDate is not before firstDate for the picker
+    final DateTime safeInitialDate = initialDate.isBefore(effectiveFirstDate)
+        ? (isStart ? now : _startDate)
+        : initialDate;
+
     // Pick Date
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: initialDate,
-      firstDate: now.subtract(
-        const Duration(days: 365),
-      ), // Allow past dates for editing
+      initialDate: safeInitialDate,
+      firstDate: effectiveFirstDate,
       lastDate: now.add(const Duration(days: 365)),
       builder: (context, child) {
         return Theme(
@@ -105,7 +120,9 @@ class _CreateQuizDialogState extends State<CreateQuizDialog> {
           data: Theme.of(context).copyWith(
             timePickerTheme: TimePickerThemeData(
               backgroundColor: Theme.of(context).cardColor,
-              hourMinuteColor: Theme.of(context).primaryColor.withOpacity(0.2),
+              hourMinuteColor: Theme.of(
+                context,
+              ).primaryColor.withValues(alpha: 0.2),
               hourMinuteTextColor: Theme.of(context).primaryColor,
               dayPeriodTextColor: Theme.of(context).textTheme.bodyMedium?.color,
               dialHandColor: Theme.of(context).primaryColor,
@@ -119,7 +136,7 @@ class _CreateQuizDialogState extends State<CreateQuizDialog> {
 
     if (pickedTime == null) return;
 
-    final newDateTime = DateTime(
+    var newDateTime = DateTime(
       pickedDate.year,
       pickedDate.month,
       pickedDate.day,
@@ -128,16 +145,60 @@ class _CreateQuizDialogState extends State<CreateQuizDialog> {
     );
 
     setState(() {
+      final currentNow = DateTime.now();
+
       if (isStart) {
+        // If start date is in the past for new quizzes, auto-correct to now
+        if (!_isEditing && newDateTime.isBefore(currentNow)) {
+          newDateTime = currentNow;
+          _showValidationSnackBar(
+            'A kezdés időpontja nem lehet a múltban, az aktuális időpontra állítva.',
+          );
+        }
         _startDate = newDateTime;
-        // Adjust end date if it's before start
-        if (_endDate.isBefore(_startDate)) {
+        // Adjust end date if it's before or equal to start
+        if (_endDate.isBefore(_startDate) ||
+            _endDate.isAtSameMomentAs(_startDate)) {
           _endDate = _startDate.add(const Duration(minutes: 45));
+          _showValidationSnackBar(
+            'A befejezés automatikusan módosítva: kezdés + 45 perc.',
+          );
         }
       } else {
+        // If end date is in the past for new quizzes, auto-correct
+        if (!_isEditing && newDateTime.isBefore(currentNow)) {
+          newDateTime = currentNow.add(const Duration(minutes: 45));
+          _showValidationSnackBar(
+            'A befejezés nem lehet a múltban, automatikusan módosítva.',
+          );
+        }
+        // If end date is before or equal to start, auto-correct
+        if (newDateTime.isBefore(_startDate) ||
+            newDateTime.isAtSameMomentAs(_startDate)) {
+          newDateTime = _startDate.add(const Duration(minutes: 45));
+          _showValidationSnackBar(
+            'A befejezés nem lehet korábbi, mint a kezdés. Automatikusan módosítva.',
+          );
+        }
+        // Minimum 5 minute duration check
+        if (newDateTime.difference(_startDate).inMinutes < 5) {
+          newDateTime = _startDate.add(const Duration(minutes: 5));
+          _showValidationSnackBar('A teszt legalább 5 perces kell legyen.');
+        }
         _endDate = newDateTime;
       }
     });
+  }
+
+  void _showValidationSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.orange,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<void> _save() async {
@@ -174,8 +235,8 @@ class _CreateQuizDialogState extends State<CreateQuizDialog> {
         result = await api.updateQuiz(
           token,
           widget.existingQuiz!['id'],
-          _startDate.toUtc(),
-          _endDate.toUtc(),
+          _startDate.toUtc().toIso8601String(),
+          _endDate.toUtc().toIso8601String(),
         );
       } else {
         result = await api.createQuiz(

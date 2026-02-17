@@ -88,8 +88,8 @@ void main() {
       final updated = await apiService.updateQuiz(
         token!,
         quizId!,
-        newStart,
-        newEnd,
+        newStart.toUtc().toIso8601String(),
+        newEnd.toUtc().toIso8601String(),
       );
 
       expect(updated, isNotNull);

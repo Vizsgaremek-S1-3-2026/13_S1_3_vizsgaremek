@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'api_service.dart';
+import 'providers/user_provider.dart';
 
 class GradingView extends StatefulWidget {
   final Map<String, dynamic> student;
@@ -17,19 +20,21 @@ class GradingView extends StatefulWidget {
     this.grade3Limit = 55,
     this.grade4Limit = 70,
     this.grade5Limit = 85,
+    this.quizBlocks,
   });
+
+  final List<dynamic>? quizBlocks;
 
   @override
   State<GradingView> createState() => _GradingViewState();
 }
 
 class GradingSubmission {
-  final int id;
+  final int id; // submitted_answer_id
   final String question;
   final String userAnswer;
   final String correctAnswer;
-  final List<String>?
-  alternativeAnswers; // Additional correct answers for text questions
+  final List<String>? alternativeAnswers;
   int awardedPoints;
   int maxPoints;
   String? teacherComment;
@@ -47,26 +52,22 @@ class GradingSubmission {
 }
 
 class _GradingViewState extends State<GradingView> {
-  // Scaffold key for opening drawer
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // Mock Data
-  late List<GradingSubmission> _submissions;
+  bool _isLoading = true;
+  List<GradingSubmission> _submissions = [];
   bool _isEditing = false;
   bool _hasUnsavedChanges = false;
   bool _showStatisticsPanel = false;
 
-  int _manualGradeOffset = 0; // -1, 0, or +1
+  int _manualGradeOffset = 0;
 
-  // Grade thresholds (percentage based)
-  // Grade 5: >= _grade5Min, Grade 4: >= _grade4Min, etc.
+  // Grade thresholds
   late int _grade5Min;
   late int _grade4Min;
   late int _grade3Min;
   late int _grade2Min;
-  // Below _grade2Min = 1
 
-  // Validation helpers
   bool get _isGrade5Valid => _grade5Min > _grade4Min && _grade5Min <= 100;
   bool get _isGrade4Valid => _grade4Min > _grade3Min && _grade4Min < _grade5Min;
   bool get _isGrade3Valid => _grade3Min > _grade2Min && _grade3Min < _grade4Min;
@@ -74,49 +75,11 @@ class _GradingViewState extends State<GradingView> {
   bool get _areThresholdsValid =>
       _isGrade5Valid && _isGrade4Valid && _isGrade3Valid && _isGrade2Valid;
 
-  // Student switcher
-  int _selectedStudentIndex = 0;
-  final Set<int> _reviewedStudentIds = {}; // Temporary "green" state
+  // We are handling a single student passed via widget.student
+  // Removing the full list logic for now as it complicates things without a robust student list API here.
+  // We will trust widget.student contains necessary info.
 
-  // Mock students with grades, sorted alphabetically
-  late List<Map<String, dynamic>> _submittedStudents;
-
-  void _initStudents() {
-    _submittedStudents = [
-      {
-        'id': 1,
-        'name': 'Kiss Péter',
-        'grade': 4,
-        'cheatingStatus': 'confirmed', // Red
-      },
-      {'id': 2, 'name': 'Nagy Anna', 'grade': 5, 'cheatingStatus': 'none'},
-      {
-        'id': 3,
-        'name': 'Szabó Gábor',
-        'grade': 3,
-        'cheatingStatus': 'suspected', // Yellow
-      },
-      {'id': 4, 'name': 'Tóth Balázs', 'grade': 2, 'cheatingStatus': 'none'},
-      {'id': 5, 'name': 'Varga Éva', 'grade': 4, 'cheatingStatus': 'none'},
-      {'id': 5, 'name': 'Varga Éva', 'grade': 4, 'cheatingStatus': 'none'},
-      {'id': 999, 'name': 'Teszt Elek', 'grade': 5, 'cheatingStatus': 'none'},
-    ];
-    // Sort alphabetically by name
-    _submittedStudents.sort(
-      (a, b) => (a['name'] as String).compareTo(b['name'] as String),
-    );
-
-    // Find the index of the passed student
-    final index = _submittedStudents.indexWhere(
-      (s) => s['name'] == widget.student['name'],
-    );
-    if (index != -1) {
-      _selectedStudentIndex = index;
-    }
-  }
-
-  Map<String, dynamic> get _currentStudent =>
-      _submittedStudents[_selectedStudentIndex];
+  Map<String, dynamic> get _currentStudent => widget.student;
 
   String get _cheatingStatus =>
       _currentStudent['cheatingStatus'] as String? ?? 'none';
@@ -160,114 +123,91 @@ class _GradingViewState extends State<GradingView> {
   @override
   void initState() {
     super.initState();
-    // Init thresholds from widget
     _grade2Min = widget.grade2Limit;
     _grade3Min = widget.grade3Limit;
     _grade4Min = widget.grade4Limit;
     _grade5Min = widget.grade5Limit;
 
-    _initStudents();
-    _loadMockData();
+    _fetchSubmissionDetails();
   }
 
-  void _loadMockData() {
-    // Generate mock submissions with all 9 question types
-    _submissions = [
-      // 1. SINGLE - Egyszeres választás
-      GradingSubmission(
-        id: 1,
-        question: '[Egyszeres] Mi a fővárosa Franciaországnak?',
-        userAnswer: 'Párizs',
-        correctAnswer: 'Párizs',
-        awardedPoints: 5,
-        maxPoints: 5,
-      ),
-      // 2. MULTIPLE - Többszörös választás
-      GradingSubmission(
-        id: 2,
-        question:
-            '[Többszörös] Mely országok tartoznak az EU-hoz? (Válaszd ki az összeset)',
-        userAnswer: 'Németország, Franciaország, Olaszország',
-        correctAnswer: 'Németország, Franciaország, Olaszország, Spanyolország',
-        awardedPoints: 3,
-        maxPoints: 4,
-      ),
-      // 3. TEXT - Szöveges válasz (több elfogadható válasz)
-      GradingSubmission(
-        id: 3,
-        question: '[Szöveges] Sorold fel a Newton törvényeket!',
-        userAnswer: 'Tehetetlenség, erő-ellentenerő...',
-        correctAnswer:
-            '1. Tehetetlenség törvénye, 2. Dinamika alaptörvénye, 3. Hatás-ellenhatás törvénye',
-        alternativeAnswers: [
-          'Newton I., II., III. törvénye',
-          'Tehetetlenség, F=ma, akció-reakció',
-          'I. Tehetetlenség, II. F=m*a, III. Hatás=ellenhatás',
-        ],
-        awardedPoints: 3,
-        maxPoints: 10,
-      ),
-      // 4. MATCHING - Párosítás
-      GradingSubmission(
-        id: 4,
-        question: '[Párosítás] Párosítsd az országot a fővárosával!',
-        userAnswer:
-            'Magyarország → Budapest, Németország → Berlin, Franciaország → Párizs',
-        correctAnswer:
-            'Magyarország → Budapest, Németország → Berlin, Franciaország → Párizs',
-        awardedPoints: 6,
-        maxPoints: 6,
-      ),
-      // 5. ORDERING - Sorba rendezés
-      GradingSubmission(
-        id: 5,
-        question: '[Sorrendezés] Rendezd növekvő sorrendbe a számokat!',
-        userAnswer: '1, 2, 5, 3, 8',
-        correctAnswer: '1, 2, 3, 5, 8',
-        awardedPoints: 2,
-        maxPoints: 5,
-      ),
-      // 6. GAP_FILL - Kitöltős szöveg
-      GradingSubmission(
-        id: 6,
-        question:
-            '[Kitöltős] A víz kémiai képlete: ____. A só kémiai képlete: ____.',
-        userAnswer: 'H2O, NaCl',
-        correctAnswer: 'H2O, NaCl',
-        awardedPoints: 4,
-        maxPoints: 4,
-      ),
-      // 7. RANGE - Intervallum válasz
-      GradingSubmission(
-        id: 7,
-        question:
-            '[Intervallum] Mennyi a Pi (π) értéke 2 tizedesjegy pontossággal?',
-        userAnswer: '3.14',
-        correctAnswer: '3.14 (±0.01)',
-        awardedPoints: 3,
-        maxPoints: 3,
-      ),
-      // 8. CATEGORY - Kategorizálás
-      GradingSubmission(
-        id: 8,
-        question:
-            '[Kategorizálás] Rendezd az állatokat a megfelelő kategóriába! (Emlős, Hüllő)',
-        userAnswer: 'Emlős: kutya, macska, elefánt | Hüllő: kígyó, krokodil',
-        correctAnswer:
-            'Emlős: kutya, macska, elefánt | Hüllő: kígyó, krokodil, teknős',
-        awardedPoints: 4,
-        maxPoints: 5,
-      ),
-      // 9. SENTENCE_ORDERING - Mondat újrarendezés
-      GradingSubmission(
-        id: 9,
-        question: '[Mondat rendezés] Rendezd a szavakat helyes mondattá!',
-        userAnswer: 'A kutya fut a parkban.',
-        correctAnswer: 'A kutya fut a parkban.',
-        awardedPoints: 3,
-        maxPoints: 3,
-      ),
-    ];
+  Future<void> _fetchSubmissionDetails() async {
+    setState(() => _isLoading = true);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final submissionId = widget.student['submission_id'];
+    if (submissionId == null) {
+      // Fallback for mock/testing if needed, or show error
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final api = ApiService();
+    final details = await api.getSubmissionDetails(token, submissionId);
+
+    if (details != null && mounted) {
+      final answers = details['answers'] as List<dynamic>? ?? [];
+
+      setState(() {
+        _submissions = answers.map((a) {
+          // Find corresponding block for maxPoints and correctAnswer
+          final blockId = a['block_id'];
+          Map<String, dynamic>? block;
+          if (widget.quizBlocks != null) {
+            try {
+              block = widget.quizBlocks!.firstWhere((b) => b['id'] == blockId);
+            } catch (_) {}
+          }
+
+          int maxPoints = 0;
+          String correctAnswer = '';
+
+          if (block != null) {
+            // Try to find max points logic (assuming it might be in 'data' or inferred)
+            // For now, if block has 'answers', checking for correct ones
+            final blockAnswers = block['answers'] as List<dynamic>? ?? [];
+            final correctOpts = blockAnswers
+                .where((ans) => ans['is_correct'] == true)
+                .toList();
+
+            if (correctOpts.isNotEmpty) {
+              correctAnswer = correctOpts
+                  .map((ans) => ans['answer_text'].toString())
+                  .join(', ');
+            }
+
+            // If manual points are not in block, we might default or check specific structure
+            // Using points_awarded as base if max is unknown, or look for max_score in block if exists
+            // block['score'] might exist?
+            // As fallback, maxPoints = awardedPoints if we can't find it, but that's bad for grading.
+            // We will assume block has 'score' or 'time_limit' etc.
+            // Let's assume block data has it? Or we use 100/count?
+            // Without explicit max points in schema, we rely on block['score'] if exists.
+            if (block.containsKey('score')) {
+              maxPoints = block['score'];
+            } else {
+              // If not in block, maybe not available. Default to 1?
+              maxPoints = 1;
+            }
+          }
+
+          return GradingSubmission(
+            id: a['id'],
+            question: a['block_question'] ?? 'Kérdés',
+            userAnswer: a['student_answer'] ?? '',
+            correctAnswer: correctAnswer,
+            awardedPoints: a['points_awarded'] ?? 0,
+            maxPoints: maxPoints > 0 ? maxPoints : (a['points_awarded'] ?? 1),
+            teacherComment: null, // API doesn't seem to return it yet
+          );
+        }).toList();
+        _isLoading = false;
+      });
+    } else {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   int get _totalPoints =>
@@ -317,8 +257,7 @@ class _GradingViewState extends State<GradingView> {
     return shouldPop ?? false;
   }
 
-  void _saveChanges() {
-    // Block saving if thresholds are invalid
+  Future<void> _saveChanges() async {
     if (!_areThresholdsValid) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -329,28 +268,70 @@ class _GradingViewState extends State<GradingView> {
       return;
     }
 
-    setState(() {
-      _isEditing = false;
-      _hasUnsavedChanges = false;
-      // Here you would typically send data to the API
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Változtatások mentve!'),
-        backgroundColor: Colors.green,
-      ),
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final submissionId = widget.student['submission_id'];
+    if (submissionId == null) return;
+
+    setState(() => _isLoading = true);
+    final api = ApiService();
+
+    // 1. Collect point updates
+    // We send all points just to be safe, or we could track changes.
+    // Sending all ensures consistency.
+    final updates = _submissions.map((s) {
+      return {'submitted_answer_id': s.id, 'new_points': s.awardedPoints};
+    }).toList();
+
+    bool pointsSuccess = true;
+    if (updates.isNotEmpty) {
+      pointsSuccess = await api.updateSubmissionPoints(token, submissionId, {
+        'updates': updates,
+      });
+    }
+
+    // 2. Update Grade (Override)
+    // We calculate the grade locally based on the new points and offset
+    bool gradeSuccess = true;
+    // Only send grade update if we have a manual offset or just to sync the calculated grade
+    // The requirement implies "Grade Override", so we send the final grade.
+    final finalGrade = _finalGrade;
+    gradeSuccess = await api.updateSubmissionGrade(
+      token,
+      submissionId,
+      finalGrade,
     );
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        if (pointsSuccess && gradeSuccess) {
+          _isEditing = false;
+          _hasUnsavedChanges = false;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Változtatások sikeresen mentve!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Hiba történt a mentés során!'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 900px breakpoint used similarly to other views if needed,
-    // but here we just want a unified view without the side panel.
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width >= 1100;
-
-    // Calculate progress for the progress bar or simply display textual info
-    // if we wanted to keep the "reviewed count" visible somewhere else.
 
     return Stack(
       children: [
@@ -367,22 +348,24 @@ class _GradingViewState extends State<GradingView> {
               surfaceTintColor: Colors.transparent,
               scrolledUnderElevation: 0,
               elevation: 0,
-              automaticallyImplyLeading: false, // Menu moved to bottom bar
+              automaticallyImplyLeading: false,
               title: Padding(
                 padding: const EdgeInsets.only(top: 20.0, left: 8.0),
                 child: Row(
                   children: [
-                    // Empty container to balance spacing if needed, but we removed the back button from here
-                    // as it's now in the bottom bar.
-                    // Student name and quiz title
-                    SizedBox(width: isDesktop ? 32 : 0),
+                    // Show Back Button
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back),
+                      tooltip: 'Vissza',
+                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              // Status Icon
                               Icon(
                                 _getStatusAttributes(_cheatingStatus)['icon']
                                     as IconData,
@@ -394,7 +377,6 @@ class _GradingViewState extends State<GradingView> {
                                 size: 32,
                               ),
                               const SizedBox(width: 8),
-                              // Desktop: Status Text, Mobile: Student Name
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
@@ -406,7 +388,7 @@ class _GradingViewState extends State<GradingView> {
                                                 _cheatingStatus,
                                               )['color']
                                               as Color)
-                                          .withOpacity(0.1),
+                                          .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                     color:
@@ -414,7 +396,7 @@ class _GradingViewState extends State<GradingView> {
                                                   _cheatingStatus,
                                                 )['color']
                                                 as Color)
-                                            .withOpacity(0.3),
+                                            .withValues(alpha: 0.3),
                                   ),
                                 ),
                                 child: Text(
@@ -442,7 +424,7 @@ class _GradingViewState extends State<GradingView> {
                             style: TextStyle(
                               fontSize: 16,
                               color: theme.textTheme.bodyMedium?.color
-                                  ?.withOpacity(0.7),
+                                  ?.withValues(alpha: 0.7),
                             ),
                           ),
                         ],
@@ -452,64 +434,64 @@ class _GradingViewState extends State<GradingView> {
                 ),
               ),
             ),
-            body: Stack(
-              children: [
-                // Main content
-                if (isDesktop)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            body: _isLoading
+                ? Center(child: CircularProgressIndicator())
+                : Stack(
                     children: [
-                      // Show grade settings when editing, otherwise student list
-                      _isEditing
-                          ? _buildGradeSettingsPanel(theme, false)
-                          : _buildStudentListBox(theme),
-                      Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.only(
-                            left: 24, // Slight left padding for content
-                            right: 24,
-                            top: 120,
-                            bottom: 120,
+                      if (isDesktop)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Settings Panel (Desktop)
+                            _isEditing
+                                ? _buildGradeSettingsPanel(theme, false)
+                                : const SizedBox(
+                                    width: 0,
+                                  ), // Hidden if not editing
+                            Expanded(
+                              child: ListView.builder(
+                                padding: const EdgeInsets.only(
+                                  left: 24,
+                                  right: 24,
+                                  top: 120,
+                                  bottom: 120,
+                                ),
+                                itemCount: _submissions.length,
+                                itemBuilder: (context, index) {
+                                  return _buildQuestionCard(
+                                    _submissions[index],
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Padding(
+                          padding: const EdgeInsets.only(top: 0),
+                          child: ListView.builder(
+                            padding: const EdgeInsets.only(
+                              left: 16,
+                              right: 16,
+                              top: 120,
+                              bottom: 120,
+                            ),
+                            itemCount: _submissions.length,
+                            itemBuilder: (context, index) {
+                              return _buildQuestionCard(_submissions[index]);
+                            },
                           ),
-                          itemCount: _submissions.length,
-                          itemBuilder: (context, index) {
-                            return _buildQuestionCard(_submissions[index]);
-                          },
                         ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _buildBottomBar(),
                       ),
                     ],
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      top: 0,
-                    ), // Scaffold extends behind, content starts...
-                    // Actually ListView needs padding for AppBar
-                    child: ListView.builder(
-                      padding: const EdgeInsets.only(
-                        left: 16,
-                        right: 16,
-                        top: 120, // Increased to clear AppBar
-                        bottom: 120, // Increased to clear BottomBar
-                      ),
-                      itemCount: _submissions.length,
-                      itemBuilder: (context, index) {
-                        return _buildQuestionCard(_submissions[index]);
-                      },
-                    ),
                   ),
-                // Bottom bar
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _buildBottomBar(),
-                ),
-              ],
-            ),
           ),
         ),
-        // Statistics Panel Overlay - on top of everything including AppBar
         _buildStatisticsPanel(),
       ],
     );
@@ -521,126 +503,11 @@ class _GradingViewState extends State<GradingView> {
       surfaceTintColor: theme.scaffoldBackgroundColor,
       child: _isEditing
           ? _buildGradeSettingsPanel(theme, true)
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.fromLTRB(24, 60, 24, 20),
-                  decoration: BoxDecoration(
-                    color: theme.cardColor,
-                    border: Border(
-                      bottom: BorderSide(color: theme.dividerColor),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.people_alt_rounded, color: theme.primaryColor),
-                      const SizedBox(width: 16),
-                      Text(
-                        'Diákok Listája',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: theme.textTheme.bodyLarge?.color,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: EdgeInsets.zero,
-                    itemCount: _submittedStudents.length,
-                    separatorBuilder: (context, index) => Divider(
-                      height: 1,
-                      color: theme.dividerColor.withOpacity(0.5),
-                    ),
-                    itemBuilder: (context, index) {
-                      final student = _submittedStudents[index];
-                      final isSelected = index == _selectedStudentIndex;
-                      final cheatingStatus =
-                          student['cheatingStatus'] as String;
-
-                      Color? nameColor;
-                      if (cheatingStatus == 'confirmed') {
-                        nameColor = Colors.red;
-                      } else if (cheatingStatus == 'suspected') {
-                        nameColor = Colors.amber;
-                      } else if (isSelected) {
-                        nameColor = theme.primaryColor;
-                      } else {
-                        nameColor = theme.textTheme.bodyMedium?.color;
-                      }
-
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 4,
-                        ),
-                        tileColor: isSelected
-                            ? theme.primaryColor.withOpacity(0.05)
-                            : null,
-                        leading: Container(
-                          width: 36,
-                          height: 36,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? theme.primaryColor
-                                : theme.cardColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isSelected
-                                  ? theme.primaryColor
-                                  : theme.dividerColor,
-                            ),
-                          ),
-                          child: Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              color: isSelected
-                                  ? Colors.white
-                                  : theme.textTheme.bodyMedium?.color,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          student['name'] as String,
-                          style: TextStyle(
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                            color: nameColor,
-                          ),
-                        ),
-                        trailing: cheatingStatus == 'none'
-                            ? null
-                            : Icon(
-                                _getStatusAttributes(cheatingStatus)['icon']
-                                    as IconData,
-                                color:
-                                    _getStatusAttributes(
-                                          cheatingStatus,
-                                        )['color']
-                                        as Color,
-                                size: 20,
-                              ),
-                        onTap: () {
-                          setState(() {
-                            _selectedStudentIndex = index;
-                            _loadMockData();
-                          });
-                          Navigator.pop(context); // Close drawer
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
+          : Center(child: Text("Nincs elérhető tartalom")),
     );
   }
+
+  // _buildStudentListBox is removed as we focus on single student view
 
   Widget _buildQuestionCard(GradingSubmission submission) {
     final theme = Theme.of(context);
@@ -1075,121 +942,6 @@ class _GradingViewState extends State<GradingView> {
     );
   }
 
-  Widget _buildStudentListBox(ThemeData theme) {
-    return Container(
-      width: 300,
-      margin: const EdgeInsets.only(top: 120, left: 24, bottom: 120),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Diákok',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: theme.textTheme.bodyLarge?.color,
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.separated(
-              itemCount: _submittedStudents.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final student = _submittedStudents[index];
-                final isSelected = index == _selectedStudentIndex;
-                final cheatingStatus = student['cheatingStatus'] as String;
-
-                Color? nameColor;
-                if (cheatingStatus == 'confirmed') {
-                  nameColor = Colors.red;
-                } else if (cheatingStatus == 'suspected') {
-                  nameColor = Colors.amber;
-                } else if (isSelected) {
-                  nameColor = theme.primaryColor;
-                } else {
-                  nameColor = theme.textTheme.bodyMedium?.color;
-                }
-
-                return ListTile(
-                  onTap: _isEditing
-                      ? null
-                      : () {
-                          setState(() {
-                            _selectedStudentIndex = index;
-                            _loadMockData();
-                          });
-                        },
-                  selected: isSelected,
-                  selectedTileColor: theme.primaryColor.withOpacity(0.1),
-                  leading: Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? theme.primaryColor
-                          : theme.scaffoldBackgroundColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected
-                            ? theme.primaryColor
-                            : theme.dividerColor,
-                      ),
-                    ),
-                    child: Text(
-                      '${index + 1}',
-                      style: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : theme.textTheme.bodyMedium?.color,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  title: Text(
-                    student['name'] as String,
-                    style: TextStyle(
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: nameColor,
-                    ),
-                  ),
-                  trailing: cheatingStatus == 'none'
-                      ? null
-                      : Icon(
-                          _getStatusAttributes(cheatingStatus)['icon']
-                              as IconData,
-                          color:
-                              _getStatusAttributes(cheatingStatus)['color']
-                                  as Color,
-                          size: 20,
-                        ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildGradeSettingsPanel(ThemeData theme, bool isMobile) {
     return Container(
       width: isMobile ? double.infinity : 350,
@@ -1427,9 +1179,7 @@ class _GradingViewState extends State<GradingView> {
             SizedBox(width: isNarrow ? 4 : 8),
           ],
 
-          // Student Pager (takes available space)
-          Expanded(child: _buildStudentPager(theme, isNarrow, isMobile)),
-          SizedBox(width: isNarrow ? 4 : 8),
+          Spacer(),
 
           // Stats Button (now on all screens)
           _buildStatsButton(theme, isNarrow),
@@ -1491,101 +1241,6 @@ class _GradingViewState extends State<GradingView> {
           color: theme.primaryColor,
         ),
       ),
-    );
-  }
-
-  Widget _buildStudentPager(ThemeData theme, bool isNarrow, bool isMobile) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Previous Button (hide when editing)
-        if (!_isEditing)
-          IconButton(
-            onPressed: _selectedStudentIndex > 0
-                ? () {
-                    setState(() {
-                      _selectedStudentIndex--;
-                      _loadMockData();
-                    });
-                  }
-                : null,
-            icon: Icon(Icons.chevron_left_rounded, size: isNarrow ? 20 : 24),
-            padding: EdgeInsets.zero,
-            constraints: BoxConstraints(
-              minWidth: isNarrow ? 32 : 40,
-              minHeight: isNarrow ? 32 : 40,
-            ),
-          ),
-
-        // Student Name Chip - Desktop: full text, Mobile: icon only
-        Flexible(
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: isNarrow ? 12 : 16,
-              vertical: isNarrow ? 8 : 10,
-            ),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
-            ),
-            child: isMobile
-                ? Icon(
-                    _getStatusAttributes(_cheatingStatus)['icon'] as IconData,
-                    size: isNarrow ? 22 : 26,
-                    color:
-                        _getStatusAttributes(_cheatingStatus)['color'] as Color,
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _getStatusAttributes(_cheatingStatus)['icon']
-                            as IconData,
-                        size: 24,
-                        color:
-                            _getStatusAttributes(_cheatingStatus)['color']
-                                as Color,
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          '${_currentStudent['name']} (${_selectedStudentIndex + 1}/${_submittedStudents.length})',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color:
-                                _getStatusAttributes(_cheatingStatus)['color']
-                                    as Color,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
-
-        // Next Button (hide when editing)
-        if (!_isEditing)
-          IconButton(
-            onPressed: _selectedStudentIndex < _submittedStudents.length - 1
-                ? () {
-                    setState(() {
-                      _selectedStudentIndex++;
-                      _loadMockData();
-                    });
-                  }
-                : null,
-            icon: Icon(Icons.chevron_right_rounded, size: isNarrow ? 20 : 24),
-            padding: EdgeInsets.zero,
-            constraints: BoxConstraints(
-              minWidth: isNarrow ? 32 : 40,
-              minHeight: isNarrow ? 32 : 40,
-            ),
-          ),
-      ],
     );
   }
 

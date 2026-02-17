@@ -14,6 +14,7 @@ const double kAdminDesktopBreakpoint = 700.0;
 
 class AdminPage extends StatefulWidget {
   final Map<String, dynamic> quiz;
+  final int groupId;
   final String? groupName;
   final int grade2Limit;
   final int grade3Limit;
@@ -23,6 +24,7 @@ class AdminPage extends StatefulWidget {
   const AdminPage({
     super.key,
     required this.quiz,
+    required this.groupId,
     this.groupName,
     this.grade2Limit = 40,
     this.grade3Limit = 55,
@@ -41,9 +43,11 @@ class _AdminPageState extends State<AdminPage> {
   List<Map<String, dynamic>> _members = [];
   bool _isLoading = true;
   Timer? _pollingTimer;
+  Timer? _countdownTimer;
 
   // Mock data for monitoring (Legacy, keeping reference if needed but unused)
   Map<String, dynamic>? _fullQuizData;
+  Map<String, dynamic>? _quizStats;
   bool _isLoadingDetails = true;
 
   // Export Configuration State
@@ -97,11 +101,16 @@ class _AdminPageState extends State<AdminPage> {
       const Duration(seconds: 10),
       (_) => _fetchData(),
     );
+    // Countdown timer - update every second
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -120,6 +129,15 @@ class _AdminPageState extends State<AdminPage> {
       final submissions = await api.getQuizSubmissions(token, quizId);
       // Fetch events/alerts
       final events = await api.getQuizEvents(token, quizId);
+
+      // Fetch all group members to calculate accurate "Missing" count
+      final allMembers = await api.getGroupMembers(token, widget.groupId);
+      // Filter out admins/teachers from the target student list
+      final targetStudents = allMembers.where((m) {
+        final rank = m['rank'] as String? ?? 'STUDENT';
+        return rank == 'STUDENT';
+      }).toList();
+      final int totalStudentsCount = targetStudents.length;
 
       // Merge data to create the member list
       // In a real scenario, we should also fetch the Group Members to show those who haven't started.
@@ -140,7 +158,10 @@ class _AdminPageState extends State<AdminPage> {
         studentMap[userId] = {
           'name':
               sub['user_name'] ??
-              'Diák $userId', // Replace with real name if available
+              sub['student_name'] ??
+              sub['name'] ??
+              sub['nickname'] ??
+              'Ismeretlen tanuló',
           'status': status,
           'wasBlocked': false, // Default
           'score': sub['score'] ?? 0,
@@ -166,9 +187,42 @@ class _AdminPageState extends State<AdminPage> {
         }
       }
 
+      // Fetch Quiz Stats
+      final stats = await api.getQuizStats(token, quizId);
+
+      // Calculate missing count: Total Students - Unique Submitted/Writing
+      // Actually 'submitted' status means they finished.
+      // We want "Hiányzik" -> didn't submit yet? Or didn't even start?
+      // Usually "Missing" means they haven't submitted (finished).
+      // Let's count who has 'submitted' status.
+      int submittedCount = 0;
+      for (var s in studentMap.values) {
+        if (s['status'] == 'submitted') {
+          submittedCount++;
+        }
+      }
+
+      // If stats from API has submission_count, we can use that, or our local count.
+      // Local count is safer if we want consistency with the student list we just built.
+      // But let's check stats['submission_count'] if available.
+
+      int missingCount = 0;
+      if (totalStudentsCount > 0) {
+        missingCount = totalStudentsCount - submittedCount;
+        if (missingCount < 0) missingCount = 0;
+      }
+
+      // Build final stats map - always ensure missing_count and total_students exist
+      final Map<String, dynamic> finalStats = stats ?? {};
+      finalStats['missing_count'] = missingCount;
+      finalStats['total_students'] = totalStudentsCount;
+      finalStats['submission_count'] =
+          finalStats['submission_count'] ?? submittedCount;
+
       if (mounted) {
         setState(() {
           _members = studentMap.values.toList();
+          _quizStats = finalStats;
           _isLoading = false;
         });
       }
@@ -197,33 +251,10 @@ class _AdminPageState extends State<AdminPage> {
         setState(() {
           _fullQuizData = data;
           _isLoadingDetails = false;
-          _generateMockAnswers();
         });
       }
     } catch (e) {
       if (mounted) setState(() => _isLoadingDetails = false);
-    }
-  }
-
-  void _generateMockAnswers() {
-    if (_fullQuizData == null || _fullQuizData!['blocks'] == null) return;
-    final blocks = _fullQuizData!['blocks'] as List;
-
-    // Assign mock answers to each student
-    for (var member in _members) {
-      final answers = <Map<String, dynamic>>[];
-      for (var block in blocks) {
-        // Randomly decide if student answered correctly, incorrectly, or skipped
-        // Simple logic: if grade is high, mostly correct
-        // For now just mock some data
-        answers.add({
-          'question_id': block['id'],
-          'question_text': block['question'],
-          'answer_text': 'Mock answer for ${block['question']}',
-          'is_correct': member['grade'] != null && member['grade'] > 3,
-        });
-      }
-      member['mock_answers'] = answers;
     }
   }
 
@@ -651,7 +682,12 @@ class _AdminPageState extends State<AdminPage> {
         ? totalGradeSum / gradedStudents.length
         : 0.0;
 
-    final int missingCount = _members.length - gradedStudents.length;
+    // Use accurate missing count from group members calculation
+    final int totalStudents =
+        (_quizStats?['total_students'] as int?) ?? _members.length;
+    final int missingCount =
+        (_quizStats?['missing_count'] as int?) ??
+        (totalStudents - gradedStudents.length);
 
     // Determine max frequency for distribution bar
     int maxFreq = 0;
@@ -694,28 +730,39 @@ class _AdminPageState extends State<AdminPage> {
                         _buildSummaryItem(
                           context,
                           'Összesen',
-                          '${_members.length} fő',
+                          '$totalStudents fő',
                           theme.textTheme.bodyLarge?.color ?? Colors.black,
                         ),
                         const SizedBox(width: 24),
-                        _buildSummaryItem(
-                          context,
-                          'Átlag',
-                          average.toStringAsFixed(2),
-                          Colors.blue,
-                        ),
+                        // Display API Average Score if available, else local grade average
+                        if (_quizStats != null &&
+                            _quizStats!['average_score'] != null)
+                          _buildSummaryItem(
+                            context,
+                            'Átlag Pont',
+                            '${(_quizStats!['average_score'] as num).toStringAsFixed(1)} p',
+                            Colors.blue,
+                          )
+                        else
+                          _buildSummaryItem(
+                            context,
+                            'Átlag Jegy',
+                            average.toStringAsFixed(2),
+                            Colors.blue,
+                          ),
                         const SizedBox(width: 24),
+                        // Display API Submission Count if available, else local
                         _buildSummaryItem(
                           context,
                           'Beadta',
-                          '${gradedStudents.length} fő',
+                          '${_quizStats?['submission_count'] ?? gradedStudents.length} db',
                           Colors.green,
                         ),
                         const SizedBox(width: 24),
                         _buildSummaryItem(
                           context,
                           'Hiányzik',
-                          '$missingCount fő',
+                          '${_quizStats?['missing_count'] ?? missingCount} fő',
                           Colors.red,
                         ),
                       ],
@@ -1119,6 +1166,9 @@ class _AdminPageState extends State<AdminPage> {
                           grade3Limit: widget.grade3Limit,
                           grade4Limit: widget.grade4Limit,
                           grade5Limit: widget.grade5Limit,
+                          quizBlocks: _fullQuizData != null
+                              ? _fullQuizData!['blocks'] as List<dynamic>?
+                              : null,
                         ),
                       ),
                     );
@@ -1277,8 +1327,122 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
+  String _remainingTimeString() {
+    final dateEndStr = widget.quiz['date_end'];
+    if (dateEndStr == null) return '--:--';
+    final dateEnd = DateTime.tryParse(dateEndStr)?.toLocal();
+    if (dateEnd == null) return '--:--';
+    final diff = dateEnd.difference(DateTime.now());
+    if (diff.isNegative) return '00:00';
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes.remainder(60);
+    final seconds = diff.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Color _remainingTimeColor(ThemeData theme) {
+    final dateEndStr = widget.quiz['date_end'];
+    if (dateEndStr == null)
+      return theme.textTheme.bodyLarge?.color ?? Colors.white;
+    final dateEnd = DateTime.tryParse(dateEndStr)?.toLocal();
+    if (dateEnd == null)
+      return theme.textTheme.bodyLarge?.color ?? Colors.white;
+    final diff = dateEnd.difference(DateTime.now());
+    if (diff.isNegative) return Colors.red;
+    if (diff.inMinutes < 5) return Colors.red;
+    if (diff.inMinutes < 15) return Colors.orange;
+    return theme.textTheme.bodyLarge?.color ?? Colors.white;
+  }
+
+  Future<void> _extendQuizTime() async {
+    final token = Provider.of<UserProvider>(context, listen: false).token;
+    if (token == null) return;
+
+    final dateEndStr = widget.quiz['date_end'];
+    final dateStartStr = widget.quiz['date_start'];
+    if (dateEndStr == null || dateStartStr == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Hiányzó dátum adatok: start=$dateStartStr, end=$dateEndStr',
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    final dateEnd = DateTime.tryParse(dateEndStr);
+    final dateStart = DateTime.tryParse(dateStartStr);
+    if (dateEnd == null || dateStart == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Érvénytelen dátum formátum: start=$dateStartStr, end=$dateEndStr',
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Adding 1 second to satisfy server constraint "You can only delay it"
+    // due to potential precision loss (server microseconds vs response milliseconds)
+    final safeStart = dateStart.add(const Duration(seconds: 1));
+    final newEnd = dateEnd.add(const Duration(minutes: 5));
+
+    final result = await ApiService().updateQuiz(
+      token,
+      widget.quiz['id'],
+      safeStart.toUtc().toIso8601String(),
+      newEnd.toUtc().toIso8601String(),
+    );
+
+    if (result != null && result['error'] != true && mounted) {
+      // Update local quiz data fully from the server response
+      setState(() {
+        if (result is Map<String, dynamic>) {
+          widget.quiz.addAll(result);
+        } else {
+          // Fallback if result is not a map (though it should be)
+          widget.quiz['date_end'] = newEnd.toUtc().toIso8601String();
+          widget.quiz['date_start'] = safeStart.toUtc().toIso8601String();
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('+5 perc hozzáadva a teszthez!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else if (mounted) {
+      final errorMsg = result?['message'] ?? 'Ismeretlen hiba';
+      final statusCode = result?['status'] ?? '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Hiba ($statusCode): $errorMsg'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
   Widget _buildDashboardBar(BuildContext context) {
     final theme = Theme.of(context);
+    final remainingTime = _remainingTimeString();
+    final timeColor = _remainingTimeColor(theme);
     final writingCount = _members.where((m) => m['status'] == 'writing').length;
     final blockedCount = _members.where((m) => m['status'] == 'blocked').length;
     final submittedCount = _members
@@ -1308,16 +1472,16 @@ class _AdminPageState extends State<AdminPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        "45:00",
+                        remainingTime,
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: theme.textTheme.bodyLarge?.color,
+                          color: timeColor,
                         ),
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: _extendQuizTime,
                         icon: const Icon(Icons.more_time, size: 28),
                         tooltip: "+5 perc",
                         color: theme.primaryColor,
@@ -1376,7 +1540,7 @@ class _AdminPageState extends State<AdminPage> {
                         Positioned(
                           left: 0,
                           child: IconButton(
-                            onPressed: () {},
+                            onPressed: _extendQuizTime,
                             icon: const Icon(Icons.more_time, size: 28),
                             tooltip: "+5 perc",
                             color: theme.primaryColor,
@@ -1392,11 +1556,11 @@ class _AdminPageState extends State<AdminPage> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              "45:00",
+                              remainingTime,
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
-                                color: theme.textTheme.bodyLarge?.color,
+                                color: timeColor,
                               ),
                             ),
                           ],

@@ -14,18 +14,12 @@ class ApiException implements Exception {
 class ApiService {
   // Az API alap URL-je. Győződj meg róla, hogy a szerver ezen a címen fut.
   //static const String _baseUrl = 'http://127.0.0.1:8000/api';
-  static const String _baseUrl = 'https://one3-s1-3-vizsgaremek.onrender.com/api';
+  static const String _baseUrl =
+      'https://one3-s1-3-vizsgaremek.onrender.com/api';
 
   // Bejelentkezési funkció
   // Visszatérési érték: A szervertől kapott token, ha sikeres, egyébként null.
   Future<String?> login(String username, String password) async {
-    // --- TESZT MÓD ---
-    if (username == 'test' && password == 'test') {
-      debugPrint('TESZT MÓD: Sikeres bejelentkezés');
-      return 'test_token';
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/login');
     try {
       final response = await http.post(
@@ -91,25 +85,6 @@ class ApiService {
 
   // Felhasználói profil lekérése
   Future<User?> getUserProfile(String token) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Mock profil adatok visszaadása');
-      return User(
-        id: 1,
-        username: 'testuser',
-        isSuperuser: true,
-        firstName: 'Teszt',
-        lastName: 'Elek',
-        email: 'teszt.elek@example.com',
-        isStaff: true,
-        isActive: true,
-        dateJoined: DateTime.now().subtract(const Duration(days: 365)),
-        nickname: 'Teszter',
-        pfpUrl: 'https://via.placeholder.com/150',
-      );
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me');
     try {
       final response = await http.get(
@@ -139,13 +114,6 @@ class ApiService {
     String token,
     Map<String, dynamic> data,
   ) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Profil frissítés szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me');
     try {
       final response = await http.patch(
@@ -177,13 +145,6 @@ class ApiService {
     String currentPassword,
     String newPassword,
   ) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Jelszó módosítás szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me/change-password');
     try {
       final response = await http.post(
@@ -214,13 +175,6 @@ class ApiService {
 
   // Fiók törlése
   Future<bool> deleteAccount(String token, String password) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Fiók törlése szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me');
     try {
       final response = await http.delete(
@@ -252,13 +206,6 @@ class ApiService {
     String newEmail,
     String password,
   ) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Email módosítás szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me/change-email');
     try {
       final response = await http.post(
@@ -663,10 +610,17 @@ class ApiService {
   Future<Map<String, dynamic>?> updateQuiz(
     String token,
     int quizId,
-    DateTime start,
-    DateTime end,
+    String dateStartIso,
+    String dateEndIso,
   ) async {
     final url = Uri.parse('$_baseUrl/quizzes/$quizId');
+    final body = jsonEncode({
+      'date_start': dateStartIso,
+      'date_end': dateEndIso,
+    });
+    debugPrint('=== UPDATE QUIZ ===');
+    debugPrint('URL: $url');
+    debugPrint('Body: $body');
     try {
       final response = await http.put(
         url,
@@ -674,11 +628,10 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'date_start': start.toIso8601String(),
-          'date_end': end.toIso8601String(),
-        }),
+        body: body,
       );
+
+      debugPrint('Response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(utf8.decode(response.bodyBytes));
@@ -686,11 +639,23 @@ class ApiService {
         debugPrint(
           'Teszt frissítési hiba: ${response.statusCode} - ${response.body}',
         );
-        return null;
+        // Try to parse JSON error, otherwise use status code
+        String errorMsg;
+        try {
+          final parsed = jsonDecode(response.body);
+          errorMsg = parsed['detail'] ?? parsed['error'] ?? parsed.toString();
+        } catch (_) {
+          errorMsg = 'Szerverhiba';
+        }
+        return {
+          'error': true,
+          'status': response.statusCode,
+          'message': errorMsg,
+        };
       }
     } catch (e) {
       debugPrint('Hálózati hiba teszt frissítése során: $e');
-      return null;
+      return {'error': true, 'message': e.toString()};
     }
   }
 
@@ -1095,7 +1060,12 @@ class ApiService {
   }
 
   // Resolve/Unlock an event (Teacher)
-  Future<bool> resolveEvent(String token, int eventId) async {
+  Future<bool> resolveEvent(
+    String token,
+    int eventId, {
+    String action = 'unlock',
+    String note = '',
+  }) async {
     final url = Uri.parse('$_baseUrl/quizzes/events/$eventId');
     try {
       final response = await http.post(
@@ -1104,6 +1074,7 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
+        body: jsonEncode({'action': action, 'note': note}),
       );
 
       return response.statusCode == 200;
@@ -1232,7 +1203,7 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'grade': grade}),
+        body: jsonEncode({'new_grade': grade}),
       );
 
       return response.statusCode == 200;
@@ -1260,6 +1231,36 @@ class ApiService {
       }
     } catch (e) {
       return null;
+    }
+  }
+
+  // Get user results for a group
+  Future<List<Map<String, dynamic>>> getUserResults(
+    String token,
+    int groupId,
+  ) async {
+    final url = Uri.parse('$_baseUrl/quizzes/group/$groupId/results');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint(
+          'Eredmények lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba eredmények lekérése során: $e');
+      return [];
     }
   }
 }
