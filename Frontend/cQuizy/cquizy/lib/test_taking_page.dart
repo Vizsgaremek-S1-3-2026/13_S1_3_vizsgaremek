@@ -45,6 +45,7 @@ class _TestTakingPageState extends State<TestTakingPage>
     with WidgetsBindingObserver, WindowListener {
   // --- Protection State ---
   bool _isBlacklisted = false;
+  bool _isSubmitting = false;
   bool _isOffline = false;
   bool _isKioskModeActive = true;
   DateTime? _finishTime;
@@ -695,149 +696,13 @@ class _TestTakingPageState extends State<TestTakingPage>
   void _triggerAntiCheat() {
     // Double-check: only block if anticheat is enabled
     if (!widget.anticheat) return;
+    if (_isSubmitting) return; // Don't re-trigger during submission
 
     if (!_isBlacklisted) {
       setState(() {
         _isBlacklisted = true;
       });
-      _showAntiCheatDialog();
     }
-  }
-
-  void _showAntiCheatDialog() {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.8),
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation1, animation2) => Container(),
-      transitionBuilder: (context, a1, a2, child) {
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.8, end: 1.0).animate(a1),
-          child: FadeTransition(
-            opacity: a1,
-            child: AlertDialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              content: Container(
-                width: 400,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.red, width: 3),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(20),
-                        ),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(
-                            Icons.gpp_bad_rounded,
-                            color: Colors.white,
-                            size: 64,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'LE LETTÉL TILTVA!',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Detektáltuk, hogy elhagytad a teszt felületét. A tesztedet blokkoltuk.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextButton(
-                                  onPressed: () {
-                                    // Navigate back to HomePage
-                                    _exitFullscreen().then((_) {
-                                      Navigator.of(context).pushAndRemoveUntil(
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              HomePage(onLogout: () {}),
-                                        ),
-                                        (route) => false,
-                                      );
-                                    });
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.grey[600],
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Lezárás',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    setState(() => _isBlacklisted = false);
-                                    Navigator.pop(context);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Engedélyez',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   String _getFormattedRemainingTime() {
@@ -958,7 +823,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                               ),
                             ),
 
-                            // 3. Anti-Cheat & Kiosk Overlays
+                            // 3. Anti-Cheat Overlay
                             if (_isBlacklisted)
                               Container(
                                 color: Colors.black87,
@@ -967,66 +832,291 @@ class _TestTakingPageState extends State<TestTakingPage>
                                     margin: const EdgeInsets.all(32),
                                     padding: const EdgeInsets.all(32),
                                     decoration: BoxDecoration(
-                                      color: Colors.red,
+                                      color: theme.cardColor,
                                       borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 4,
-                                      ),
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         const Icon(
-                                          Icons.gpp_bad_rounded,
-                                          color: Colors.white,
-                                          size: 80,
+                                          Icons.warning_amber_rounded,
+                                          color: Colors.orange,
+                                          size: 64,
                                         ),
                                         const SizedBox(height: 24),
                                         const Text(
-                                          'TESZT ZÁROLVA',
+                                          'Csalás észlelve',
                                           style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 32,
+                                            fontSize: 28,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                         const SizedBox(height: 16),
                                         const Text(
-                                          'Tiltott tevékenységet észleltünk. A folytatáshoz tanári engedély szükséges.',
+                                          'A rendszer szabálytalan tevékenységet észlelt.\nAdd be a teszted, vagy várd meg a tanári feloldást.',
                                           textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 18,
-                                          ),
+                                          style: TextStyle(fontSize: 16),
                                         ),
                                         const SizedBox(height: 32),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            ElevatedButton(
-                                              onPressed: () {
-                                                // In real app, verify strict password or teacher action
-                                                // For demo, just unlock
-                                                setState(() {
-                                                  _isBlacklisted = false;
-                                                });
-                                              },
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.white,
-                                                foregroundColor: Colors.red,
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 32,
-                                                      vertical: 16,
-                                                    ),
-                                              ),
-                                              child: const Text(
-                                                'Feloldás (Demo)',
-                                              ),
+                                        // Submit button
+                                        ElevatedButton.icon(
+                                          onPressed: _isSubmitting
+                                              ? null
+                                              : () {
+                                                  _isSubmitting = true;
+                                                  setState(() {});
+
+                                                  // Navigate helper - guaranteed to run
+                                                  void navigateToHome() {
+                                                    if (!mounted) return;
+                                                    Navigator.of(
+                                                      context,
+                                                    ).pushAndRemoveUntil(
+                                                      MaterialPageRoute(
+                                                        builder: (c) => HomePage(
+                                                          onLogout: () {
+                                                            Provider.of<
+                                                                  UserProvider
+                                                                >(
+                                                                  c,
+                                                                  listen: false,
+                                                                )
+                                                                .logout();
+                                                          },
+                                                        ),
+                                                      ),
+                                                      (route) => false,
+                                                    );
+                                                  }
+
+                                                  try {
+                                                    // Cleanup protections first
+                                                    if (widget.anticheat) {
+                                                      try {
+                                                        _disableScreenshotProtection();
+                                                      } catch (_) {}
+                                                      try {
+                                                        _restoreVolume();
+                                                      } catch (_) {}
+                                                      try {
+                                                        _cleanupDesktopKeyboardProtection();
+                                                      } catch (_) {}
+                                                      try {
+                                                        _cleanupDesktopScreenProtection();
+                                                      } catch (_) {}
+                                                    }
+                                                    try {
+                                                      _exitFullscreen();
+                                                    } catch (_) {}
+
+                                                    // Try to submit answers in background
+                                                    final token = context
+                                                        .read<UserProvider>()
+                                                        .token;
+                                                    if (token != null) {
+                                                      try {
+                                                        final formattedAnswers =
+                                                            <
+                                                              Map<
+                                                                String,
+                                                                dynamic
+                                                              >
+                                                            >[];
+                                                        _userAnswers.forEach((
+                                                          key,
+                                                          value,
+                                                        ) {
+                                                          try {
+                                                            final int blockId =
+                                                                key;
+                                                            final q = _questions
+                                                                .firstWhere(
+                                                                  (e) =>
+                                                                      e['id'] ==
+                                                                      blockId,
+                                                                  orElse: () =>
+                                                                      <
+                                                                        String,
+                                                                        dynamic
+                                                                      >{},
+                                                                );
+                                                            if (q.isEmpty ||
+                                                                value == null)
+                                                              return;
+                                                            final type =
+                                                                q['type'] ?? '';
+                                                            if (type ==
+                                                                'single') {
+                                                              formattedAnswers
+                                                                  .add({
+                                                                    'block_id':
+                                                                        blockId,
+                                                                    'option_id':
+                                                                        value,
+                                                                    'answer_text':
+                                                                        '',
+                                                                  });
+                                                            } else if (type ==
+                                                                'multiple') {
+                                                              for (var id
+                                                                  in (value
+                                                                      as List)) {
+                                                                formattedAnswers.add({
+                                                                  'block_id':
+                                                                      blockId,
+                                                                  'option_id':
+                                                                      id,
+                                                                  'answer_text':
+                                                                      '',
+                                                                });
+                                                              }
+                                                            } else if (type ==
+                                                                    'text' ||
+                                                                type ==
+                                                                    'range') {
+                                                              formattedAnswers.add({
+                                                                'block_id':
+                                                                    blockId,
+                                                                'answer_text': value
+                                                                    .toString(),
+                                                                'option_id':
+                                                                    null,
+                                                              });
+                                                            } else if (type ==
+                                                                'matching') {
+                                                              (value as Map).forEach((
+                                                                leftId,
+                                                                userString,
+                                                              ) {
+                                                                formattedAnswers.add({
+                                                                  'block_id':
+                                                                      blockId,
+                                                                  'option_id':
+                                                                      leftId,
+                                                                  'answer_text':
+                                                                      userString,
+                                                                });
+                                                              });
+                                                            } else if (type ==
+                                                                'ordering') {
+                                                              for (var item
+                                                                  in (value
+                                                                      as List)) {
+                                                                formattedAnswers.add({
+                                                                  'block_id':
+                                                                      blockId,
+                                                                  'option_id':
+                                                                      item['id'],
+                                                                  'answer_text':
+                                                                      '',
+                                                                });
+                                                              }
+                                                            } else if (type ==
+                                                                'gap_fill') {
+                                                              final gapsMap =
+                                                                  value as Map;
+                                                              final sortedKeys =
+                                                                  gapsMap.keys
+                                                                      .toList()
+                                                                    ..sort(
+                                                                      (a, b) =>
+                                                                          int.parse(
+                                                                            a.toString(),
+                                                                          ).compareTo(
+                                                                            int.parse(
+                                                                              b.toString(),
+                                                                            ),
+                                                                          ),
+                                                                    );
+                                                              for (var k
+                                                                  in sortedKeys) {
+                                                                formattedAnswers.add({
+                                                                  'block_id':
+                                                                      blockId,
+                                                                  'answer_text':
+                                                                      gapsMap[k],
+                                                                  'option_id':
+                                                                      null,
+                                                                });
+                                                              }
+                                                            } else if (type ==
+                                                                'sentence_ordering') {
+                                                              for (var word
+                                                                  in (value
+                                                                      as List)) {
+                                                                formattedAnswers.add({
+                                                                  'block_id':
+                                                                      blockId,
+                                                                  'answer_text':
+                                                                      word.toString(),
+                                                                });
+                                                              }
+                                                            }
+                                                          } catch (
+                                                            _
+                                                          ) {} // Skip problematic answers
+                                                        });
+                                                        final submissionData = {
+                                                          'quiz_id':
+                                                              widget.quiz['id'],
+                                                          'answers':
+                                                              formattedAnswers,
+                                                        };
+                                                        ApiService()
+                                                            .submitQuiz(
+                                                              token,
+                                                              submissionData,
+                                                            )
+                                                            .catchError(
+                                                              (_) => null,
+                                                            );
+                                                      } catch (
+                                                        _
+                                                      ) {} // API submission failed silently
+                                                    }
+                                                  } catch (_) {
+                                                    // Something unexpected - still navigate
+                                                  }
+
+                                                  // ALWAYS navigate to HomePage
+                                                  navigateToHome();
+                                                },
+                                          icon: const Icon(
+                                            Icons.send,
+                                            size: 18,
+                                          ),
+                                          label: Text(
+                                            _isSubmitting
+                                                ? 'Beadás...'
+                                                : 'Beadás',
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: theme.primaryColor,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 32,
+                                              vertical: 16,
                                             ),
-                                          ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        // Wait for teacher button
+                                        OutlinedButton.icon(
+                                          onPressed:
+                                              null, // Disabled - waiting for teacher
+                                          icon: const Icon(
+                                            Icons.hourglass_top,
+                                            size: 18,
+                                          ),
+                                          label: const Text(
+                                            'Várakozás a tanári feloldásra...',
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 12,
+                                            ),
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -2265,7 +2355,7 @@ class _TestTakingPageState extends State<TestTakingPage>
     );
   }
 
-  Future<void> _submitTest() async {
+  Future<void> _submitTest({bool forceExit = false}) async {
     final token = context.read<UserProvider>().token;
     if (token == null) return;
 
@@ -2379,13 +2469,31 @@ class _TestTakingPageState extends State<TestTakingPage>
       'answers': formattedAnswers,
     };
 
+    bool success = false;
     try {
       final response = await ApiService().submitQuiz(token, submissionData);
 
       if (mounted) Navigator.pop(context); // Close loading
 
       if (response != null) {
-        // Clean up all protections before navigating away
+        success = true;
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Hiba a beadás során.')));
+        }
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading if error
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Hiba: $e')));
+      }
+    } finally {
+      // Exit and cleanup only on success or if forced (cheat detetcion)
+      if (success || forceExit) {
         if (widget.anticheat) {
           _disableScreenshotProtection();
           _restoreVolume();
@@ -2395,22 +2503,17 @@ class _TestTakingPageState extends State<TestTakingPage>
         await _exitFullscreen();
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (c) => HomePage(onLogout: () {})),
+            MaterialPageRoute(
+              builder: (c) => HomePage(
+                onLogout: () {
+                  Provider.of<UserProvider>(c, listen: false).logout();
+                },
+              ),
+            ),
             (route) => false,
           );
         }
-      } else {
-        if (mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Hiba a beadás során.')));
       }
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hiba: $e')));
     }
   }
 

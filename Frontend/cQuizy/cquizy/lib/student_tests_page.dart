@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -295,6 +296,31 @@ class _StudentTestsPageState extends State<StudentTestsPage>
     BuildContext context,
     Map<String, dynamic> quiz,
   ) {
+    // Check for web restrictions first
+    if (kIsWeb) {
+      final group = quiz['group_obj'];
+      final isLocked = group != null && (group['kiosk'] ?? false);
+
+      if (isLocked) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Nem támogatott platform'),
+            content: const Text(
+              'Ez a teszt "Zárolt" módban van, ezért csak az asztali vagy mobil alkalmazásból indítható el.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Rendben'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
