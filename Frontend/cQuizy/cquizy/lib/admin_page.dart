@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 
+import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'services/pdf_service.dart';
 import 'theme.dart';
@@ -149,11 +150,18 @@ class _AdminPageState extends State<AdminPage> {
       for (var sub in submissions) {
         final userId = sub['user_id'].toString(); // Assuming user_id exists
         // Normalize status
+        String rawStatus = (sub['status'] ?? '').toString().toLowerCase();
         String status = 'writing';
-        if (sub['finished_at'] != null) status = 'submitted';
 
-        // Calculate score if available
-        // ...
+        if (sub['finished_at'] != null) {
+          status = 'submitted';
+        } else if (rawStatus == 'submitted' ||
+            rawStatus == 'finished' ||
+            rawStatus == 'completed') {
+          status = 'submitted';
+        } else if (rawStatus == 'closed') {
+          status = 'closed';
+        }
 
         studentMap[userId] = {
           'name':
@@ -184,6 +192,38 @@ class _AdminPageState extends State<AdminPage> {
           if (event['resolved'] != true) {
             studentMap[userId]!['status'] = 'blocked';
           }
+        }
+      }
+
+      // Add remaining group members who haven't started
+      for (var s in targetStudents) {
+        final userObj = s['user'];
+        if (userObj == null) continue;
+
+        final uid = userObj['id'].toString();
+        // If not already in the map (from submission or event)
+        if (!studentMap.containsKey(uid)) {
+          // Construct name
+          String displayName = userObj['username'] ?? 'Névtelen';
+          if (userObj['last_name'] != null && userObj['first_name'] != null) {
+            displayName = '${userObj['last_name']} ${userObj['first_name']}';
+          } else if (userObj['nickname'] != null) {
+            displayName = userObj['nickname'];
+          }
+
+          studentMap[uid] = {
+            'name': displayName,
+            'status': 'idle',
+            'wasBlocked': false,
+            'score': 0,
+            'maxScore': 100,
+            'grade': null,
+            'profilePicture':
+                userObj['pfp_url'] ?? 'https://i.pravatar.cc/150?u=$uid',
+            'user_id': userObj['id'],
+            // 'email' not in the provided JSON sample, omitting or empty
+            'email': '',
+          };
         }
       }
 
@@ -651,7 +691,7 @@ class _AdminPageState extends State<AdminPage> {
           Icon(
             _getIconForSection(_selectedSection),
             size: 64,
-            color: Theme.of(context).hintColor.withOpacity(0.2),
+            color: Theme.of(context).hintColor.withValues(alpha: 0.2),
           ),
           const SizedBox(height: 16),
           Text(
@@ -841,7 +881,7 @@ class _AdminPageState extends State<AdminPage> {
                     vertical: 8,
                   ),
                   leading: CircleAvatar(
-                    backgroundColor: theme.primaryColor.withOpacity(0.1),
+                    backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
                     backgroundImage: profilePic != null && profilePic.isNotEmpty
                         ? NetworkImage(profilePic)
                         : null,
@@ -927,8 +967,8 @@ class _AdminPageState extends State<AdminPage> {
           width: 40, // Explicit width for the track
           alignment: Alignment.bottomCenter,
           decoration: BoxDecoration(
-            color: theme.dividerColor.withOpacity(
-              0.05,
+            color: theme.dividerColor.withValues(
+              alpha: 0.05,
             ), // Subtle track background
             borderRadius: BorderRadius.circular(8),
           ),
@@ -943,12 +983,12 @@ class _AdminPageState extends State<AdminPage> {
                 decoration: BoxDecoration(
                   color: isMostFrequent
                       ? theme.primaryColor
-                      : theme.primaryColor.withOpacity(0.6),
+                      : theme.primaryColor.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: isMostFrequent
                       ? [
                           BoxShadow(
-                            color: theme.primaryColor.withOpacity(0.3),
+                            color: theme.primaryColor.withValues(alpha: 0.3),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
@@ -977,7 +1017,7 @@ class _AdminPageState extends State<AdminPage> {
           height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: _getGradeColor(grade).withOpacity(0.2), // Always faint color
+            color: _getGradeColor(grade).withValues(alpha: 0.2),
             shape: BoxShape.circle,
           ),
           child: Text(
@@ -1062,7 +1102,7 @@ class _AdminPageState extends State<AdminPage> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: theme.primaryColor.withOpacity(0.1),
+                        color: theme.primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1102,7 +1142,7 @@ class _AdminPageState extends State<AdminPage> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: theme.dividerColor.withOpacity(0.1),
+                        color: theme.dividerColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1133,7 +1173,7 @@ class _AdminPageState extends State<AdminPage> {
             border: Border(top: BorderSide(color: theme.dividerColor)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 10,
                 offset: const Offset(0, -5),
               ),
@@ -1177,7 +1217,7 @@ class _AdminPageState extends State<AdminPage> {
                     backgroundColor: theme.primaryColor,
                     foregroundColor: Colors.white,
                     elevation: 4,
-                    shadowColor: Colors.black.withOpacity(0.3),
+                    shadowColor: Colors.black.withValues(alpha: 0.3),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -1294,7 +1334,7 @@ class _AdminPageState extends State<AdminPage> {
                           size: 64,
                           color: Theme.of(
                             context,
-                          ).disabledColor.withOpacity(0.3),
+                          ).disabledColor.withValues(alpha: 0.3),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -1345,11 +1385,13 @@ class _AdminPageState extends State<AdminPage> {
 
   Color _remainingTimeColor(ThemeData theme) {
     final dateEndStr = widget.quiz['date_end'];
-    if (dateEndStr == null)
+    if (dateEndStr == null) {
       return theme.textTheme.bodyLarge?.color ?? Colors.white;
+    }
     final dateEnd = DateTime.tryParse(dateEndStr)?.toLocal();
-    if (dateEnd == null)
+    if (dateEnd == null) {
       return theme.textTheme.bodyLarge?.color ?? Colors.white;
+    }
     final diff = dateEnd.difference(DateTime.now());
     if (diff.isNegative) return Colors.red;
     if (diff.inMinutes < 5) return Colors.red;
@@ -1408,15 +1450,9 @@ class _AdminPageState extends State<AdminPage> {
     );
 
     if (result != null && result['error'] != true && mounted) {
-      // Update local quiz data fully from the server response
+      // result is always Map<String, dynamic> here
       setState(() {
-        if (result is Map<String, dynamic>) {
-          widget.quiz.addAll(result);
-        } else {
-          // Fallback if result is not a map (though it should be)
-          widget.quiz['date_end'] = newEnd.toUtc().toIso8601String();
-          widget.quiz['date_start'] = safeStart.toUtc().toIso8601String();
-        }
+        widget.quiz.addAll(result);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2105,271 +2141,492 @@ class _AdminPageState extends State<AdminPage> {
     };
   }
 
-  Widget _buildExportSection(BuildContext context) {
-    final theme = Theme.of(context);
-    final stats = _calculateStats();
+  // Preview state
+  int _previewKey = 0;
+  bool _showPreview = false;
+  LayoutCallback? _cachedPdfBuilder;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Exportálási beállítások',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: theme.textTheme.bodyLarge?.color,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  void _updatePreviewCallback() {
+    final quizTitle =
+        widget.quiz['project_name'] ?? widget.quiz['name'] ?? 'Teszt neve';
+    final groupName = widget.groupName ?? '10.A osztály';
+    final mockStudents = [
+      {
+        'name': 'Kovács Anna',
+        'grade': 5,
+        'score': 92,
+        'maxScore': 100,
+        'status': 'submitted',
+      },
+      {
+        'name': 'Nagy Péter',
+        'grade': 4,
+        'score': 78,
+        'maxScore': 100,
+        'status': 'submitted',
+      },
+      {
+        'name': 'Szabó Eszter',
+        'grade': 3,
+        'score': 61,
+        'maxScore': 100,
+        'status': 'submitted',
+      },
+      {
+        'name': 'Tóth Bence',
+        'grade': 2,
+        'score': 45,
+        'maxScore': 100,
+        'status': 'submitted',
+      },
+      {
+        'name': 'Horváth Réka',
+        'grade': 5,
+        'score': 95,
+        'maxScore': 100,
+        'status': 'submitted',
+      },
+      {
+        'name': 'Kiss Dávid',
+        'grade': 1,
+        'score': 28,
+        'maxScore': 100,
+        'status': 'submitted',
+      },
+    ];
+    final mockStats = {
+      'average': 66.5,
+      'submitted': 6,
+      'total': 8,
+      'distribution': {1: 1, 2: 1, 3: 1, 4: 1, 5: 2},
+    };
+    final options = {
+      'orientation': _optOrientation,
+      'compactMode': _optCompactMode,
+      'rowNumbering': _optRowNumbering,
+      'stripedRows': _optStripedRows,
+      'showBorders': _optShowBorders,
+      'anonymize': _optAnonymize,
+      'signature': _optSignature,
+      'timestamp': _optTimestamp,
+      'coverPage': _optCoverPage,
+      'answerKey': _optAnswerKey,
+      'onlyIncorrect': _optOnlyIncorrect,
+      'customNote': _optCustomNote,
+      'showStudentId': _optShowStudentId,
+      'watermark': _optWatermark,
+      'pageNumbers': _optPageNumbers,
+      'passFail': _optPassFail,
+      'pageSize': _optPageSize,
+      'grayscale': _optGrayscale,
+      'showPoints': _optShowPoints,
+      'hideCorrect': _optHideCorrect,
+    };
+
+    _cachedPdfBuilder = (format) => PdfService.generateGradesReport(
+      quizTitle: quizTitle,
+      groupName: groupName,
+      students: mockStudents,
+      stats: mockStats,
+      quizData: null,
+      includeStats: _exportIncludeStats,
+      includeStudentList: _exportIncludeStudentList,
+      includeStudentDetails: false,
+      includeQuestions: false,
+      includeWarnings: _exportIncludeWarnings,
+      warningLayout: _exportWarningLayout,
+      options: options,
+    );
+  }
+
+  Widget _buildExportSection(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 900;
+
+        // Settings Column
+        final settingsColumn = SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildExportSettingsUI(context),
+              const SizedBox(height: 24),
+              // Preview + Export buttons
+              Row(
                 children: [
-                  Text(
-                    'Tartalom',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: theme.textTheme.bodyLarge?.color,
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          if (_showPreview) {
+                            _showPreview = false;
+                          } else {
+                            _updatePreviewCallback();
+                            _showPreview = true;
+                            _previewKey++;
+                          }
+                        });
+                      },
+                      icon: Icon(
+                        _showPreview
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      label: Text(
+                        _showPreview
+                            ? 'Előnézet elrejtése'
+                            : 'Előnézet megtekintése',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Theme.of(context).primaryColor),
+                        foregroundColor: Theme.of(context).primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _buildExportToggle(
-                    'Statisztikák (átlag, eloszlás)',
-                    _exportIncludeStats,
-                    (value) => setState(() => _exportIncludeStats = value),
-                  ),
-                  _buildExportToggle(
-                    'Tanulók listája (név, pontszám, jegy)',
-                    _exportIncludeStudentList,
-                    (value) =>
-                        setState(() => _exportIncludeStudentList = value),
-                  ),
-                  _buildExportToggle(
-                    'Tanulói részletek (válaszok, idő)',
-                    _exportIncludeStudentDetails,
-                    (value) =>
-                        setState(() => _exportIncludeStudentDetails = value),
-                  ),
-                  _buildExportToggle(
-                    'Kérdések és helyes válaszok',
-                    _exportIncludeQuestions,
-                    (value) => setState(() => _exportIncludeQuestions = value),
-                  ),
-                  _buildExportToggle(
-                    'Tanulói Státuszok (pl. Leadta, Letiltva)',
-                    _exportIncludeWarnings,
-                    (value) => setState(() => _exportIncludeWarnings = value),
+                  if (_showPreview) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _updatePreviewCallback();
+                            _previewKey++;
+                          });
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Frissítés'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(
+                            color: Theme.of(context).primaryColor,
+                          ),
+                          foregroundColor: Theme.of(context).primaryColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _exportPdf(context),
+                      icon: const Icon(Icons.picture_as_pdf),
+                      label: const Text('PDF exportálása'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
-          // --- Advanced Settings ---
-          const SizedBox(height: 24),
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        );
+
+        if (!isWide || !_showPreview) {
+          return settingsColumn;
+        }
+
+        // Split View for Desktop
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Settings Panel
+            Expanded(flex: 2, child: settingsColumn),
+            // Vertical Divider
+            Container(
+              width: 1,
+              height: double.infinity,
+              color: Theme.of(context).dividerColor,
             ),
-            child: Theme(
-              data: theme.copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                title: Text(
-                  'Bővített beállítások',
+            // Preview Panel
+            Expanded(
+              flex: 3,
+              child: Container(
+                color: Colors.grey.shade100,
+                child: _buildPdfPreviewPane(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPdfPreviewPane() {
+    if (_cachedPdfBuilder == null) {
+      return const Center(child: Text("Kattints az előnézet gombra!"));
+    }
+
+    return KeyedSubtree(
+      key: ValueKey(_previewKey),
+      child: PdfPreview(
+        build: _cachedPdfBuilder!,
+        allowSharing: false,
+        allowPrinting: false,
+        initialPageFormat: _optOrientation == 'landscape'
+            ? PdfPageFormat.a4.landscape
+            : PdfPageFormat.a4,
+        canChangeOrientation: false,
+        canChangePageFormat: false,
+        maxPageWidth: 800,
+        loadingWidget: Center(child: CircularProgressIndicator()),
+        onError: (context, error) => Center(child: Text('Hiba: $error')),
+      ),
+    );
+  }
+
+  Future<void> _exportPdf(BuildContext context) async {
+    final quizTitle =
+        widget.quiz['project_name'] ?? widget.quiz['name'] ?? 'Teszt';
+    final stats = _calculateStats();
+    final options = {
+      'orientation': _optOrientation,
+      'compactMode': _optCompactMode,
+      'rowNumbering': _optRowNumbering,
+      'stripedRows': _optStripedRows,
+      'showBorders': _optShowBorders,
+      'anonymize': _optAnonymize,
+      'signature': _optSignature,
+      'timestamp': _optTimestamp,
+      'coverPage': _optCoverPage,
+      'answerKey': _optAnswerKey,
+      'onlyIncorrect': _optOnlyIncorrect,
+      'customNote': _optCustomNote,
+      'showStudentId': _optShowStudentId,
+      'watermark': _optWatermark,
+      'pageNumbers': _optPageNumbers,
+      'passFail': _optPassFail,
+      'pageSize': _optPageSize,
+      'grayscale': _optGrayscale,
+      'showPoints': _optShowPoints,
+      'hideCorrect': _optHideCorrect,
+      'fontSize': _optFontSize,
+      'feedbackBox': _optFeedbackBox,
+    };
+    final pdf = await PdfService.generateGradesReport(
+      quizTitle: quizTitle,
+      groupName: widget.groupName ?? '',
+      students: _members,
+      stats: stats,
+      quizData: _fullQuizData,
+      includeStats: _exportIncludeStats,
+      includeStudentList: _exportIncludeStudentList,
+      includeStudentDetails: _exportIncludeStudentDetails,
+      includeQuestions: _exportIncludeQuestions,
+      includeWarnings: _exportIncludeWarnings,
+      warningLayout: _exportWarningLayout,
+      options: options,
+    );
+    Printing.sharePdf(bytes: pdf, filename: '${quizTitle}_admin_report.pdf');
+  }
+
+  Widget _buildExportSettingsUI(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Filter out students for stats passed to options if needed, but PdfService takes full list.
+    // _members is already filtered/processed in _fetchData.
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        /*Text(
+          'Exportálási beállítások',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: theme.textTheme.bodyLarge?.color,
+          ),
+        ),
+        const SizedBox(height: 24),*/
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tartalom',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: theme.primaryColor,
+                    color: theme.textTheme.bodyLarge?.color,
                   ),
                 ),
-                leading: Icon(Icons.tune, color: theme.primaryColor),
-                childrenPadding: const EdgeInsets.all(16),
-                children: [
-                  // 1. Megjelenés (Layout)
-                  _buildSettingsGroup('Megjelenés', [
-                    _buildDropdown(
-                      'Tájolás',
-                      _optOrientation,
-                      ['portrait', 'landscape'],
-                      ['Álló', 'Fekvő'],
-                      (v) => setState(() => _optOrientation = v!),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Kompakt mód',
-                      _optCompactMode,
-                      (v) => setState(() => _optCompactMode = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Szürkeárnyalatos',
-                      _optGrayscale,
-                      (v) => setState(() => _optGrayscale = v),
-                    ),
-                  ]),
-                  const Divider(),
-
-                  // 2. Táblázatok (Tables)
-                  _buildSettingsGroup('Táblázatok', [
-                    _buildSettingsGroupToggle(
-                      'Sorszámozás',
-                      _optRowNumbering,
-                      (v) => setState(() => _optRowNumbering = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Zebra csíkozás',
-                      _optStripedRows,
-                      (v) => setState(() => _optStripedRows = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Szegélyek megjelenítése',
-                      _optShowBorders,
-                      (v) => setState(() => _optShowBorders = v),
-                    ),
-                  ]),
-                  const Divider(),
-
-                  // 3. Adatvédelem (Privacy)
-                  _buildSettingsGroup('Adatvédelem', [
-                    _buildSettingsGroupToggle(
-                      'Névtelenítés',
-                      _optAnonymize,
-                      (v) => setState(() => _optAnonymize = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Pass/Fail kiemelés',
-                      _optPassFail,
-                      (v) => setState(() => _optPassFail = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Tanuló ID mutatása',
-                      _optShowStudentId,
-                      (v) => setState(() => _optShowStudentId = v),
-                    ),
-                  ]),
-                  const Divider(),
-
-                  // 4. Extrák (Extras)
-                  _buildSettingsGroup('Extrák', [
-                    _buildSettingsGroupToggle(
-                      'Aláírás helye',
-                      _optSignature,
-                      (v) => setState(() => _optSignature = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Létrehozás ideje',
-                      _optTimestamp,
-                      (v) => setState(() => _optTimestamp = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Címlap',
-                      _optCoverPage,
-                      (v) => setState(() => _optCoverPage = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Megoldókulcs (végén)',
-                      _optAnswerKey,
-                      (v) => setState(() => _optAnswerKey = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Csak hibás válaszok',
-                      _optOnlyIncorrect,
-                      (v) => setState(() => _optOnlyIncorrect = v),
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  TextField(
-                    onChanged: (v) => setState(() => _optCustomNote = v),
-                    decoration: InputDecoration(
-                      labelText: 'Megjegyzés a lábléchez',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      isDense: true,
-                    ),
-                  ),
-                ],
-              ),
+                const SizedBox(height: 12),
+                _buildExportToggle(
+                  'Statisztikák (átlag, eloszlás)',
+                  _exportIncludeStats,
+                  (value) => setState(() => _exportIncludeStats = value),
+                ),
+                _buildExportToggle(
+                  'Tanulók listája (név, pontszám, jegy)',
+                  _exportIncludeStudentList,
+                  (value) => setState(() => _exportIncludeStudentList = value),
+                ),
+                _buildExportToggle(
+                  'Tanulói részletek (válaszok, idő)',
+                  _exportIncludeStudentDetails,
+                  (value) =>
+                      setState(() => _exportIncludeStudentDetails = value),
+                ),
+                _buildExportToggle(
+                  'Kérdések és helyes válaszok',
+                  _exportIncludeQuestions,
+                  (value) => setState(() => _exportIncludeQuestions = value),
+                ),
+                _buildExportToggle(
+                  'Tanulói Státuszok (pl. Leadta, Letiltva)',
+                  _exportIncludeWarnings,
+                  (value) => setState(() => _exportIncludeWarnings = value),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 32),
-          Center(
-            child: SizedBox(
-              width: 250,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  final pdf = await PdfService.generateGradesReport(
-                    quizTitle: widget.quiz['project_name'] ?? 'Teszt',
-                    groupName: widget.groupName ?? '',
-                    students: _members,
-                    stats: stats,
-                    quizData: _fullQuizData,
-                    includeStats: _exportIncludeStats,
-                    includeStudentList: _exportIncludeStudentList,
-                    includeStudentDetails: _exportIncludeStudentDetails,
-                    includeQuestions: _exportIncludeQuestions,
-                    includeWarnings: _exportIncludeWarnings,
-                    warningLayout: _exportWarningLayout,
-                    // New Options passed as a Map to avoid huge argument list
-                    options: {
-                      'orientation': _optOrientation,
-                      'rowNumbering': _optRowNumbering,
-                      'stripedRows': _optStripedRows,
-                      'showBorders': _optShowBorders,
-                      'anonymize': _optAnonymize,
-                      'signature': _optSignature,
-                      'timestamp': _optTimestamp,
-                      'coverPage': _optCoverPage,
-                      'answerKey': _optAnswerKey,
-                      'onlyIncorrect': _optOnlyIncorrect,
-                      'grayscale': _optGrayscale,
-                      'compactMode': _optCompactMode,
-                      'customNote': _optCustomNote,
-                      'passFail': _optPassFail,
-                      // Missing options added
-                      'pageSize': _optPageSize,
-                      'fontSize': _optFontSize,
-                      'watermark': _optWatermark,
-                      'pageNumbers': _optPageNumbers,
-                      'feedbackBox': _optFeedbackBox,
-                      'showPoints': _optShowPoints,
-                      'hideCorrect': _optHideCorrect,
-                      'showStudentId': _optShowStudentId,
-                    },
-                  );
-                  Printing.sharePdf(
-                    bytes: pdf,
-                    filename:
-                        '${widget.quiz['project_name'] ?? 'Teszt'}_admin_report.pdf',
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  shadowColor: Colors.black.withOpacity(0.3),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.picture_as_pdf, size: 24),
-                label: const Text(
-                  'PDF generálása',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        // --- Advanced Settings ---
+        const SizedBox(height: 24),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Theme(
+            data: theme.copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              title: Text(
+                'Bővített beállítások',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: theme.primaryColor,
                 ),
               ),
+              leading: Icon(Icons.tune, color: theme.primaryColor),
+              childrenPadding: const EdgeInsets.all(16),
+              children: [
+                // 1. Megjelenés (Layout)
+                _buildSettingsGroup('Megjelenés', [
+                  _buildDropdown(
+                    'Tájolás',
+                    _optOrientation,
+                    ['portrait', 'landscape'],
+                    ['Álló', 'Fekvő'],
+                    (v) => setState(() => _optOrientation = v!),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Kompakt mód',
+                    _optCompactMode,
+                    (v) => setState(() => _optCompactMode = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Szürkeárnyalatos',
+                    _optGrayscale,
+                    (v) => setState(() => _optGrayscale = v),
+                  ),
+                ]),
+                const Divider(),
+
+                // 2. Táblázatok (Tables)
+                _buildSettingsGroup('Táblázatok', [
+                  _buildSettingsGroupToggle(
+                    'Sorszámozás',
+                    _optRowNumbering,
+                    (v) => setState(() => _optRowNumbering = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Zebra csíkozás',
+                    _optStripedRows,
+                    (v) => setState(() => _optStripedRows = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Szegélyek megjelenítése',
+                    _optShowBorders,
+                    (v) => setState(() => _optShowBorders = v),
+                  ),
+                ]),
+                const Divider(),
+
+                // 3. Adatvédelem (Privacy)
+                _buildSettingsGroup('Adatvédelem', [
+                  _buildSettingsGroupToggle(
+                    'Névtelenítés',
+                    _optAnonymize,
+                    (v) => setState(() => _optAnonymize = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Pass/Fail kiemelés',
+                    _optPassFail,
+                    (v) => setState(() => _optPassFail = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Tanuló ID mutatása',
+                    _optShowStudentId,
+                    (v) => setState(() => _optShowStudentId = v),
+                  ),
+                ]),
+                const Divider(),
+
+                // 4. Extrák (Extras)
+                _buildSettingsGroup('Extrák', [
+                  _buildSettingsGroupToggle(
+                    'Aláírás helye',
+                    _optSignature,
+                    (v) => setState(() => _optSignature = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Létrehozás ideje',
+                    _optTimestamp,
+                    (v) => setState(() => _optTimestamp = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Címlap',
+                    _optCoverPage,
+                    (v) => setState(() => _optCoverPage = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Megoldókulcs (végén)',
+                    _optAnswerKey,
+                    (v) => setState(() => _optAnswerKey = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Csak hibás válaszok',
+                    _optOnlyIncorrect,
+                    (v) => setState(() => _optOnlyIncorrect = v),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                TextField(
+                  onChanged: (v) => setState(() => _optCustomNote = v),
+                  decoration: InputDecoration(
+                    labelText: 'Megjegyzés a lábléchez',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    isDense: true,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -2396,14 +2653,13 @@ class _AdminPageState extends State<AdminPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: theme.primaryColor,
+            activeThumbColor: theme.primaryColor,
           ),
         ],
       ),
     );
   }
 
-  // Helper widgets for settings
   Widget _buildSettingsGroup(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2434,7 +2690,7 @@ class _AdminPageState extends State<AdminPage> {
             child: Switch(
               value: value,
               onChanged: onChanged,
-              activeColor: Theme.of(context).primaryColor,
+              activeThumbColor: Theme.of(context).primaryColor,
             ),
           ),
           const SizedBox(width: 12),

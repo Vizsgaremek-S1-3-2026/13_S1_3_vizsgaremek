@@ -6,6 +6,7 @@ import 'providers/user_provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'utils/web_protections.dart';
 import 'test_taking_page.dart';
+import 'admin_page.dart';
 
 class StudentTestsPage extends StatefulWidget {
   const StudentTestsPage({super.key});
@@ -807,6 +808,10 @@ class _StudentTestsPageState extends State<StudentTestsPage>
     final endDate = DateTime.parse(quiz['date_end']).toLocal();
     final dateFormat = DateFormat('yyyy. MM. dd. HH:mm');
 
+    // Check if user is admin of the group
+    final group = quiz['group_obj'];
+    final isAdmin = group != null && group['rank'] == 'ADMIN';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
@@ -814,8 +819,11 @@ class _StudentTestsPageState extends State<StudentTestsPage>
       child: InkWell(
         onTap: isActive
             ? () {
-                // TODO: Navigate to TestTakingPage
-                // Check if already taken?
+                if (isAdmin) {
+                  // If tapping card body, maybe also go to admin?
+                  // Or just keep the button as the primary action.
+                  // Current code had empty TODO.
+                }
               }
             : null,
         borderRadius: BorderRadius.circular(12),
@@ -952,10 +960,34 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: () {
-                      _showStartTestConfirmation(context, quiz);
+                      if (isAdmin) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AdminPage(
+                              quiz: quiz,
+                              groupId: group?['id'] ?? quiz['group_id'],
+                              groupName:
+                                  group?['name'] ??
+                                  quiz['group_name'] ??
+                                  'Unknown',
+                              grade2Limit: group?['grade2_limit'] ?? 40,
+                              grade3Limit: group?['grade3_limit'] ?? 55,
+                              grade4Limit: group?['grade4_limit'] ?? 70,
+                              grade5Limit: group?['grade5_limit'] ?? 85,
+                            ),
+                          ),
+                        );
+                      } else {
+                        _showStartTestConfirmation(context, quiz);
+                      }
                     },
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Kitöltés'),
+                    icon: Icon(
+                      isAdmin
+                          ? Icons.admin_panel_settings_outlined
+                          : Icons.play_arrow,
+                    ),
+                    label: Text(isAdmin ? 'Admin felület' : 'Kitöltés'),
                   ),
                 ),
               ],
