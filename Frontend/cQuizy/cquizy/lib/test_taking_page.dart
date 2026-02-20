@@ -489,7 +489,20 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     // Start UI update timer
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+
+      // Auto-submit if time is up
+      if (_finishTime != null && !_isSubmitting) {
+        final remaining = _finishTime!.difference(DateTime.now()).inSeconds;
+        if (remaining <= 1) {
+          // 1 second buffer
+          timer.cancel();
+          _submitTest(forced: true);
+          return;
+        }
+      }
+
+      setState(() {});
     });
   }
 
@@ -853,253 +866,11 @@ class _TestTakingPageState extends State<TestTakingPage>
                                         ),
                                         const SizedBox(height: 16),
                                         const Text(
-                                          'A rendszer szabálytalan tevékenységet észlelt.\nAdd be a teszted, vagy várd meg a tanári feloldást.',
+                                          'A rendszer szabálytalan tevékenységet észlelt.\nVárd meg a tanári feloldást.',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(fontSize: 16),
                                         ),
                                         const SizedBox(height: 32),
-                                        // Submit button
-                                        ElevatedButton.icon(
-                                          onPressed: _isSubmitting
-                                              ? null
-                                              : () {
-                                                  _isSubmitting = true;
-                                                  setState(() {});
-
-                                                  // Navigate helper - guaranteed to run
-                                                  void navigateToHome() {
-                                                    if (!mounted) return;
-                                                    Navigator.of(
-                                                      context,
-                                                    ).pushAndRemoveUntil(
-                                                      MaterialPageRoute(
-                                                        builder: (c) => HomePage(
-                                                          onLogout: () {
-                                                            Provider.of<
-                                                                  UserProvider
-                                                                >(
-                                                                  c,
-                                                                  listen: false,
-                                                                )
-                                                                .logout();
-                                                          },
-                                                        ),
-                                                      ),
-                                                      (route) => false,
-                                                    );
-                                                  }
-
-                                                  try {
-                                                    // Cleanup protections first
-                                                    if (widget.anticheat) {
-                                                      try {
-                                                        _disableScreenshotProtection();
-                                                      } catch (_) {}
-                                                      try {
-                                                        _restoreVolume();
-                                                      } catch (_) {}
-                                                      try {
-                                                        _cleanupDesktopKeyboardProtection();
-                                                      } catch (_) {}
-                                                      try {
-                                                        _cleanupDesktopScreenProtection();
-                                                      } catch (_) {}
-                                                    }
-                                                    try {
-                                                      _exitFullscreen();
-                                                    } catch (_) {}
-
-                                                    // Try to submit answers in background
-                                                    final token = context
-                                                        .read<UserProvider>()
-                                                        .token;
-                                                    if (token != null) {
-                                                      try {
-                                                        final formattedAnswers =
-                                                            <
-                                                              Map<
-                                                                String,
-                                                                dynamic
-                                                              >
-                                                            >[];
-                                                        _userAnswers.forEach((
-                                                          key,
-                                                          value,
-                                                        ) {
-                                                          try {
-                                                            final int blockId =
-                                                                key;
-                                                            final q = _questions
-                                                                .firstWhere(
-                                                                  (e) =>
-                                                                      e['id'] ==
-                                                                      blockId,
-                                                                  orElse: () =>
-                                                                      <
-                                                                        String,
-                                                                        dynamic
-                                                                      >{},
-                                                                );
-                                                            if (q.isEmpty ||
-                                                                value == null)
-                                                              return;
-                                                            final type =
-                                                                q['type'] ?? '';
-                                                            if (type ==
-                                                                'single') {
-                                                              formattedAnswers
-                                                                  .add({
-                                                                    'block_id':
-                                                                        blockId,
-                                                                    'option_id':
-                                                                        value,
-                                                                    'answer_text':
-                                                                        '',
-                                                                  });
-                                                            } else if (type ==
-                                                                'multiple') {
-                                                              for (var id
-                                                                  in (value
-                                                                      as List)) {
-                                                                formattedAnswers.add({
-                                                                  'block_id':
-                                                                      blockId,
-                                                                  'option_id':
-                                                                      id,
-                                                                  'answer_text':
-                                                                      '',
-                                                                });
-                                                              }
-                                                            } else if (type ==
-                                                                    'text' ||
-                                                                type ==
-                                                                    'range') {
-                                                              formattedAnswers.add({
-                                                                'block_id':
-                                                                    blockId,
-                                                                'answer_text': value
-                                                                    .toString(),
-                                                                'option_id':
-                                                                    null,
-                                                              });
-                                                            } else if (type ==
-                                                                'matching') {
-                                                              (value as Map).forEach((
-                                                                leftId,
-                                                                userString,
-                                                              ) {
-                                                                formattedAnswers.add({
-                                                                  'block_id':
-                                                                      blockId,
-                                                                  'option_id':
-                                                                      leftId,
-                                                                  'answer_text':
-                                                                      userString,
-                                                                });
-                                                              });
-                                                            } else if (type ==
-                                                                'ordering') {
-                                                              for (var item
-                                                                  in (value
-                                                                      as List)) {
-                                                                formattedAnswers.add({
-                                                                  'block_id':
-                                                                      blockId,
-                                                                  'option_id':
-                                                                      item['id'],
-                                                                  'answer_text':
-                                                                      '',
-                                                                });
-                                                              }
-                                                            } else if (type ==
-                                                                'gap_fill') {
-                                                              final gapsMap =
-                                                                  value as Map;
-                                                              final sortedKeys =
-                                                                  gapsMap.keys
-                                                                      .toList()
-                                                                    ..sort(
-                                                                      (a, b) =>
-                                                                          int.parse(
-                                                                            a.toString(),
-                                                                          ).compareTo(
-                                                                            int.parse(
-                                                                              b.toString(),
-                                                                            ),
-                                                                          ),
-                                                                    );
-                                                              for (var k
-                                                                  in sortedKeys) {
-                                                                formattedAnswers.add({
-                                                                  'block_id':
-                                                                      blockId,
-                                                                  'answer_text':
-                                                                      gapsMap[k],
-                                                                  'option_id':
-                                                                      null,
-                                                                });
-                                                              }
-                                                            } else if (type ==
-                                                                'sentence_ordering') {
-                                                              for (var word
-                                                                  in (value
-                                                                      as List)) {
-                                                                formattedAnswers.add({
-                                                                  'block_id':
-                                                                      blockId,
-                                                                  'answer_text':
-                                                                      word.toString(),
-                                                                });
-                                                              }
-                                                            }
-                                                          } catch (
-                                                            _
-                                                          ) {} // Skip problematic answers
-                                                        });
-                                                        final submissionData = {
-                                                          'quiz_id':
-                                                              widget.quiz['id'],
-                                                          'answers':
-                                                              formattedAnswers,
-                                                        };
-                                                        ApiService()
-                                                            .submitQuiz(
-                                                              token,
-                                                              submissionData,
-                                                            )
-                                                            .catchError(
-                                                              (_) => null,
-                                                            );
-                                                      } catch (
-                                                        _
-                                                      ) {} // API submission failed silently
-                                                    }
-                                                  } catch (_) {
-                                                    // Something unexpected - still navigate
-                                                  }
-
-                                                  // ALWAYS navigate to HomePage
-                                                  navigateToHome();
-                                                },
-                                          icon: const Icon(
-                                            Icons.send,
-                                            size: 18,
-                                          ),
-                                          label: Text(
-                                            _isSubmitting
-                                                ? 'Beadás...'
-                                                : 'Beadás',
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: theme.primaryColor,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 32,
-                                              vertical: 16,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
                                         // Wait for teacher button
                                         OutlinedButton.icon(
                                           onPressed:
@@ -2355,168 +2126,119 @@ class _TestTakingPageState extends State<TestTakingPage>
     );
   }
 
-  Future<void> _submitTest({bool forceExit = false}) async {
-    final token = context.read<UserProvider>().token;
-    if (token == null) return;
+  // Robust submit (fire-and-forget navigation)
+  // Robust submit (fire-and-forget navigation)
+  // Robust submit (fire-and-forget navigation)
+  void _submitTest({bool forced = false}) {
+    if (!mounted) return;
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+    _isSubmitting = true;
+    _countdownTimer?.cancel();
+    if (mounted) setState(() {});
 
-    // Prepare answers in the flattened format the Backend expects
-    final List<Map<String, dynamic>> formattedAnswers = [];
+    // Helper for guaranteed navigation
+    void forceNavigationWithDelay() {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (c) => HomePage(
+              onLogout: () {
+                Provider.of<UserProvider>(c, listen: false).logout();
+              },
+            ),
+          ),
+          (route) => false,
+        );
+      });
+    }
 
-    // Iterate through the User Answers map
-    // Key is the Block ID (int), Value is the user's input
-    _userAnswers.forEach((key, value) {
-      final int blockId = key;
-
-      // FIX: Find the question object by ID, don't use the ID as an index
-      final Map<String, dynamic> q = _questions.firstWhere(
-        (element) => element['id'] == blockId,
-        orElse: () => {},
+    // Show loading if not forced
+    if (!forced) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => const Center(child: CircularProgressIndicator()),
       );
+    }
 
-      // If question not found or value is null, skip
-      if (q.isEmpty || value == null) return;
+    // Fire-and-forget logic in a microtask to prevent UI freeze
+    Future.microtask(() async {
+      try {
+        // 1. Cleanup protections (Best effort)
+        if (widget.anticheat) {
+          try { _disableScreenshotProtection(); } catch (_) {}
+          try { _restoreVolume(); } catch (_) {}
+          try { _cleanupDesktopKeyboardProtection(); } catch (_) {}
+          try { _cleanupDesktopScreenProtection(); } catch (_) {}
+        }
+        try { await _exitFullscreen(); } catch (_) {}
 
-      final String type = q['type'] ?? '';
+        // 2. Format Answers & Submit API (Background)
+        final token = context.read<UserProvider>().token;
+        if (token != null) {
+            final formattedAnswers = <Map<String, dynamic>>[];
+            // ... (formatting logic) ...
+            _userAnswers.forEach((key, value) {
+              final int blockId = key;
+              // Safe lookup
+               final Map<String, dynamic> q = _questions.firstWhere(
+                  (element) => element['id'] == blockId,
+                  orElse: () => {},
+                );
+                if (q.isEmpty || value == null) return;
+                
+                final String type = q['type'] ?? '';
 
-      // --- 1. Single Choice ---
-      if (type == 'single') {
-        formattedAnswers.add({
-          'block_id': blockId,
-          'option_id': value as int,
-          'answer_text': '',
-        });
-      }
-      // --- 2. Multiple Choice ---
-      else if (type == 'multiple') {
-        final selectedIds = (value as List).cast<int>();
-        for (var id in selectedIds) {
-          formattedAnswers.add({
-            'block_id': blockId,
-            'option_id': id,
-            'answer_text': '',
-          });
-        }
-      }
-      // --- 3. Text Input & Range ---
-      else if (type == 'text' || type == 'range') {
-        formattedAnswers.add({
-          'block_id': blockId,
-          'answer_text': value.toString(),
-          'option_id': null,
-        });
-      }
-      // --- 4. Matching ---
-      else if (type == 'matching') {
-        // value is Map<dynamic, dynamic> -> { Left_Side_ID : User_Input_String }
-        final userMap = (value as Map);
-        userMap.forEach((leftId, userString) {
-          formattedAnswers.add({
-            'block_id': blockId,
-            'option_id': leftId, // The ID of the pair row
-            'answer_text': userString,
-          });
-        });
-      }
-      // --- 5. Ordering ---
-      else if (type == 'ordering') {
-        // value is List<dynamic> of items in the user's order
-        final orderedItems = (value as List);
-        for (var item in orderedItems) {
-          formattedAnswers.add({
-            'block_id': blockId,
-            'option_id':
-                item['id'], // We send the IDs in the sequence they appear
-            'answer_text': '',
-          });
-        }
-      }
-      // --- 6. Gap Fill ---
-      else if (type == 'gap_fill') {
-        final gapsMap = (value as Map);
-        // Sort keys "1", "2" to ensure order matches structure
-        final sortedKeys = gapsMap.keys.toList()
-          ..sort(
-            (a, b) =>
-                int.parse(a.toString()).compareTo(int.parse(b.toString())),
-          );
+                if (type == 'single') {
+                  formattedAnswers.add({'block_id': blockId, 'option_id': value as int, 'answer_text': ''});
+                } else if (type == 'multiple') {
+                  final selectedIds = (value as List).cast<int>();
+                  for (var id in selectedIds) {
+                    formattedAnswers.add({'block_id': blockId, 'option_id': id, 'answer_text': ''});
+                  }
+                } else if (type == 'text' || type == 'range') {
+                  formattedAnswers.add({'block_id': blockId, 'answer_text': value.toString(), 'option_id': null});
+                } else if (type == 'matching') {
+                  final userMap = (value as Map);
+                  userMap.forEach((leftId, userString) {
+                    formattedAnswers.add({'block_id': blockId, 'option_id': leftId, 'answer_text': userString});
+                  });
+                } else if (type == 'ordering') {
+                  final orderedItems = (value as List);
+                  for (var item in orderedItems) {
+                    formattedAnswers.add({'block_id': blockId, 'option_id': item['id'], 'answer_text': ''});
+                  }
+                } else if (type == 'gap_fill') {
+                  final gapsMap = (value as Map);
+                  final sortedKeys = gapsMap.keys.toList()..sort((a, b) => int.parse(a.toString()).compareTo(int.parse(b.toString())));
+                  for (var key in sortedKeys) {
+                    formattedAnswers.add({'block_id': blockId, 'answer_text': gapsMap[key], 'option_id': null});
+                  }
+                } else if (type == 'sentence_ordering') {
+                  final words = (value as List).cast<String>();
+                  for (var word in words) {
+                    formattedAnswers.add({'block_id': blockId, 'answer_text': word});
+                  }
+                }
+            });
 
-        for (var key in sortedKeys) {
-          formattedAnswers.add({
-            'block_id': blockId,
-            'answer_text': gapsMap[key],
-            'option_id': null,
-          });
+            final submissionData = {
+              'quiz_id': widget.quiz['id'],
+              'answers': formattedAnswers,
+            };
+            
+            // Fire-and-forget submission
+            ApiService().submitQuiz(token, submissionData).catchError((_) => null);
         }
-      }
-      // --- 7. Sentence Ordering ---
-      else if (type == 'sentence_ordering') {
-        final words = (value as List).cast<String>();
-        for (var word in words) {
-          formattedAnswers.add({'block_id': blockId, 'answer_text': word});
-        }
+      } catch (_) {
+        // Silent catch for background errors
       }
     });
 
-    final submissionData = {
-      'quiz_id': widget.quiz['id'],
-      'answers': formattedAnswers,
-    };
-
-    bool success = false;
-    try {
-      final response = await ApiService().submitQuiz(token, submissionData);
-
-      if (mounted) Navigator.pop(context); // Close loading
-
-      if (response != null) {
-        success = true;
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Hiba a beadás során.')));
-        }
-      }
-    } catch (e) {
-      if (mounted) Navigator.pop(context); // Close loading if error
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hiba: $e')));
-      }
-    } finally {
-      // Exit and cleanup only on success or if forced (cheat detetcion)
-      if (success || forceExit) {
-        if (widget.anticheat) {
-          _disableScreenshotProtection();
-          _restoreVolume();
-          _cleanupDesktopKeyboardProtection();
-          _cleanupDesktopScreenProtection();
-        }
-        await _exitFullscreen();
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (c) => HomePage(
-                onLogout: () {
-                  Provider.of<UserProvider>(c, listen: false).logout();
-                },
-              ),
-            ),
-            (route) => false,
-          );
-        }
-      }
-    }
+    // 3. Trigger guaranteed navigation
+    forceNavigationWithDelay();
   }
-
   Widget _buildQuestionCard(Map<String, dynamic> question, int index) {
     final theme = Theme.of(context);
     final primaryColor = theme.primaryColor;

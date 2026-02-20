@@ -19,6 +19,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'student_tests_page.dart';
+import 'statistics_page.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -68,6 +69,7 @@ class _HomePageState extends State<HomePage>
   bool _isSpeedDialOpen = false;
   bool _showProjects = false;
   bool _showStudentTests = false;
+  bool _showStatistics = false;
   bool _isInProjectTutorial = false; // Flag for project creation tutorial
   int _projectsRefreshKey = 0;
 
@@ -1003,7 +1005,7 @@ class _HomePageState extends State<HomePage>
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      if (!_showStudentTests)
+                      if (!_showStudentTests && !_showStatistics)
                         Positioned(
                           bottom: 24,
                           right: 24,
@@ -1107,7 +1109,7 @@ class _HomePageState extends State<HomePage>
                                 ),
                               ),
                               const Spacer(),
-                              if (!_showStudentTests)
+                              if (!_showStudentTests && !_showStatistics)
                                 _buildSpeedDial(
                                   context,
                                   isGroupView: isGroupView,
@@ -1178,6 +1180,8 @@ class _HomePageState extends State<HomePage>
             ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
             : _showStudentTests
             ? const StudentTestsPage()
+            : _showStatistics
+            ? const StatisticsPage()
             : _buildGroupList(),
       ),
     );
@@ -1764,7 +1768,8 @@ class _HomePageState extends State<HomePage>
                     isSelected:
                         _selectedGroup == null &&
                         !_showProjects &&
-                        !_showStudentTests,
+                        !_showStudentTests &&
+                        !_showStatistics,
                     onTap: () {
                       if (_selectedGroup != null ||
                           _showProjects ||
@@ -1772,6 +1777,7 @@ class _HomePageState extends State<HomePage>
                         setState(() {
                           _showProjects = false;
                           _showStudentTests = false;
+                          _showStatistics = false;
                           _selectedGroup = null;
                         });
                       }
@@ -1789,6 +1795,7 @@ class _HomePageState extends State<HomePage>
                         setState(() {
                           _showProjects = true;
                           _showStudentTests = false;
+                          _showStatistics = false;
                           _selectedGroup = null;
                           _isMemberPanelOpen = false;
                         });
@@ -1806,6 +1813,7 @@ class _HomePageState extends State<HomePage>
                         setState(() {
                           _showStudentTests = true;
                           _showProjects = false;
+                          _showStatistics = false;
                           _selectedGroup = null;
                           _isMemberPanelOpen = false;
                         });
@@ -1814,7 +1822,23 @@ class _HomePageState extends State<HomePage>
                     },
                   ),
                   const SizedBox(height: 8),
-                  SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
+                  SideNavItem(
+                    label: 'Statisztika',
+                    icon: Icons.bar_chart,
+                    isSelected: _showStatistics,
+                    onTap: () {
+                      if (!_showStatistics) {
+                        setState(() {
+                          _showStatistics = true;
+                          _showProjects = false;
+                          _showStudentTests = false;
+                          _selectedGroup = null;
+                          _isMemberPanelOpen = false;
+                        });
+                      }
+                      if (isDrawer) Navigator.pop(context);
+                    },
+                  ),
                 ],
               ),
             ),
