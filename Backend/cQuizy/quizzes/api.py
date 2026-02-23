@@ -27,7 +27,8 @@ from .schemas import (
     SubmissionDetailSchema,
     QuizStatsSchema,
     PointUpdatePayload,
-    GradeUpdateSchema
+    GradeUpdateSchema,
+    QuizStatusOutSchema
 )
 
 from users.auth import JWTAuth
@@ -558,6 +559,48 @@ def get_quiz_stats(request, quiz_id: int):
         "max_score": stats['max_score'] or 0.0,
         "min_score": stats['min_score'] or 0.0,
         "submission_count": stats['submission_count'] or 0
+    }
+
+#? Get quiz live status
+@router.get("/{quiz_id}/status", response=QuizStatusOutSchema, summary="Teacher: Get live quiz status of students")
+def get_quiz_status(request, quiz_id: int):
+    """
+    Returns lists of students in the quiz grouped by their current status:
+    - writing: Currently taking the quiz (haven't submitted, not locked).
+    - locked: Locked out due to an active anti-cheat event.
+    - finished: Successfully submitted the quiz.
+    """
+    current_user = request.auth
+    quiz = get_object_or_404(Quiz, id=quiz_id)
+
+    # 1. Auth Check
+    is_admin = GroupMember.objects.filter(group=quiz.group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        raise HttpError(403, "Permission denied. Only teachers can view the live status.")
+
+    # 2. Gather student groups
+    members = GroupMember.objects.filter(group=quiz.group, rank='MEMBER').select_related('user')
+    
+    finished_ids = set(Submission.objects.filter(quiz=quiz).values_list('student_id', flat=True))
+    locked_ids = set(Event.objects.filter(quiz=quiz, status=Event.Status.ACTIVE).values_list('student_id', flat=True))
+
+    writing = []
+    locked = []
+    finished = []
+
+    for member in members:
+        user_data = {"id": member.user.id, "username": member.user.username}
+        if member.user.id in finished_ids:
+            finished.append(user_data)
+        elif member.user.id in locked_ids:
+            locked.append(user_data)
+        else:
+            writing.append(user_data)
+
+    return {
+        "writing": writing,
+        "locked": locked,
+        "finished": finished
     }
 
 #? Update points
