@@ -12,6 +12,7 @@ import 'api_service.dart';
 import 'providers/user_provider.dart';
 import 'admin_page.dart';
 import 'create_quiz_dialog.dart';
+import 'package:flutter/foundation.dart';
 
 // --- MEOSZTOTT MODELL ---
 class Group {
@@ -1168,6 +1169,11 @@ class _GroupPageState extends State<GroupPage> {
     BuildContext context,
     Map<String, dynamic> quiz,
   ) {
+    if (kIsWeb && widget.group.kiosk) {
+      _showWebKioskRestrictionDialog(context);
+      return;
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -1334,6 +1340,34 @@ class _GroupPageState extends State<GroupPage> {
           ),
         );
       },
+    );
+  }
+
+  void _showWebKioskRestrictionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.desktop_windows_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Csak alkalmazásban elérhető'),
+          ],
+        ),
+        content: const Text(
+          'Ez a teszt Zárolt védelmi szinttel (Kiosk módban) lett létrehozva. A webes böngésző nem támogatja ezt a szintű biztonságot.\n\nKérjük, nyisd meg az alkalmazást (Windows, Android vagy iOS) a teszt kitöltéséhez!',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rendben'),
+          ),
+        ],
+      ),
     );
   }
 

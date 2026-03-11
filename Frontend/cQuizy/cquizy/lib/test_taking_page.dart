@@ -45,6 +45,7 @@ class _TestTakingPageState extends State<TestTakingPage>
     with WidgetsBindingObserver, WindowListener {
   // --- Protection State ---
   bool _isBlacklisted = false;
+  bool _isAntiCheatActive = false;
   bool _isSubmitting = false;
   bool _isOffline = false;
   bool _isKioskModeActive = true;
@@ -102,7 +103,12 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   void _initializeWebView() {
-    if (!kIsWeb && Platform.isWindows) {
+    if (kIsWeb) {
+      // WebView nem támogatott weben ebben a formában (külön iframe implementáció kéne)
+      return;
+    }
+
+    if (Platform.isWindows) {
       final urls = _allowedUrls;
       if (urls.isNotEmpty) {
         _selectedWebUrl = urls.first;
@@ -203,10 +209,22 @@ class _TestTakingPageState extends State<TestTakingPage>
       if (data != null && data['blocks'] != null) {
         final List<dynamic> blocks = data['blocks'];
         if (mounted) {
-          setState(() {
-            _questions = blocks.cast<Map<String, dynamic>>();
-            _isLoading = false;
-          });
+          if (widget.anticheat) {
+            // Várakozás a biztonságos környezet inicializálására (kizárja az azonnali fals tiltásokat)
+            await Future.delayed(const Duration(seconds: 2));
+            if (mounted) {
+              setState(() {
+                _isAntiCheatActive = true;
+                _questions = blocks.cast<Map<String, dynamic>>();
+                _isLoading = false;
+              });
+            }
+          } else {
+            setState(() {
+              _questions = blocks.cast<Map<String, dynamic>>();
+              _isLoading = false;
+            });
+          }
         }
       } else {
         if (mounted) {
@@ -231,13 +249,21 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   void _enableScreenshotProtection() async {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await ScreenProtector.protectDataLeakageOn();
+      try {
+        await ScreenProtector.protectDataLeakageOn();
+      } catch (e) {
+        debugPrint('Képernyőkép védelem bekapcsolása sikertelen: $e');
+      }
     }
   }
 
   void _disableScreenshotProtection() async {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await ScreenProtector.protectDataLeakageOff();
+      try {
+        await ScreenProtector.protectDataLeakageOff();
+      } catch (e) {
+        debugPrint('Képernyőkép védelem kikapcsolása sikertelen: $e');
+      }
     }
   }
 
@@ -388,8 +414,12 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-  void _clearClipboard() {
-    Clipboard.setData(const ClipboardData(text: ''));
+  void _clearClipboard() async {
+    try {
+      await Clipboard.setData(const ClipboardData(text: ''));
+    } catch (e) {
+      debugPrint('Vágólap ürítése sikertelen: $e');
+    }
   }
 
   void _muteVolume() async {
@@ -543,8 +573,8 @@ class _TestTakingPageState extends State<TestTakingPage>
   Future<void> _enterFullscreen() async {
     try {
       // Mobile fullscreen logic remains same
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      SystemChrome.setPreferredOrientations([
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
       ]);
@@ -557,13 +587,6 @@ class _TestTakingPageState extends State<TestTakingPage>
         // Hide title bar for true fullscreen
         await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
 
-        // Run PowerShell command to minimize all windows (like Win+D)
-        await Process.run('powershell', [
-          '-command',
-          '(New-Object -ComObject Shell.Application).MinimizeAll()',
-        ]);
-        // Give OS a tiny bit of time to process, then bring ourselves back
-        await Future.delayed(const Duration(milliseconds: 300));
         await windowManager.show();
         await windowManager.focus();
         await windowManager.setFullScreen(true);
@@ -582,69 +605,25 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-  /// Kiosk mode with retry - keeps asking user until they enable it
+  /// Kiosk mode with retry - keeps asking user until they enable it natively without blocking Flutter dialogs
   Future<void> _enableKioskModeWithRetry() async {
+    // Attempt to start kiosk mode with OS
+    await startKioskMode();
+
     while (mounted) {
-      // Try to start kiosk mode
-      await startKioskMode();
-
-      // Wait a moment for the system to process
       await Future.delayed(const Duration(milliseconds: 500));
-
-      // Check if kiosk mode is actually enabled now
       final currentMode = await getKioskMode();
 
       if (currentMode == KioskMode.enabled) {
-        setState(() => _isKioskModeActive = true);
+        if (!_isKioskModeActive) {
+          setState(() => _isKioskModeActive = true);
+        }
         return; // Success - exit the loop
-      }
-
-      // Kiosk mode was not enabled - show retry dialog
-      if (!mounted) return;
-
-      final shouldRetry = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.lock_outline, color: Colors.orange, size: 28),
-              SizedBox(width: 12),
-              Expanded(child: Text('Kiosk mód szükséges')),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'A teszt biztonságos kitöltéséhez engedélyezned kell a kiosk módot.',
-                style: TextStyle(fontSize: 16),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'A következő párbeszédablakban nyomd meg az "Indítás" vagy "Start" gombot a folytatáshoz.',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).pop(true),
-              icon: const Icon(Icons.check),
-              label: const Text('Rendben'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldRetry != true) {
-        // This shouldn't happen with barrierDismissible: false, but just in case
-        break;
+      } else {
+        // Not enabled - show the fullscreen overlay implicitly by updating state
+        if (_isKioskModeActive) {
+          setState(() => _isKioskModeActive = false);
+        }
       }
     }
   }
@@ -662,8 +641,8 @@ class _TestTakingPageState extends State<TestTakingPage>
       }
 
       // Reset Mobile UI
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
 
       // Reset Desktop
       if (!kIsWeb && Platform.isWindows) {
@@ -709,6 +688,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   void _triggerAntiCheat() {
     // Double-check: only block if anticheat is enabled
     if (!widget.anticheat) return;
+    if (!_isAntiCheatActive) return; // Ne kapcsoljon be a betöltés közben
     if (_isSubmitting) return; // Don't re-trigger during submission
 
     if (!_isBlacklisted) {
@@ -794,30 +774,44 @@ class _TestTakingPageState extends State<TestTakingPage>
                       Expanded(
                         child: Stack(
                           children: [
-                            // 1. Scrollable Questions List
-                            ListView.builder(
-                              controller: _scrollController,
-                              padding: EdgeInsets.only(
-                                top: 140, // Space for fixed header
-                                bottom: 100, // Space for bottom padding
-                                left: needsExtraLeftPadding ? 60 : 20,
-                                right: 20,
+                            // 1. Scrollable Questions List or Loading
+                            if (_isLoading)
+                              const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Biztonságos környezet előkészítése...',
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              ListView.builder(
+                                controller: _scrollController,
+                                padding: EdgeInsets.only(
+                                  top: 140, // Space for fixed header
+                                  bottom: 100, // Space for bottom padding
+                                  left: needsExtraLeftPadding ? 60 : 20,
+                                  right: 20,
+                                ),
+                                itemCount: _questions.length,
+                                itemBuilder: (context, index) {
+                                  return Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: _maxContentWidth,
+                                      ),
+                                      child: _buildQuestionCard(
+                                        _questions[index],
+                                        index,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                              itemCount: _questions.length,
-                              itemBuilder: (context, index) {
-                                return Center(
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxWidth: _maxContentWidth,
-                                    ),
-                                    child: _buildQuestionCard(
-                                      _questions[index],
-                                      index,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
 
                             // 2. Fixed Header
                             Align(
@@ -1469,13 +1463,35 @@ class _TestTakingPageState extends State<TestTakingPage>
             ),
           ),
         Expanded(
-          child: _webViewController != null || _windowsWebViewController != null
-              ? ((!kIsWeb && Platform.isWindows)
-                    ? (_windowsWebViewController?.value.isInitialized ?? false
-                          ? Webview(_windowsWebViewController!)
-                          : const Center(child: CircularProgressIndicator()))
-                    : WebViewWidget(controller: _webViewController!))
-              : const Center(child: CircularProgressIndicator()),
+          child: kIsWeb
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.web_asset_off,
+                        size: 48,
+                        color: theme.hintColor,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'A webes tartalmak megjelenítése a böngészős verzióban nem támogatott.\nKérjük, használd az alkalmazást ezen feladatok megtekintéséhez.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: theme.hintColor),
+                      ),
+                    ],
+                  ),
+                )
+              : (_webViewController != null || _windowsWebViewController != null
+                    ? (Platform.isWindows
+                          ? (_windowsWebViewController?.value.isInitialized ??
+                                    false
+                                ? Webview(_windowsWebViewController!)
+                                : const Center(
+                                    child: CircularProgressIndicator(),
+                                  ))
+                          : WebViewWidget(controller: _webViewController!))
+                    : const Center(child: CircularProgressIndicator())),
         ),
       ],
     );
@@ -2127,118 +2143,110 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   // Robust submit (fire-and-forget navigation)
-  // Robust submit (fire-and-forget navigation)
-  // Robust submit (fire-and-forget navigation)
   void _submitTest({bool forced = false}) {
     if (!mounted) return;
 
     _isSubmitting = true;
     _countdownTimer?.cancel();
-    if (mounted) setState(() {});
 
-    // Helper for guaranteed navigation
-    void forceNavigationWithDelay() {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (c) => HomePage(
-              onLogout: () {
-                Provider.of<UserProvider>(c, listen: false).logout();
-              },
-            ),
-          ),
-          (route) => false,
+    // 1. Format Answers
+    final token = context.read<UserProvider>().token;
+    if (token != null) {
+      final formattedAnswers = <Map<String, dynamic>>[];
+      _userAnswers.forEach((key, value) {
+        final int blockId = key;
+        final Map<String, dynamic> q = _questions.firstWhere(
+          (element) => element['id'] == blockId,
+          orElse: () => {},
         );
-      });
-    }
+        if (q.isEmpty || value == null) return;
 
-    // Show loading if not forced
-    if (!forced) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (c) => const Center(child: CircularProgressIndicator()),
-      );
-    }
+        final String type = q['type'] ?? '';
 
-    // Fire-and-forget logic in a microtask to prevent UI freeze
-    Future.microtask(() async {
-      try {
-        // 1. Cleanup protections (Best effort)
-        if (widget.anticheat) {
-          try { _disableScreenshotProtection(); } catch (_) {}
-          try { _restoreVolume(); } catch (_) {}
-          try { _cleanupDesktopKeyboardProtection(); } catch (_) {}
-          try { _cleanupDesktopScreenProtection(); } catch (_) {}
-        }
-        try { await _exitFullscreen(); } catch (_) {}
-
-        // 2. Format Answers & Submit API (Background)
-        final token = context.read<UserProvider>().token;
-        if (token != null) {
-            final formattedAnswers = <Map<String, dynamic>>[];
-            // ... (formatting logic) ...
-            _userAnswers.forEach((key, value) {
-              final int blockId = key;
-              // Safe lookup
-               final Map<String, dynamic> q = _questions.firstWhere(
-                  (element) => element['id'] == blockId,
-                  orElse: () => {},
-                );
-                if (q.isEmpty || value == null) return;
-                
-                final String type = q['type'] ?? '';
-
-                if (type == 'single') {
-                  formattedAnswers.add({'block_id': blockId, 'option_id': value as int, 'answer_text': ''});
-                } else if (type == 'multiple') {
-                  final selectedIds = (value as List).cast<int>();
-                  for (var id in selectedIds) {
-                    formattedAnswers.add({'block_id': blockId, 'option_id': id, 'answer_text': ''});
-                  }
-                } else if (type == 'text' || type == 'range') {
-                  formattedAnswers.add({'block_id': blockId, 'answer_text': value.toString(), 'option_id': null});
-                } else if (type == 'matching') {
-                  final userMap = (value as Map);
-                  userMap.forEach((leftId, userString) {
-                    formattedAnswers.add({'block_id': blockId, 'option_id': leftId, 'answer_text': userString});
-                  });
-                } else if (type == 'ordering') {
-                  final orderedItems = (value as List);
-                  for (var item in orderedItems) {
-                    formattedAnswers.add({'block_id': blockId, 'option_id': item['id'], 'answer_text': ''});
-                  }
-                } else if (type == 'gap_fill') {
-                  final gapsMap = (value as Map);
-                  final sortedKeys = gapsMap.keys.toList()..sort((a, b) => int.parse(a.toString()).compareTo(int.parse(b.toString())));
-                  for (var key in sortedKeys) {
-                    formattedAnswers.add({'block_id': blockId, 'answer_text': gapsMap[key], 'option_id': null});
-                  }
-                } else if (type == 'sentence_ordering') {
-                  final words = (value as List).cast<String>();
-                  for (var word in words) {
-                    formattedAnswers.add({'block_id': blockId, 'answer_text': word});
-                  }
-                }
+        if (type == 'single') {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'option_id': value as int,
+            'answer_text': '',
+          });
+        } else if (type == 'multiple') {
+          final selectedIds = (value as List).cast<int>();
+          for (var id in selectedIds) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'option_id': id,
+              'answer_text': '',
             });
-
-            final submissionData = {
-              'quiz_id': widget.quiz['id'],
-              'answers': formattedAnswers,
-            };
-            
-            // Fire-and-forget submission
-            ApiService().submitQuiz(token, submissionData).catchError((_) => null);
+          }
+        } else if (type == 'text' || type == 'range') {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'answer_text': value.toString(),
+            'option_id': null,
+          });
+        } else if (type == 'matching') {
+          final userMap = (value as Map);
+          userMap.forEach((leftId, userString) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'option_id': leftId,
+              'answer_text': userString,
+            });
+          });
+        } else if (type == 'ordering') {
+          final orderedItems = (value as List);
+          for (var item in orderedItems) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'option_id': item['id'],
+              'answer_text': '',
+            });
+          }
+        } else if (type == 'gap_fill') {
+          final gapsMap = (value as Map);
+          final sortedKeys = gapsMap.keys.toList()
+            ..sort(
+              (a, b) =>
+                  int.parse(a.toString()).compareTo(int.parse(b.toString())),
+            );
+          for (var key in sortedKeys) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'answer_text': gapsMap[key],
+              'option_id': null,
+            });
+          }
+        } else if (type == 'sentence_ordering') {
+          final words = (value as List).cast<String>();
+          for (var word in words) {
+            formattedAnswers.add({'block_id': blockId, 'answer_text': word});
+          }
         }
-      } catch (_) {
-        // Silent catch for background errors
-      }
-    });
+      });
 
-    // 3. Trigger guaranteed navigation
-    forceNavigationWithDelay();
+      final submissionData = {
+        'quiz_id': widget.quiz['id'],
+        'answers': formattedAnswers,
+      };
+
+      // Fire-and-forget API call
+      ApiService().submitQuiz(token, submissionData).catchError((_) => null);
+    }
+
+    // 2. Trigger Guaranteed Navigation Immediately
+    // Tests have shown that delays or dialogs here can cause the UI to freeze
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (c) => HomePage(
+          onLogout: () {
+            Provider.of<UserProvider>(c, listen: false).logout();
+          },
+        ),
+      ),
+      (route) => false,
+    );
   }
+
   Widget _buildQuestionCard(Map<String, dynamic> question, int index) {
     final theme = Theme.of(context);
     final primaryColor = theme.primaryColor;

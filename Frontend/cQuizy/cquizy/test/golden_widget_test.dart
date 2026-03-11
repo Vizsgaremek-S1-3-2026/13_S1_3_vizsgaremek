@@ -1,3 +1,10 @@
+/*
+ * Mit tesztel: Újrahasználható UI komponensek (gombok, kártyák) vizuális megjelenését.
+ * Előfeltétel: nincs előfeltétel
+ * Várt eredmény: A komponensek pixelpontosan megegyeznek a dizájnnal.
+ * Eredmény: Sikeres.
+ */
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cquizy/home_page.dart'; // Ensure this matches actual path for SideNavItem

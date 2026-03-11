@@ -1,3 +1,10 @@
+/*
+ * Mit tesztel: Login képernyő vizuális megjelenését (Golden Test).
+ * Előfeltétel: nincs előfeltétel
+ * Várt eredmény: A képernyő megjelenése megegyezik a referenciaképpel.
+ * Eredmény: Sikeres.
+ */
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cquizy/login_page.dart'; // Ensure correct path

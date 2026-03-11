@@ -1,3 +1,10 @@
+/*
+ * Mit tesztel: Autentikációs folyamatot (Regisztráció, Bejelentkezés) az API-n keresztül.
+ * Előfeltétel: API szerver fut és elérhető.
+ * Várt eredmény: Sikeres bejelentkezés és token lekérése.
+ * Eredmény: Sikeres.
+ */
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cquizy/api_service.dart';
 

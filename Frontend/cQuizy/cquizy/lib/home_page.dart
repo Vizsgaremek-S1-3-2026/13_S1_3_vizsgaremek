@@ -14,6 +14,7 @@ import 'create_project_dialog.dart';
 import 'create_quiz_dialog.dart';
 import 'theme.dart';
 import 'admin_page.dart';
+import 'package:flutter/foundation.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
@@ -117,7 +118,10 @@ class _HomePageState extends State<HomePage>
   Future<void> _fetchGroups() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
-    if (token == null) return;
+    if (token == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
 
     final apiService = ApiService();
     List<dynamic> groupsData;
@@ -125,6 +129,7 @@ class _HomePageState extends State<HomePage>
       groupsData = await apiService.getUserGroups(token);
     } catch (e) {
       debugPrint('Error fetching groups: $e');
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
 
@@ -351,6 +356,7 @@ class _HomePageState extends State<HomePage>
 
       _cleanupExpiredNotifications();
       _activeTests = _getActiveTests();
+      _isLoading = false;
     });
   }
 
@@ -1699,6 +1705,12 @@ class _HomePageState extends State<HomePage>
 
   // A csoportlista
   Widget _buildGroupList() {
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: Theme.of(context).primaryColor),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
@@ -2132,6 +2144,11 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
     BuildContext context,
     Map<String, dynamic> quiz,
   ) {
+    if (kIsWeb && widget.item.group.kiosk) {
+      _showWebKioskRestrictionDialog(context);
+      return;
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -2298,6 +2315,34 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
           ),
         );
       },
+    );
+  }
+
+  void _showWebKioskRestrictionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.desktop_windows_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Csak alkalmazásban elérhető'),
+          ],
+        ),
+        content: const Text(
+          'Ez a teszt Zárolt védelmi szinttel (Kiosk módban) lett létrehozva. A webes böngésző nem támogatja ezt a szintű biztonságot.\n\nKérjük, nyisd meg az alkalmazást (Windows, Android vagy iOS) a teszt kitöltéséhez!',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rendben'),
+          ),
+        ],
+      ),
     );
   }
 
