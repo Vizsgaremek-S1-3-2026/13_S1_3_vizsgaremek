@@ -248,3 +248,13 @@ class PointUpdatePayload(Schema):
 # --- Update Grade ---
 class GradeUpdateSchema(Schema):
     new_grade: str
+
+# --- Quiz Status ---
+class StudentBasicSchema(Schema):
+    id: int
+    username: str
+
+class QuizStatusOutSchema(Schema):
+    writing: List[StudentBasicSchema]
+    locked: List[StudentBasicSchema]
+    finished: List[StudentBasicSchema]
