@@ -1,6 +1,7 @@
 # quizzes/schemas.py
 
 from ninja import Schema
+from enum import Enum
 from typing import Optional, List
 from datetime import datetime
 from django.utils import timezone # Needed for server_now
@@ -117,10 +118,16 @@ class QuizContentSchema(Schema):
 
 
 #! Event Schemas
+class EventTypeEnum(str, Enum):
+    TEST_START = "TEST_START"
+    TEST_FINISH = "TEST_FINISH"
+    STUDENT_CHEAT = "STUDENT_CHEAT"
+
 class EventCreateSchema(Schema):
     quiz_id: int
-    type: str
-    desc: str
+    type: EventTypeEnum
+    desc: Optional[str] = None
+    answer: Optional[str] = None
 
 class EventOutSchema(Schema):
     id: int
@@ -258,3 +265,4 @@ class QuizStatusOutSchema(Schema):
     writing: List[StudentBasicSchema]
     locked: List[StudentBasicSchema]
     finished: List[StudentBasicSchema]
+    idle: List[StudentBasicSchema]

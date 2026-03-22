@@ -210,19 +210,52 @@ def get_all_events(request):
         raise HttpError(403, "Permission denied.")
     return Event.objects.all().select_related('student')
 
-#? Report a cheat event
-@router.post("/events", response=EventOutSchema, summary="Student: Report a cheat event")
-def create_system_event(request, payload: EventCreateSchema):
+@router.post("/events/log", response=EventOutSchema, summary="Log a quiz event (Start, Finish, or Cheat)")
+def log_event(request, payload: EventCreateSchema):
+    """
+    All-in-one event logger.
+    - TEST_START/TEST_FINISH: Logged as STATIC (audit trail).
+    - STUDENT_CHEAT: Logged as ACTIVE (immediately locks the student).
+    """
     current_user = request.auth
     quiz = get_object_or_404(Quiz, id=payload.quiz_id)
-    
+
+    # 1. Authorization: User must be a member of the group
+    is_member = GroupMember.objects.filter(group=quiz.group, user=current_user).exists()
+    if not is_member and not current_user.is_superuser:
+        raise HttpError(403, "You are not authorized to participate in this quiz.")
+
+    # 2. Determine the status based on event type
+    # If it's a cheat event, it must be ACTIVE to trigger the lock system.
+    if payload.type == Event.Type.STUDENT_CHEAT:
+        event_status = Event.Status.ACTIVE
+    else:
+        event_status = Event.Status.STATIC
+
+    # 3. Special Logic: Prevent duplicate START events
+    # If the student refreshes the page, we don't want 50 "TEST_START" logs.
+    if payload.type == Event.Type.TEST_START:
+        event, created = Event.objects.get_or_create(
+            quiz=quiz,
+            student=current_user,
+            type=Event.Type.TEST_START,
+            defaults={
+                'status': Event.Status.STATIC,
+                'desc': payload.desc or "Student started the quiz."
+            }
+        )
+        return event
+
+    # 4. Create the event
     event = Event.objects.create(
         quiz=quiz,
         student=current_user,
         type=payload.type,
+        status=event_status,
         desc=payload.desc,
-        status=Event.Status.ACTIVE
+        answer=payload.answer
     )
+
     return event
 
 #? Check lock status
@@ -240,6 +273,32 @@ def check_lock_status(request, quiz_id: int):
     if active_event:
         return {"is_locked": True, "active_event_id": active_event.id, "message": "Teacher approval required."}
     return {"is_locked": False, "active_event_id": None, "message": "You may continue."}
+
+#? Unlock a specific student
+@router.post("/{quiz_id}/unlock/{student_id}", summary="Teacher: Unlock a specific student")
+def unlock_student(request, quiz_id: int, student_id: int):
+    current_user = request.auth
+    quiz = get_object_or_404(Quiz, id=quiz_id)
+
+    # 1. Auth Check
+    is_admin = GroupMember.objects.filter(group=quiz.group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        raise HttpError(403, "Permission denied.")
+
+    # 2. Find all active cheat events for this student in this quiz
+    active_events = Event.objects.filter(
+        quiz=quiz, 
+        student_id=student_id, 
+        status=Event.Status.ACTIVE
+    )
+
+    count = active_events.count()
+    active_events.update(
+        status=Event.Status.HANDLED, 
+        note=f"Unlocked by teacher {current_user.username}"
+    )
+
+    return {"success": True, "events_resolved": count}
 
 #? Get quiz events (for Teachers)
 @router.get("/events/{quiz_id}", response=List[EventOutSchema], summary="Teacher: Get quiz events")
@@ -566,41 +625,71 @@ def get_quiz_stats(request, quiz_id: int):
 def get_quiz_status(request, quiz_id: int):
     """
     Returns lists of students in the quiz grouped by their current status:
-    - writing: Currently taking the quiz (haven't submitted, not locked).
-    - locked: Locked out due to an active anti-cheat event.
-    - finished: Successfully submitted the quiz.
+    - writing: Opened the test (TEST_START event exists) but not submitted or locked.
+    - locked: Currently locked out due to an ACTIVE anti-cheat event.
+    - finished: Successfully submitted the quiz (Submission record exists).
+    - idle: In the group but hasn't opened the test yet.
     """
     current_user = request.auth
     quiz = get_object_or_404(Quiz, id=quiz_id)
 
-    # 1. Auth Check
-    is_admin = GroupMember.objects.filter(group=quiz.group, user=current_user, rank='ADMIN').exists()
+    # 1. Auth Check (Must be Group Admin or Superuser)
+    is_admin = GroupMember.objects.filter(
+        group=quiz.group, 
+        user=current_user, 
+        rank='ADMIN'
+    ).exists()
+    
     if not is_admin and not current_user.is_superuser:
-        raise HttpError(403, "Permission denied. Only teachers can view the live status.")
+        raise HttpError(403, "Permission denied. Only teachers can view live status.")
 
-    # 2. Gather student groups
+    # 2. Pre-fetch all relevant IDs for efficiency (using sets for O(1) lookup)
+    # We get all students who are marked as MEMBERS in this group
     members = GroupMember.objects.filter(group=quiz.group, rank='MEMBER').select_related('user')
     
+    # Students who have already finished
     finished_ids = set(Submission.objects.filter(quiz=quiz).values_list('student_id', flat=True))
-    locked_ids = set(Event.objects.filter(quiz=quiz, status=Event.Status.ACTIVE).values_list('student_id', flat=True))
+    
+    # Students who have a currently "ACTIVE" lock event
+    locked_ids = set(Event.objects.filter(
+        quiz=quiz, 
+        status=Event.Status.ACTIVE
+    ).values_list('student_id', flat=True))
 
+    # Students who have at least triggered the "TEST_START" event
+    started_ids = set(Event.objects.filter(
+        quiz=quiz, 
+        type=Event.Type.TEST_START
+    ).values_list('student_id', flat=True))
+
+    # 3. Categorize
     writing = []
     locked = []
     finished = []
+    idle = []
 
     for member in members:
         user_data = {"id": member.user.id, "username": member.user.username}
-        if member.user.id in finished_ids:
+        user_id = member.user.id
+
+        if user_id in finished_ids:
+            # Most important state: Submission received
             finished.append(user_data)
-        elif member.user.id in locked_ids:
+        elif user_id in locked_ids:
+            # Second most important: Student is currently blocked
             locked.append(user_data)
-        else:
+        elif user_id in started_ids:
+            # Student has opened the test and is currently working
             writing.append(user_data)
+        else:
+            # Student is in the class but hasn't clicked "Start"
+            idle.append(user_data)
 
     return {
         "writing": writing,
         "locked": locked,
-        "finished": finished
+        "finished": finished,
+        "idle": idle
     }
 
 #? Update points

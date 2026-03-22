@@ -42,6 +42,11 @@ class Event(models.Model):
         STATIC = 'STATIC', 'Static'
         ACTIVE = 'ACTIVE', 'Active'
         HANDLED = 'HANDLED', 'Handled'
+    
+    class Type(models.TextChoices):
+        TEST_START = 'TEST_START', 'Test Start'
+        TEST_FINISH = 'TEST_FINISH', 'Test Finish'
+        STUDENT_CHEAT = 'STUDENT_CHEAT', 'Student Cheat'
 
     date_created = models.DateTimeField(auto_now_add=True)
     
@@ -57,7 +62,11 @@ class Event(models.Model):
         related_name='quiz_events'
     )
     
-    type = models.CharField(max_length=100)
+    type = models.CharField(
+        max_length=20, 
+        choices=Type.choices, 
+        default=Type.TEST_START
+    )
     
     status = models.CharField(
         max_length=20, 
@@ -65,11 +74,20 @@ class Event(models.Model):
         default=Status.STATIC
     )
     
-    desc = models.TextField()
+    desc = models.TextField(
+        blank=True, 
+        null=True
+    )
     
-    answer = models.TextField(blank=True, null=True)
+    answer = models.TextField(
+        blank=True, 
+        null=True
+    )
     
-    note = models.TextField(blank=True, null=True)
+    note = models.TextField(
+        blank=True, 
+        null=True
+    )
 
     def __str__(self):
         return f"{self.type} - {self.student} ({self.status})"
