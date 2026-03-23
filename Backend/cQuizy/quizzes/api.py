@@ -264,6 +264,7 @@ def check_lock_status(request, quiz_id: int):
     current_user = request.auth
     quiz = get_object_or_404(Quiz, id=quiz_id)
 
+    # 1. Check for an ACTIVE event (Waiting for teacher)
     active_event = Event.objects.filter(
         quiz=quiz,
         student=current_user,
@@ -271,8 +272,31 @@ def check_lock_status(request, quiz_id: int):
     ).first()
 
     if active_event:
-        return {"is_locked": True, "active_event_id": active_event.id, "message": "Teacher approval required."}
-    return {"is_locked": False, "active_event_id": None, "message": "You may continue."}
+        return {
+            "is_locked": True, 
+            "is_closed": False, 
+            "active_event_id": active_event.id, 
+            "message": "Locked. Please wait for teacher approval."
+        }
+
+    # 2. Check if teacher decided to CLOSE the test
+    closed_event = Event.objects.filter(
+        quiz=quiz,
+        student=current_user,
+        status=Event.Status.HANDLED,
+        answer="CLOSE"
+    ).exists()
+
+    if closed_event:
+        return {
+            "is_locked": False, 
+            "is_closed": True, 
+            "active_event_id": None, 
+            "message": "Your test session has been closed by the teacher."
+        }
+
+    # 3. Everything is fine
+    return {"is_locked": False, "is_closed": False, "active_event_id": None, "message": "OK"}
 
 #? Unlock a specific student
 @router.post("/{quiz_id}/unlock/{student_id}", summary="Teacher: Unlock a specific student")
@@ -313,20 +337,32 @@ def get_events_for_quiz(request, quiz_id: int):
     return Event.objects.filter(quiz=quiz).select_related('student')
 
 #? Resolve event
-@router.post("/events/{event_id}", summary="Teacher: Resolve event")
-def resolve_event(request, event_id: int, payload: ResolveEventSchema):
+@router.post("/events/{event_id}/resolve", summary="Teacher: Decision on cheat event")
+def resolve_cheat_event(request, event_id: int, payload: ResolveEventSchema):
+    """
+    Teacher decides the fate of a student who cheated.
+    - decision "UNLOCK": Student can continue.
+    - decision "CLOSE": Student is kicked out permanently (no submission allowed).
+    """
     current_user = request.auth
     event = get_object_or_404(Event, id=event_id)
     
+    # 1. Auth Check
     is_admin = GroupMember.objects.filter(group=event.quiz.group, user=current_user, rank='ADMIN').exists()
     if not is_admin and not current_user.is_superuser:
         raise HttpError(403, "Permission denied.")
-    
+
+    if payload.decision not in ["UNLOCK", "CLOSE"]:
+        raise HttpError(400, "Invalid decision. Must be UNLOCK or CLOSE.")
+
+    # 2. Update the Event
     event.status = Event.Status.HANDLED
+    event.answer = payload.decision  # Store the decision here
     if payload.note:
         event.note = payload.note
     event.save()
-    return {"success": True, "new_status": event.status}
+
+    return {"success": True, "decision": event.answer}
 
 
 #! Submission & Grading Endpoints ==================================================
@@ -346,6 +382,9 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
 
     if Submission.objects.filter(quiz=quiz, student=current_user).exists():
         raise HttpError(400, "You have already submitted this quiz.")
+    
+    if Event.objects.filter(quiz=quiz, student=current_user, status=Event.Status.HANDLED, answer="CLOSE").exists():
+        raise HttpError(403, "This test session was closed by the teacher. You cannot submit.")
 
     # 2. Prepare Data
     project = quiz.project

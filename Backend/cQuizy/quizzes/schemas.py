@@ -145,12 +145,13 @@ class EventOutSchema(Schema):
         return str(obj.date_created)
 
 class StudentLockStatusSchema(Schema):
-    is_locked: bool
+    is_locked: bool          # True if there is an ACTIVE event
+    is_closed: bool          # True if teacher chose "CLOSE"
     active_event_id: Optional[int] = None
     message: str
 
 class ResolveEventSchema(Schema):
-    action: str = "unlock"
+    decision: str  # "UNLOCK" or "CLOSE"
     note: Optional[str] = None
 
 
