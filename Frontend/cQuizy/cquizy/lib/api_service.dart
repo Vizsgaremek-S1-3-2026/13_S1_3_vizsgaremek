@@ -606,6 +606,32 @@ class ApiService {
     }
   }
 
+  // Get live quiz status of students (Teacher)
+  Future<Map<String, dynamic>?> getQuizStatus(String token, int quizId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/status');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Kvíz állapot lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba kvíz állapot lekérése során: $e');
+      return null;
+    }
+  }
+
   // Update an existing Quiz session
   Future<Map<String, dynamic>?> updateQuiz(
     String token,
@@ -990,9 +1016,9 @@ class ApiService {
 
   // --- Monitoring & Events ---
 
-  // Report a cheat event (Student)
+  // Report a quiz event (Start, Finish, Cheat)
   Future<bool> reportEvent(String token, Map<String, dynamic> eventData) async {
-    final url = Uri.parse('$_baseUrl/quizzes/events');
+    final url = Uri.parse('$_baseUrl/quizzes/events/log');
     try {
       final response = await http.post(
         url,

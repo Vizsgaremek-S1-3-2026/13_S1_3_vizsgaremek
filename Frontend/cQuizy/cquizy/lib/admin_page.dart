@@ -130,6 +130,8 @@ class _AdminPageState extends State<AdminPage> {
       final submissions = await api.getQuizSubmissions(token, quizId);
       // Fetch events/alerts
       final events = await api.getQuizEvents(token, quizId);
+      // Fetch live status
+      final liveStatus = await api.getQuizStatus(token, quizId);
 
       // Fetch all group members to calculate accurate "Missing" count
       final allMembers = await api.getGroupMembers(token, widget.groupId);
@@ -187,7 +189,7 @@ class _AdminPageState extends State<AdminPage> {
         final userId = event['user_id'].toString();
         if (!studentMap.containsKey(userId)) continue;
 
-        if (event['type'] == 'blur' || event['type'] == 'cheat') {
+        if (event['type'] == 'STUDENT_CHEAT' || event['type'] == 'blur' || event['type'] == 'cheat') {
           studentMap[userId]!['wasBlocked'] = true;
           if (event['resolved'] != true) {
             studentMap[userId]!['status'] = 'blocked';
@@ -224,6 +226,68 @@ class _AdminPageState extends State<AdminPage> {
             // 'email' not in the provided JSON sample, omitting or empty
             'email': '',
           };
+        }
+      }
+
+      // Apply live status overrides and INSERT students from live status if missing
+      if (liveStatus != null) {
+        void ensureInMap(dynamic student, String status) {
+          final uid = student['id'].toString();
+          if (!studentMap.containsKey(uid)) {
+            // Add from live status since they weren't found in submissions or group members
+            studentMap[uid] = {
+              'name': student['username'] ?? 'Ismeretlen tanuló',
+              'status': status,
+              'wasBlocked': status == 'blocked',
+              'score': 0,
+              'maxScore': 100,
+              'grade': null,
+              'profilePicture': 'https://i.pravatar.cc/150?u=$uid',
+              'user_id': student['id'],
+              'email': '',
+            };
+          }
+        }
+
+        // Handle writing
+        final writingList = liveStatus['writing'] as List<dynamic>? ?? [];
+        for (var student in writingList) {
+          ensureInMap(student, 'writing');
+          studentMap[student['id'].toString()]!['status'] = 'writing';
+        }
+
+        // Handle locked
+        final lockedList = liveStatus['locked'] as List<dynamic>? ?? [];
+        for (var student in lockedList) {
+          ensureInMap(student, 'blocked');
+          studentMap[student['id'].toString()]!['status'] = 'blocked';
+          studentMap[student['id'].toString()]!['wasBlocked'] = true;
+        }
+
+        // Handle finished
+        final finishedList = liveStatus['finished'] as List<dynamic>? ?? [];
+        for (var student in finishedList) {
+          ensureInMap(student, 'submitted');
+          final uid = student['id'].toString();
+          // Only override if not already blocked
+          if (studentMap[uid]!['status'] != 'blocked') {
+            studentMap[uid]!['status'] = 'submitted';
+          }
+        }
+
+        // Handle idle
+        final idleList = liveStatus['idle'] as List<dynamic>? ?? [];
+        for (var student in idleList) {
+          ensureInMap(student, 'idle');
+          final uid = student['id'].toString();
+          // Only set idle if not already in a more active state
+          final currentStatus = studentMap[uid]!['status'] as String;
+          if (currentStatus != 'blocked' &&
+              currentStatus != 'submitted' &&
+              currentStatus != 'closed' &&
+              currentStatus != 'writing') {
+            studentMap[uid]!['status'] = 'idle';
+          }
         }
       }
 
@@ -1293,6 +1357,8 @@ class _AdminPageState extends State<AdminPage> {
         return 'Írja...';
       case 'blocked':
         return 'Letiltva';
+      case 'idle':
+        return 'Nem kezdte el';
       default:
         return '';
     }
@@ -1314,8 +1380,7 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Widget _buildMonitoringSection(BuildContext context) {
-    // Csak azokat jelenítjük meg, akik már elkezdték (nem 'idle')
-    final activeMembers = _members.where((m) => m['status'] != 'idle').toList();
+    final activeMembers = _members.toList();
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -1485,6 +1550,7 @@ class _AdminPageState extends State<AdminPage> {
         .where((m) => m['status'] == 'submitted')
         .length;
     final closedCount = _members.where((m) => m['status'] == 'closed').length;
+    final idleCount = _members.where((m) => m['status'] == 'idle').length;
 
     return Column(
       children: [
@@ -1540,7 +1606,6 @@ class _AdminPageState extends State<AdminPage> {
                         Colors.amber,
                         "Tiltva",
                       ),
-                      const SizedBox(width: 16),
                       _buildStatItem(
                         context,
                         Icons.check_circle_outline,
@@ -1551,10 +1616,10 @@ class _AdminPageState extends State<AdminPage> {
                       const SizedBox(width: 16),
                       _buildStatItem(
                         context,
-                        Icons.lock_clock,
-                        closedCount,
-                        Colors.red,
-                        "Lezárva",
+                        Icons.hourglass_empty,
+                        idleCount,
+                        Colors.grey,
+                        "Várakozó",
                       ),
 
                       const SizedBox(width: 32),
@@ -1604,7 +1669,7 @@ class _AdminPageState extends State<AdminPage> {
                         Positioned(
                           right: 0,
                           child: IconButton(
-                            onPressed: () {},
+                            onPressed: _fetchData,
                             icon: const Icon(Icons.refresh, size: 28),
                             tooltip: "Frissítés",
                           ),
@@ -1640,12 +1705,28 @@ class _AdminPageState extends State<AdminPage> {
                             Colors.green,
                             "Leadta",
                           ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
                           _buildStatItem(
                             context,
                             Icons.lock_clock,
                             closedCount,
                             Colors.red,
                             "Lezárva",
+                          ),
+                          _buildStatItem(
+                            context,
+                            Icons.hourglass_empty,
+                            idleCount,
+                            Colors.grey,
+                            "Várakozik",
                           ),
                         ],
                       ),
@@ -1744,7 +1825,7 @@ class _AdminPageState extends State<AdminPage> {
         const SizedBox(width: 12),
         // Refresh
         IconButton(
-          onPressed: () {},
+          onPressed: _fetchData,
           icon: const Icon(Icons.refresh, size: 28),
           tooltip: "Frissítés",
         ),
@@ -1809,6 +1890,11 @@ class _AdminPageState extends State<AdminPage> {
         borderColor = Colors.green;
         statusIcon = Icons.check_circle_outline;
         iconColor = Colors.green;
+        break;
+      case 'idle':
+        borderColor = Colors.grey;
+        statusIcon = Icons.hourglass_empty;
+        iconColor = Colors.grey;
         break;
       default:
         borderColor = Colors.grey;
@@ -1952,6 +2038,16 @@ class _AdminPageState extends State<AdminPage> {
                             size: 18,
                           ),
                         ),
+                      ] else if (status == 'blocked') ...[
+                        const SizedBox(width: 6),
+                        const Tooltip(
+                          message: "Csalt / Letiltva",
+                          child: Icon(
+                            Icons.block,
+                            color: Colors.red,
+                            size: 18,
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -2017,7 +2113,67 @@ class _AdminPageState extends State<AdminPage> {
     bool isFinished,
     ThemeData theme,
   ) {
-    if (status == 'writing' || status == 'blocked') {
+    if (status == 'writing') {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  member['status'] = 'blocked';
+                  member['wasBlocked'] = true;
+                });
+                ApiService().reportEvent(
+                  Provider.of<UserProvider>(context, listen: false).token!,
+                  {
+                    'quiz_id': widget.quiz['id'],
+                    'user_id': member['user_id'],
+                    'type': 'STUDENT_CHEAT',
+                    'desc': 'Tanári tiltás',
+                  },
+                ).catchError((_) => false);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.withValues(alpha: 0.1),
+                foregroundColor: Colors.amber.shade800,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Letilt',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  member['status'] = 'closed';
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.withValues(alpha: 0.1),
+                foregroundColor: Colors.red,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Lezár',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (status == 'blocked') {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(

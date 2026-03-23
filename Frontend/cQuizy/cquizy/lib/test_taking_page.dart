@@ -51,6 +51,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   bool _isKioskModeActive = true;
   DateTime? _finishTime;
   Timer? _countdownTimer;
+  Timer? _statusPollingTimer;
   double _originalVolume = 1.0;
   StreamSubscription<double>? _volumeSubscription;
 
@@ -177,6 +178,7 @@ class _TestTakingPageState extends State<TestTakingPage>
     } else {
       _initPersistentTimer();
     }
+    _initStatusPolling();
   }
 
   Future<void> _loadQuiz() async {
@@ -218,12 +220,14 @@ class _TestTakingPageState extends State<TestTakingPage>
                 _questions = blocks.cast<Map<String, dynamic>>();
                 _isLoading = false;
               });
+              _reportEvent('TEST_START', 'A diák elkezdte a tesztet.');
             }
           } else {
             setState(() {
               _questions = blocks.cast<Map<String, dynamic>>();
               _isLoading = false;
             });
+            _reportEvent('TEST_START', 'A diák elkezdte a tesztet.');
           }
         }
       } else {
@@ -536,6 +540,38 @@ class _TestTakingPageState extends State<TestTakingPage>
     });
   }
 
+  void _initStatusPolling() {
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+      if (!mounted || _isSubmitting) return;
+
+      final token = context.read<UserProvider>().token;
+      final user = context.read<UserProvider>().user;
+      final quizId = widget.quiz['id'];
+      if (token == null || user == null || quizId == null) return;
+
+      final statusData = await ApiService().getQuizStatus(token, quizId);
+      if (statusData != null && mounted && !_isSubmitting) {
+        final lockedList = statusData['locked'] as List<dynamic>? ?? [];
+        bool isLocked = lockedList.any((s) => s['id'] == user.id);
+        
+        if (isLocked) {
+          timer.cancel();
+          _submitTest(forced: true);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('A tanár letiltotta a hozzáférésedet! A teszt beadásra került.'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 6),
+              ),
+            );
+          }
+        }
+      }
+    });
+  }
+
   void _setupWebProtections() {
     WebProtections.setup(() {
       _triggerAntiCheat();
@@ -545,6 +581,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _statusPollingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
 
     // Cleanup drawings
@@ -695,6 +732,7 @@ class _TestTakingPageState extends State<TestTakingPage>
       setState(() {
         _isBlacklisted = true;
       });
+      _reportEvent('STUDENT_CHEAT', 'Rendszer általi letiltás (Anticheat).');
     }
   }
 
@@ -2148,6 +2186,9 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     _isSubmitting = true;
     _countdownTimer?.cancel();
+    _statusPollingTimer?.cancel();
+
+    _reportEvent('TEST_FINISH', 'A diák leadta/befejezte a tesztet.');
 
     // 1. Format Answers
     final token = context.read<UserProvider>().token;
