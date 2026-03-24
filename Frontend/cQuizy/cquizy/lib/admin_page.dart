@@ -189,7 +189,9 @@ class _AdminPageState extends State<AdminPage> {
         final userId = event['user_id'].toString();
         if (!studentMap.containsKey(userId)) continue;
 
-        if (event['type'] == 'STUDENT_CHEAT' || event['type'] == 'blur' || event['type'] == 'cheat') {
+        if (event['type'] == 'STUDENT_CHEAT' ||
+            event['type'] == 'blur' ||
+            event['type'] == 'cheat') {
           studentMap[userId]!['wasBlocked'] = true;
           if (event['resolved'] != true) {
             studentMap[userId]!['status'] = 'blocked';
@@ -2042,11 +2044,7 @@ class _AdminPageState extends State<AdminPage> {
                         const SizedBox(width: 6),
                         const Tooltip(
                           message: "Csalt / Letiltva",
-                          child: Icon(
-                            Icons.block,
-                            color: Colors.red,
-                            size: 18,
-                          ),
+                          child: Icon(Icons.block, color: Colors.red, size: 18),
                         ),
                       ],
                     ],
@@ -2123,15 +2121,17 @@ class _AdminPageState extends State<AdminPage> {
                   member['status'] = 'blocked';
                   member['wasBlocked'] = true;
                 });
-                ApiService().reportEvent(
-                  Provider.of<UserProvider>(context, listen: false).token!,
-                  {
-                    'quiz_id': widget.quiz['id'],
-                    'user_id': member['user_id'],
-                    'type': 'STUDENT_CHEAT',
-                    'desc': 'Tanári tiltás',
-                  },
-                ).catchError((_) => false);
+                ApiService()
+                    .reportEvent(
+                      Provider.of<UserProvider>(context, listen: false).token!,
+                      {
+                        'quiz_id': widget.quiz['id'],
+                        'user_id': member['user_id'],
+                        'type': 'STUDENT_CHEAT',
+                        'desc': 'Tanári tiltás',
+                      },
+                    )
+                    .catchError((_) => false);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber.withValues(alpha: 0.1),

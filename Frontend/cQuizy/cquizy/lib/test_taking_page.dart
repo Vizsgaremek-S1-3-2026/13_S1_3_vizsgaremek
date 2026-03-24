@@ -541,36 +541,48 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   void _initStatusPolling() {
-    _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      if (!mounted || _isSubmitting) return;
-
-      final token = context.read<UserProvider>().token;
-      final user = context.read<UserProvider>().user;
-      final quizId = widget.quiz['id'];
-      if (token == null || user == null || quizId == null) return;
-
-      final statusData = await ApiService().getQuizStatus(token, quizId);
-      if (statusData != null && mounted && !_isSubmitting) {
-        final lockedList = statusData['locked'] as List<dynamic>? ?? [];
-        bool isLocked = lockedList.any((s) => s['id'] == user.id);
-        
-        if (isLocked) {
-          timer.cancel();
-          _submitTest(forced: true);
-          
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('A tanár letiltotta a hozzáférésedet! A teszt beadásra került.'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 6),
-              ),
-            );
-          }
-        }
-      }
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 3), (
+      timer,
+    ) async {
+      await _checkLockStatus();
     });
   }
+
+  Future<void> _checkLockStatus() async {
+    if (!mounted || _isSubmitting) return;
+
+    final token = context.read<UserProvider>().token;
+    final quizId = widget.quiz['id'];
+    if (token == null || quizId == null) return;
+
+    final statusData = await ApiService().checkLockStatus(token, quizId);
+    if (statusData == null || !mounted || _isSubmitting) return;
+
+    final isClosed = statusData['is_closed'] == true;
+    final isLocked = statusData['is_locked'] == true;
+    final activeEventId = statusData['active_event_id'];
+    debugPrint('[lock-status] is_locked=$isLocked is_closed=$isClosed active_event_id=$activeEventId');
+
+    if (isClosed) {
+      // Tanár lezárta → automatikus beadás, beadás gomb nélkül
+      _statusPollingTimer?.cancel();
+      _submitTest(forced: true); // _submitTest maga küld TEST_FINISH eventet
+    } else if (isLocked && !_isBlacklisted) {
+      // Tanár tiltotta le → overlay megjelenítése
+      setState(() {
+        _isBlacklisted = true;
+      });
+      // Mivel a tanár tiltott le, ő már küldött egy STUDENT_CHEAT eseményt.
+    } else if (!isLocked && _isBlacklisted) {
+      // Tanár feloldotta → folytatás
+      setState(() {
+        _isBlacklisted = false;
+      });
+      // A tanár feloldása már regisztrálva van a szerveren a resolve hívással.
+    }
+  }
+
+
 
   void _setupWebProtections() {
     WebProtections.setup(() {
@@ -890,7 +902,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                                         ),
                                         const SizedBox(height: 24),
                                         const Text(
-                                          'Csalás észlelve',
+                                          'Letiltva',
                                           style: TextStyle(
                                             fontSize: 28,
                                             fontWeight: FontWeight.bold,
@@ -898,7 +910,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                                         ),
                                         const SizedBox(height: 16),
                                         const Text(
-                                          'A rendszer szabálytalan tevékenységet észlelt.\nVárd meg a tanári feloldást.',
+                                          'A felületed zárolva lett, vagy szabálytalan tevékenységet észlelt a rendszer.\nVárd meg a tanári feloldást.',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(fontSize: 16),
                                         ),

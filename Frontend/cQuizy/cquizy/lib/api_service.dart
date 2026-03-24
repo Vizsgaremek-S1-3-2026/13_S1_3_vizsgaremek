@@ -1036,6 +1036,31 @@ class ApiService {
     }
   }
 
+  // Report event and return the created event ID (for immediate resolve chaining)
+  Future<int?> reportEventGetId(String token, Map<String, dynamic> eventData) async {
+    final url = Uri.parse('$_baseUrl/quizzes/events/log');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(eventData),
+      );
+
+      debugPrint('reportEventGetId → ${response.statusCode}: ${response.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data['id'] as int?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('reportEventGetId hiba: $e');
+      return null;
+    }
+  }
+
   // Get all events (Admin)
   Future<List<Map<String, dynamic>>> getAllEvents(String token) async {
     final url = Uri.parse('$_baseUrl/quizzes/events');
@@ -1085,14 +1110,14 @@ class ApiService {
     }
   }
 
-  // Resolve/Unlock an event (Teacher)
-  Future<bool> resolveEvent(
+  // Resolve/Close a student event (Teacher)
+  // decision: "CLOSE"
+  Future<bool> resolveStudent(
     String token,
-    int eventId, {
-    String action = 'unlock',
-    String note = '',
-  }) async {
-    final url = Uri.parse('$_baseUrl/quizzes/events/$eventId');
+    int eventId,
+    String decision,
+  ) async {
+    final url = Uri.parse('$_baseUrl/quizzes/events/$eventId/resolve');
     try {
       final response = await http.post(
         url,
@@ -1100,11 +1125,34 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'action': action, 'note': note}),
+        body: jsonEncode({'decision': decision}),
       );
 
-      return response.statusCode == 200;
+      debugPrint('resolveStudent [$decision] eventId=$eventId → ${response.statusCode}: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
+      debugPrint('resolveStudent error: $e');
+      return false;
+    }
+  }
+
+  // Unlock a specific student (Teacher)
+  // POST /quizzes/{quiz_id}/unlock/{student_id}
+  Future<bool> unlockStudent(String token, int quizId, int studentId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/unlock/$studentId');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('unlockStudent quizId=$quizId studentId=$studentId → ${response.statusCode}: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('unlockStudent error: $e');
       return false;
     }
   }
