@@ -298,6 +298,61 @@ def check_lock_status(request, quiz_id: int):
     # 3. Everything is fine
     return {"is_locked": False, "is_closed": False, "active_event_id": None, "message": "OK"}
 
+#? Block a specific student (Letiltás)
+@router.post("/{quiz_id}/block/{student_id}", response={200: dict, 403: dict, 404: dict}, summary="Teacher: Block a specific student")
+def block_student(request, quiz_id: int, student_id: int):
+    current_user = request.auth
+    quiz = Quiz.objects.filter(id=quiz_id).first()
+    
+    if not quiz:
+        return 404, {"error": "Quiz nem található"}
+
+    is_admin = GroupMember.objects.filter(group=quiz.group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        return 403, {"error": "Nincs jogosultságod"}
+
+    has_session = Event.objects.filter(quiz=quiz, student_id=student_id, type=Event.Type.TEST_START).exists()
+    if not has_session:
+        return 404, {"error": "Diák nem található ebben a kvízben"}
+
+    Event.objects.create(
+        quiz=quiz,
+        student_id=student_id,
+        type=Event.Type.TEACHER_BLOCK,
+        status=Event.Status.ACTIVE,
+        desc="Tanári letiltás"
+    )
+
+    return 200, {"success": "Diák letiltva"}
+
+#? Close a specific student's test permanently (Lezárás)
+@router.post("/{quiz_id}/close/{student_id}", response={200: dict, 403: dict, 404: dict}, summary="Teacher: Close student test permanently")
+def close_student_test(request, quiz_id: int, student_id: int):
+    current_user = request.auth
+    quiz = Quiz.objects.filter(id=quiz_id).first()
+    
+    if not quiz:
+        return 404, {"error": "Quiz nem található"}
+
+    is_admin = GroupMember.objects.filter(group=quiz.group, user=current_user, rank='ADMIN').exists()
+    if not is_admin and not current_user.is_superuser:
+        return 403, {"error": "Nincs jogosultságod"}
+
+    has_session = Event.objects.filter(quiz=quiz, student_id=student_id, type=Event.Type.TEST_START).exists()
+    if not has_session:
+        return 404, {"error": "Diák nem található ebben a kvízben"}
+
+    Event.objects.create(
+        quiz=quiz,
+        student_id=student_id,
+        type=Event.Type.TEACHER_CLOSE,
+        status=Event.Status.HANDLED,
+        answer="CLOSE",
+        desc="Tanár véglegesen lezárta a tesztet"
+    )
+
+    return 200, {"success": "Diák tesztje lezárva"}
+
 #? Unlock a specific student
 @router.post("/{quiz_id}/unlock/{student_id}", summary="Teacher: Unlock a specific student")
 def unlock_student(request, quiz_id: int, student_id: int):
@@ -382,9 +437,6 @@ def submit_quiz(request, payload: SubmissionCreateSchema):
 
     if Submission.objects.filter(quiz=quiz, student=current_user).exists():
         raise HttpError(400, "You have already submitted this quiz.")
-    
-    if Event.objects.filter(quiz=quiz, student=current_user, status=Event.Status.HANDLED, answer="CLOSE").exists():
-        raise HttpError(403, "This test session was closed by the teacher. You cannot submit.")
 
     # 2. Prepare Data
     project = quiz.project

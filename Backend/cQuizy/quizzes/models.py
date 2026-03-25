@@ -47,6 +47,8 @@ class Event(models.Model):
         TEST_START = 'TEST_START', 'Test Start'
         TEST_FINISH = 'TEST_FINISH', 'Test Finish'
         STUDENT_CHEAT = 'STUDENT_CHEAT', 'Student Cheat'
+        TEACHER_BLOCK = 'TEACHER_BLOCK', 'Teacher Block'
+        TEACHER_CLOSE = 'TEACHER_CLOSE', 'Teacher Close'
 
     date_created = models.DateTimeField(auto_now_add=True)
     
