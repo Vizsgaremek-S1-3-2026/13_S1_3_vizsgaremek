@@ -338,6 +338,180 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
+  Future<void> _unlockStudent(Map<String, dynamic> member) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    final studentId = member['user_id'];
+    if (quizId == null || studentId == null) return;
+
+    // Optimistic UI update
+    setState(() {
+      member['status'] = 'writing';
+      member['wasBlocked'] = true;
+    });
+
+    final api = ApiService();
+    final success = await api.unlockStudent(token, quizId, studentId);
+
+    if (!success && mounted) {
+      // Revert on failure
+      setState(() {
+        member['status'] = 'blocked';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nem sikerült feloldani a diákot.')),
+      );
+    }
+  }
+
+  Future<void> _unlockAllBlocked() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    if (quizId == null) return;
+
+    final blockedMembers = _members.where((m) => m['status'] == 'blocked').toList();
+    if (blockedMembers.isEmpty) return;
+
+    final api = ApiService();
+    int failCount = 0;
+
+    for (var member in blockedMembers) {
+      final studentId = member['user_id'];
+      if (studentId == null) continue;
+
+      // Optimistic UI update
+      setState(() {
+        member['status'] = 'writing';
+        member['wasBlocked'] = true;
+      });
+
+      final success = await api.unlockStudent(token, quizId, studentId);
+      if (!success) {
+        failCount++;
+        if (mounted) {
+          setState(() {
+            member['status'] = 'blocked';
+          });
+        }
+      }
+    }
+
+    if (failCount > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$failCount diák feloldása nem sikerült.')),
+      );
+    }
+  }
+
+  Future<void> _blockStudent(Map<String, dynamic> member) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    final studentId = member['user_id'];
+    if (quizId == null || studentId == null) return;
+
+    final previousStatus = member['status'];
+
+    // Optimistic UI update
+    setState(() {
+      member['status'] = 'blocked';
+      member['wasBlocked'] = true;
+    });
+
+    final api = ApiService();
+    final success = await api.blockStudent(token, quizId, studentId);
+
+    if (!success && mounted) {
+      setState(() {
+        member['status'] = previousStatus;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nem sikerült letiltani a diákot.')),
+      );
+    }
+  }
+
+  Future<void> _closeStudent(Map<String, dynamic> member) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    final studentId = member['user_id'];
+    if (quizId == null || studentId == null) return;
+
+    final previousStatus = member['status'];
+
+    // Optimistic UI update
+    setState(() {
+      member['status'] = 'closed';
+    });
+
+    final api = ApiService();
+    final success = await api.closeStudent(token, quizId, studentId);
+
+    if (!success && mounted) {
+      setState(() {
+        member['status'] = previousStatus;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nem sikerült lezárni a diák tesztjét.')),
+      );
+    }
+  }
+
+  Future<void> _closeAll() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    if (quizId == null) return;
+
+    final activeMembers = _members.where((m) =>
+      m['status'] == 'writing' || m['status'] == 'blocked'
+    ).toList();
+    if (activeMembers.isEmpty) return;
+
+    final api = ApiService();
+    int failCount = 0;
+
+    for (var member in activeMembers) {
+      final studentId = member['user_id'];
+      if (studentId == null) continue;
+
+      final previousStatus = member['status'];
+
+      setState(() {
+        member['status'] = 'closed';
+      });
+
+      final success = await api.closeStudent(token, quizId, studentId);
+      if (!success) {
+        failCount++;
+        if (mounted) {
+          setState(() {
+            member['status'] = previousStatus;
+          });
+        }
+      }
+    }
+
+    if (failCount > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$failCount diák lezárása nem sikerült.')),
+      );
+    }
+  }
+
   Future<void> _fetchProjectDetails() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
@@ -1740,7 +1914,7 @@ class _AdminPageState extends State<AdminPage> {
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {},
+                            onPressed: () => _unlockAllBlocked(),
                             icon: const Icon(Icons.lock_open, size: 22),
                             label: const Text(
                               "Feloldás", // Shortened label for mobile
@@ -1759,7 +1933,7 @@ class _AdminPageState extends State<AdminPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {},
+                            onPressed: () => _closeAll(),
                             icon: const Icon(
                               Icons.stop_circle_outlined,
                               size: 22,
@@ -1801,7 +1975,7 @@ class _AdminPageState extends State<AdminPage> {
       children: [
         // Unblock All
         ElevatedButton.icon(
-          onPressed: () {},
+          onPressed: () => _unlockAllBlocked(),
           icon: const Icon(Icons.lock_open, size: 22),
           label: const Text("Összes feloldása", style: TextStyle(fontSize: 16)),
           style: ElevatedButton.styleFrom(
@@ -1814,7 +1988,7 @@ class _AdminPageState extends State<AdminPage> {
         const SizedBox(width: 12),
         // Close All
         ElevatedButton.icon(
-          onPressed: () {},
+          onPressed: () => _closeAll(),
           icon: const Icon(Icons.stop_circle_outlined, size: 22),
           label: const Text("Összes lezárása", style: TextStyle(fontSize: 16)),
           style: ElevatedButton.styleFrom(
@@ -2116,23 +2290,7 @@ class _AdminPageState extends State<AdminPage> {
         children: [
           Expanded(
             child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  member['status'] = 'blocked';
-                  member['wasBlocked'] = true;
-                });
-                ApiService()
-                    .reportEvent(
-                      Provider.of<UserProvider>(context, listen: false).token!,
-                      {
-                        'quiz_id': widget.quiz['id'],
-                        'user_id': member['user_id'],
-                        'type': 'STUDENT_CHEAT',
-                        'desc': 'Tanári tiltás',
-                      },
-                    )
-                    .catchError((_) => false);
-              },
+              onPressed: () => _blockStudent(member),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber.withValues(alpha: 0.1),
                 foregroundColor: Colors.amber.shade800,
@@ -2151,11 +2309,7 @@ class _AdminPageState extends State<AdminPage> {
           const SizedBox(width: 4),
           Expanded(
             child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  member['status'] = 'closed';
-                });
-              },
+              onPressed: () => _closeStudent(member),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.withValues(alpha: 0.1),
                 foregroundColor: Colors.red,
@@ -2177,11 +2331,7 @@ class _AdminPageState extends State<AdminPage> {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: () {
-            setState(() {
-              member['status'] = 'closed';
-            });
-          },
+          onPressed: () => _closeStudent(member),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.red.withValues(alpha: 0.1),
             foregroundColor: Colors.red,
@@ -2229,12 +2379,7 @@ class _AdminPageState extends State<AdminPage> {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: () {
-            setState(() {
-              member['status'] = 'writing';
-              member['wasBlocked'] = true;
-            });
-          },
+          onPressed: () => _unlockStudent(member),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green.withValues(alpha: 0.1),
             foregroundColor: Colors.green,
@@ -2245,7 +2390,7 @@ class _AdminPageState extends State<AdminPage> {
             elevation: 0,
           ),
           child: const Text(
-            'Engedélyezés',
+            'Feloldás',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
           ),
         ),

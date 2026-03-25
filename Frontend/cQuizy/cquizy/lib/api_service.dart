@@ -1157,6 +1157,48 @@ class ApiService {
     }
   }
 
+  // Block a specific student (Teacher)
+  // POST /quizzes/{quiz_id}/block/{student_id}
+  Future<bool> blockStudent(String token, int quizId, int studentId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/block/$studentId');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('blockStudent quizId=$quizId studentId=$studentId → ${response.statusCode}: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('blockStudent error: $e');
+      return false;
+    }
+  }
+
+  // Close a specific student's test (Teacher)
+  // POST /quizzes/{quiz_id}/close/{student_id}
+  Future<bool> closeStudent(String token, int quizId, int studentId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/close/$studentId');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('closeStudent quizId=$quizId studentId=$studentId → ${response.statusCode}: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('closeStudent error: $e');
+      return false;
+    }
+  }
+
   // Get active alerts (Teacher)
   Future<List<Map<String, dynamic>>> getActiveAlerts(
     String token,
