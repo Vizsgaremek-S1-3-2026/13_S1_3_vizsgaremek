@@ -717,7 +717,8 @@ def get_quiz_status(request, quiz_id: int):
     """
     Returns lists of students in the quiz grouped by their current status:
     - writing: Opened the test (TEST_START event exists) but not submitted or locked.
-    - locked: Currently locked out due to an ACTIVE anti-cheat event, teacher block, or permanent close.
+    - locked: Currently locked out due to an ACTIVE anti-cheat event or teacher block.
+    - suspended: Permanently closed by the teacher.
     - finished: Successfully submitted the quiz (Submission record exists).
     - idle: In the group but hasn't opened the test yet.
     """
@@ -741,14 +742,15 @@ def get_quiz_status(request, quiz_id: int):
     # Students who have already finished
     finished_ids = set(Submission.objects.filter(quiz=quiz).values_list('student_id', flat=True))
     
-    # Students who are currently locked (ACTIVE cheat/block event, or permanently closed by teacher)
+    # Students who are currently locked (ACTIVE cheat/block event)
     locked_ids = set(Event.objects.filter(
         quiz=quiz, 
         type__in=[Event.Type.STUDENT_CHEAT, Event.Type.TEACHER_BLOCK],
         status=Event.Status.ACTIVE
     ).values_list('student_id', flat=True))
 
-    locked_ids.update(Event.objects.filter(
+    # Students completely suspended/closed out
+    suspended_ids = set(Event.objects.filter(
         quiz=quiz,
         type=Event.Type.TEACHER_CLOSE
     ).values_list('student_id', flat=True))
@@ -762,6 +764,7 @@ def get_quiz_status(request, quiz_id: int):
     # 3. Categorize
     writing = []
     locked = []
+    suspended = []
     finished = []
     idle = []
 
@@ -772,8 +775,11 @@ def get_quiz_status(request, quiz_id: int):
         if user_id in finished_ids:
             # Most important state: Submission received
             finished.append(user_data)
+        elif user_id in suspended_ids:
+            # Second most important: Student test permanently closed
+            suspended.append(user_data)
         elif user_id in locked_ids:
-            # Second most important: Student is currently blocked
+            # Third most important: Student is currently locked out
             locked.append(user_data)
         elif user_id in started_ids:
             # Student has opened the test and is currently working
@@ -785,6 +791,7 @@ def get_quiz_status(request, quiz_id: int):
     return {
         "writing": writing,
         "locked": locked,
+        "suspended": suspended,
         "finished": finished,
         "idle": idle
     }

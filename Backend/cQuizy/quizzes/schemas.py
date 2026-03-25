@@ -265,5 +265,6 @@ class StudentBasicSchema(Schema):
 class QuizStatusOutSchema(Schema):
     writing: List[StudentBasicSchema]
     locked: List[StudentBasicSchema]
+    suspended: List[StudentBasicSchema]
     finished: List[StudentBasicSchema]
     idle: List[StudentBasicSchema]
