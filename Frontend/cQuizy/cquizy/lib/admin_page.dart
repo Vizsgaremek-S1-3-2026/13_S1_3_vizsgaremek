@@ -46,6 +46,10 @@ class _AdminPageState extends State<AdminPage> {
   Timer? _pollingTimer;
   Timer? _countdownTimer;
 
+  // Track students closed by the teacher locally,
+  // so polling doesn't revert their status before the server catches up.
+  final Set<String> _closedStudentIds = {};
+
   // Mock data for monitoring (Legacy, keeping reference if needed but unused)
   Map<String, dynamic>? _fullQuizData;
   Map<String, dynamic>? _quizStats;
@@ -251,19 +255,34 @@ class _AdminPageState extends State<AdminPage> {
           }
         }
 
+        // Handle suspended (permanently closed by teacher) - HIGHEST PRIORITY
+        final suspendedList = liveStatus['suspended'] as List<dynamic>? ?? [];
+        for (var student in suspendedList) {
+          ensureInMap(student, 'closed');
+          final uid = student['id'].toString();
+          studentMap[uid]!['status'] = 'closed';
+          _closedStudentIds.add(uid); // Track locally too
+        }
+
         // Handle writing
         final writingList = liveStatus['writing'] as List<dynamic>? ?? [];
         for (var student in writingList) {
           ensureInMap(student, 'writing');
-          studentMap[student['id'].toString()]!['status'] = 'writing';
+          final uid = student['id'].toString();
+          if (studentMap[uid]!['status'] != 'closed') {
+            studentMap[uid]!['status'] = 'writing';
+          }
         }
 
         // Handle locked
         final lockedList = liveStatus['locked'] as List<dynamic>? ?? [];
         for (var student in lockedList) {
           ensureInMap(student, 'blocked');
-          studentMap[student['id'].toString()]!['status'] = 'blocked';
-          studentMap[student['id'].toString()]!['wasBlocked'] = true;
+          final uid = student['id'].toString();
+          if (studentMap[uid]!['status'] != 'closed') {
+            studentMap[uid]!['status'] = 'blocked';
+            studentMap[uid]!['wasBlocked'] = true;
+          }
         }
 
         // Handle finished
@@ -271,8 +290,8 @@ class _AdminPageState extends State<AdminPage> {
         for (var student in finishedList) {
           ensureInMap(student, 'submitted');
           final uid = student['id'].toString();
-          // Only override if not already blocked
-          if (studentMap[uid]!['status'] != 'blocked') {
+          if (studentMap[uid]!['status'] != 'blocked' &&
+              studentMap[uid]!['status'] != 'closed') {
             studentMap[uid]!['status'] = 'submitted';
           }
         }
@@ -282,7 +301,6 @@ class _AdminPageState extends State<AdminPage> {
         for (var student in idleList) {
           ensureInMap(student, 'idle');
           final uid = student['id'].toString();
-          // Only set idle if not already in a more active state
           final currentStatus = studentMap[uid]!['status'] as String;
           if (currentStatus != 'blocked' &&
               currentStatus != 'submitted' &&
@@ -326,6 +344,13 @@ class _AdminPageState extends State<AdminPage> {
           finalStats['submission_count'] ?? submittedCount;
 
       if (mounted) {
+        // Force-apply 'closed' status for locally-tracked closed students
+        for (final uid in _closedStudentIds) {
+          if (studentMap.containsKey(uid)) {
+            studentMap[uid]!['status'] = 'closed';
+          }
+        }
+
         setState(() {
           _members = studentMap.values.toList();
           _quizStats = finalStats;
@@ -450,21 +475,32 @@ class _AdminPageState extends State<AdminPage> {
 
     final previousStatus = member['status'];
 
-    // Optimistic UI update
+    // Optimistic UI update + track locally
     setState(() {
       member['status'] = 'closed';
     });
+    _closedStudentIds.add(studentId.toString());
 
     final api = ApiService();
-    final success = await api.closeStudent(token, quizId, studentId);
+    final result = await api.closeStudentDetailed(token, quizId, studentId);
 
-    if (!success && mounted) {
+    if (result['success'] != true && mounted) {
       setState(() {
         member['status'] = previousStatus;
       });
+      final statusCode = result['statusCode'];
+      final body = result['body'] ?? '';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nem sikerült lezárni a diák tesztjét.')),
+        SnackBar(
+          content: Text('Nem sikerült lezárni a diák tesztjét. ($statusCode: $body)'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
       );
+    }
+    // If API failed, also remove from local tracking
+    if (result['success'] != true) {
+      _closedStudentIds.remove(studentId.toString());
     }
   }
 
@@ -493,9 +529,10 @@ class _AdminPageState extends State<AdminPage> {
       setState(() {
         member['status'] = 'closed';
       });
+      _closedStudentIds.add(studentId.toString());
 
-      final success = await api.closeStudent(token, quizId, studentId);
-      if (!success) {
+      final result = await api.closeStudentDetailed(token, quizId, studentId);
+      if (result['success'] != true) {
         failCount++;
         if (mounted) {
           setState(() {
@@ -510,6 +547,7 @@ class _AdminPageState extends State<AdminPage> {
         SnackBar(content: Text('$failCount diák lezárása nem sikerült.')),
       );
     }
+    // No immediate _fetchData() - optimistic UI stays, polling syncs later.
   }
 
   Future<void> _fetchProjectDetails() async {

@@ -1180,7 +1180,7 @@ class ApiService {
 
   // Close a specific student's test (Teacher)
   // POST /quizzes/{quiz_id}/close/{student_id}
-  Future<bool> closeStudent(String token, int quizId, int studentId) async {
+  Future<Map<String, dynamic>> closeStudentDetailed(String token, int quizId, int studentId) async {
     final url = Uri.parse('$_baseUrl/quizzes/$quizId/close/$studentId');
     try {
       final response = await http.post(
@@ -1192,10 +1192,18 @@ class ApiService {
       );
 
       debugPrint('closeStudent quizId=$quizId studentId=$studentId → ${response.statusCode}: ${response.body}');
-      return response.statusCode == 200 || response.statusCode == 204;
+      return {
+        'success': response.statusCode == 200 || response.statusCode == 204,
+        'statusCode': response.statusCode,
+        'body': response.body,
+      };
     } catch (e) {
       debugPrint('closeStudent error: $e');
-      return false;
+      return {
+        'success': false,
+        'statusCode': 0,
+        'body': e.toString(),
+      };
     }
   }
 
