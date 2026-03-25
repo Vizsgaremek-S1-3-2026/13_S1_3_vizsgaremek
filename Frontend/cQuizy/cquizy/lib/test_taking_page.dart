@@ -563,16 +563,10 @@ class _TestTakingPageState extends State<TestTakingPage>
     final activeEventId = statusData['active_event_id'];
     debugPrint('[lock-status] is_locked=$isLocked is_closed=$isClosed active_event_id=$activeEventId');
 
-    if (isClosed) {
-      // Tanár lezárta → automatikus beadás, beadás gomb nélkül
+    if (isClosed || isLocked) {
+      // Tanár lezárta vagy letiltotta → automatikus beadás
       _statusPollingTimer?.cancel();
-      _submitTest(forced: true); // _submitTest maga küld TEST_FINISH eventet
-    } else if (isLocked && !_isBlacklisted) {
-      // Tanár tiltotta le → overlay megjelenítése
-      setState(() {
-        _isBlacklisted = true;
-      });
-      // Mivel a tanár tiltott le, ő már küldött egy STUDENT_CHEAT eseményt.
+      _submitTest(forced: true); // _submitTest maga küld TEST_FINISH eventet és elküldi a válaszokat
     } else if (!isLocked && _isBlacklisted) {
       // Tanár feloldotta → folytatás
       setState(() {
@@ -930,6 +924,26 @@ class _TestTakingPageState extends State<TestTakingPage>
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 24,
                                               vertical: 12,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        // Final Submit button
+                                        ElevatedButton.icon(
+                                          onPressed: () => _submitTest(),
+                                          icon: const Icon(Icons.check_circle_outline,
+                                              size: 18),
+                                          label: const Text('Beadás és kilépés'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: theme.primaryColor,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 12,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                             ),
                                           ),
                                         ),

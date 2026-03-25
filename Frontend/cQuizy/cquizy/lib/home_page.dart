@@ -1785,7 +1785,8 @@ class _HomePageState extends State<HomePage>
                     onTap: () {
                       if (_selectedGroup != null ||
                           _showProjects ||
-                          _showStudentTests) {
+                          _showStudentTests ||
+                          _showStatistics) {
                         setState(() {
                           _showProjects = false;
                           _showStudentTests = false;
