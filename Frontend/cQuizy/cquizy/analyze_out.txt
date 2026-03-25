@@ -1,0 +1,6 @@
+Analyzing statistics_page.dart...                               
+
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\statistics_page.dart:563:62 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\statistics_page.dart:627:41 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\statistics_page.dart:658:34 - deprecated_member_use
+

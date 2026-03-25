@@ -1,14 +1,20 @@
 // lib/utils/web_protections_web.dart
-import 'dart:js' as js;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
+
+@JS()
+external JSObject get window;
+
+@JS()
+external JSObject get document;
 
 class WebProtections {
   static void setup(void Function() onCheatDetected) {
-    // Expose Dart function to JS with allowInterop for safety
-    js.context['flutterTriggerAntiCheat'] = js.allowInterop(onCheatDetected);
+    // Expose Dart function to JS
+    window.setProperty('flutterTriggerAntiCheat'.toJS, onCheatDetected.toJS);
 
     // Inject JS protection logic
-    js.context.callMethod('eval', [
-      """
+    final jsCode = """
       (function() {
         // 1. Disable Right-Click
         document.addEventListener('contextmenu', function(e) {
@@ -160,13 +166,13 @@ class WebProtections {
           };
         }
       })();
-    """,
-    ]);
+    """;
+
+    globalContext.callMethod('eval'.toJS, jsCode.toJS);
   }
 
   static void enterFullScreen() {
-    js.context.callMethod('eval', [
-      """
+    final jsCode = """
       (function() {
         var el = document.documentElement;
         var requestMethod = el.requestFullScreen || el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullScreen;
@@ -174,13 +180,13 @@ class WebProtections {
           requestMethod.call(el);
         }
       })();
-      """,
-    ]);
+    """;
+
+    globalContext.callMethod('eval'.toJS, jsCode.toJS);
   }
 
   static void exitFullScreen() {
-    js.context.callMethod('eval', [
-      """
+    final jsCode = """
       (function() {
         var el = document;
         var requestMethod = el.exitFullscreen || el.webkitExitFullscreen || el.mozExitFullscreen || el.msExitFullscreen;
@@ -188,7 +194,8 @@ class WebProtections {
           requestMethod.call(el);
         }
       })();
-      """,
-    ]);
+    """;
+
+    globalContext.callMethod('eval'.toJS, jsCode.toJS);
   }
 }

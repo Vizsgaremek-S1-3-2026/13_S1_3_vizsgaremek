@@ -106,24 +106,28 @@ class _AuthGateState extends State<AuthGate> {
     if (userProvider.isLoading) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              LoadingAnimationWidget.newtonCradle(
+        body: Column(
+          children: [
+            const Spacer(flex: 2),
+            Center(
+              child: LoadingAnimationWidget.newtonCradle(
                 color: theme.primaryColor,
                 size: 200,
               ),
-              const SizedBox(height: 24),
-              Text(
+            ),
+            const SizedBox(height: 32),
+            Center(
+              child: Text(
                 'Bejelentkezés...',
                 style: TextStyle(
                   color: theme.textTheme.bodyLarge?.color,
                   fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            ],
-          ),
+            ),
+            const Spacer(flex: 3),
+          ],
         ),
       );
     }

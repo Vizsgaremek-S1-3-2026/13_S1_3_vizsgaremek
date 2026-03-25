@@ -5,7 +5,7 @@ import 'group_page.dart';
 import 'settings_page.dart';
 import 'test_taking_page.dart';
 import 'utils/web_protections.dart';
-import 'dart:ui';
+
 import 'create_group_page.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
@@ -14,6 +14,13 @@ import 'create_project_dialog.dart';
 import 'create_quiz_dialog.dart';
 import 'theme.dart';
 import 'admin_page.dart';
+import 'package:flutter/foundation.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'student_tests_page.dart';
+import 'statistics_page.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -40,18 +47,33 @@ class ActiveTestItem {
   }
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   List<Group> _myGroups = [];
   List<Group> _otherGroups = [];
-  Group? _selectedGroup;
+  List<ActiveTestItem> _activeTests = []; // State for active tests sidebar
 
+  Group? _selectedGroup;
+  bool _isLoading = true;
+
+  // New GlobalKeys for Tutorial
+  final GlobalKey _tutorialButtonKey = GlobalKey();
+  final GlobalKey _createGroupButtonKey = GlobalKey();
+  final GlobalKey _speedDialKey = GlobalKey();
+  final GlobalKey _sideNavKey = GlobalKey();
+  final GlobalKey _projectsNavKey = GlobalKey();
+  final GlobalKey _createProjectButtonKey = GlobalKey();
+
+  bool _isTutorialButtonVisible = true;
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
   bool _isSpeedDialOpen = false;
   bool _showProjects = false;
+  bool _showStudentTests = false;
+  bool _showStatistics = false;
+  bool _isInProjectTutorial = false; // Flag for project creation tutorial
   int _projectsRefreshKey = 0;
 
-  List<ActiveTestItem> _activeTests = [];
   Timer? _refreshTimer;
 
   @override
@@ -96,7 +118,10 @@ class _HomePageState extends State<HomePage> {
   Future<void> _fetchGroups() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
-    if (token == null) return;
+    if (token == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
 
     final apiService = ApiService();
     List<dynamic> groupsData;
@@ -104,6 +129,7 @@ class _HomePageState extends State<HomePage> {
       groupsData = await apiService.getUserGroups(token);
     } catch (e) {
       debugPrint('Error fetching groups: $e');
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
 
@@ -330,6 +356,7 @@ class _HomePageState extends State<HomePage> {
 
       _cleanupExpiredNotifications();
       _activeTests = _getActiveTests();
+      _isLoading = false;
     });
   }
 
@@ -449,6 +476,505 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _showTutorial() {
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // 1. Welcome / Help Button
+    targets.add(
+      TargetFocus(
+        identify: "tutorial_btn",
+        keyTarget: _tutorialButtonKey,
+        alignSkip: Alignment.bottomRight,
+        enableOverlayTab: true,
+        enableTargetTab: true,
+        shape: ShapeLightFocus.Circle,
+        radius: 10,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Üdvözölleg a cQuizy-ben!",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Ez az interaktív bemutató végigvezet a legfontosabb funkciókon, beleértve a csoport létrehozását is. Bármikor újraindíthatod ezzel a gombbal.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 2. Side Navigation
+    targets.add(
+      TargetFocus(
+        identify: "side_nav",
+        keyTarget: _sideNavKey,
+        alignSkip: Alignment.topRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 10,
+        contents: [
+          TargetContent(
+            align: ContentAlign.right,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Navigációs Menü",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Itt válthatsz a Projekt szerkesztő, Csoportok és Beállítások között. Itt látod majd az éppen futó teszteket is.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 3. Speed Dial Button
+    targets.add(
+      TargetFocus(
+        identify: "speed_dial",
+        keyTarget: _speedDialKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.Circle,
+        radius: 10,
+        contents: [
+          TargetContent(
+            align: ContentAlign.left,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "Műveletek Menü",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Kattints ide a műveletek megnyitásához. Itt hozhatsz létre új projekteket, csoportokat, vagy csatlakozhatsz meglévőkhöz.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("Tutorial finished - opening speed dial");
+        // Open speed dial after tutorial finishes
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = true;
+            });
+          }
+        });
+        // Wait longer for SpeedDial animation to finish to avoid "target position" errors
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          try {
+            if (mounted && _isSpeedDialOpen) {
+              // Helper function to check if widget is visible and laid out
+              bool isKeyReady(GlobalKey key) {
+                final context = key.currentContext;
+                if (context == null) return false;
+                final renderBox = context.findRenderObject() as RenderBox?;
+                if (renderBox == null || !renderBox.hasSize) return false;
+                return renderBox.size.width > 0 && renderBox.size.height > 0;
+              }
+
+              // Check if the key exists AND has a valid size
+              if (isKeyReady(_createGroupButtonKey)) {
+                _showCreateGroupTutorial();
+              } else {
+                debugPrint(
+                  "Target key not ready (null or 0 size), retrying...",
+                );
+                Future.delayed(const Duration(milliseconds: 600), () {
+                  try {
+                    if (mounted &&
+                        _isSpeedDialOpen &&
+                        isKeyReady(_createGroupButtonKey)) {
+                      _showCreateGroupTutorial();
+                    } else {
+                      debugPrint(
+                        "Target key still not ready, skipping tutorial step to avoid crash.",
+                      );
+                    }
+                  } catch (e) {
+                    debugPrint("TUTORIAL ERROR in retry: $e");
+                  }
+                });
+              }
+            }
+          } catch (e, s) {
+            debugPrint("TUTORIAL ERROR in HomePage onFinish: $e");
+            debugPrint(s.toString());
+          }
+        });
+      },
+      onClickTarget: (target) {
+        debugPrint("onClickTarget: $target");
+      },
+      onSkip: () {
+        debugPrint("Tutorial skipped");
+        return true;
+      },
+      onClickOverlay: (target) {
+        debugPrint("onClickOverlay: $target");
+      },
+    );
+
+    tutorialCoachMark.show(context: context);
+  }
+
+  Future<void> _importProject() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    try {
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Projekt importálása',
+        type: FileType.custom,
+        allowedExtensions: ['cq'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final File file = File(result.files.single.path!);
+        final String content = await file.readAsString();
+        final Map<String, dynamic> data = jsonDecode(content);
+
+        final api = ApiService();
+        // Create new project
+        final name = data['name'] ?? 'Importált projekt';
+        final desc = data['desc'] ?? '';
+        final newProject = await api.createProject(token, name, desc);
+
+        if (newProject != null) {
+          final newId = newProject['id'];
+          // Update blocks
+          if (data['blocks'] != null) {
+            final blocks = List<Map<String, dynamic>>.from(
+              (data['blocks'] as List).map((item) {
+                // Deep copy and reset IDs
+                final block = jsonDecode(jsonEncode(item));
+                block['id'] = 0;
+                if (block['answers'] != null) {
+                  for (var ans in block['answers']) {
+                    ans['id'] = 0;
+                  }
+                }
+                return block;
+              }),
+            );
+            await api.updateProject(token, newId, {
+              'name': name,
+              'desc': desc,
+              'blocks': blocks,
+            });
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Projekt sikeresen importálva!'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+            // Refresh projects list
+            setState(() {
+              _projectsRefreshKey++;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hiba az importálás során: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showCreateGroupTutorial() {
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // Highlight the Create Group button
+    targets.add(
+      TargetFocus(
+        identify: "create_group_btn",
+        keyTarget: _createGroupButtonKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.Circle,
+        contents: [
+          TargetContent(
+            align: ContentAlign.left,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "Csoport Létrehozás",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Kattints ide egy új csoport létrehozásához! Most végigvezetlek a teljes folyamaton.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("Create group tutorial flow finished");
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = false;
+            });
+          }
+        });
+      },
+      onClickTarget: (target) async {
+        debugPrint("onClickTarget: $target");
+        // Prevent double navigation if onFinish fires
+        if (_isNavigatingToCreateGroup) return;
+        _isNavigatingToCreateGroup = true;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = false;
+            });
+          }
+        });
+
+        // Navigate immediately when user clicks the button
+        bool? result;
+        try {
+          result = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CreateGroupPage(tutorialMode: true),
+            ),
+          );
+        } finally {
+          _isNavigatingToCreateGroup = false;
+        }
+
+        // If tutorial finished successfully, continue to Project Creation
+        if (result == true && mounted) {
+          // Small delay to allow UI to settle
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) _showCreateProjectTutorial();
+          });
+        }
+
+        _fetchGroups();
+      },
+      onSkip: () {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isSpeedDialOpen = false;
+            });
+          }
+        });
+        return true;
+      },
+    );
+
+    tutorialCoachMark.show(context: context);
+  }
+
+  void _showCreateProjectTutorial() {
+    _isInProjectTutorial = true;
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // 1. Projects Tab
+    targets.add(
+      TargetFocus(
+        identify: "projects_tab",
+        keyTarget: _projectsNavKey,
+        alignSkip: Alignment.centerRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 10,
+        contents: [
+          TargetContent(
+            align: ContentAlign.right,
+            builder: (context, controller) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Projektek",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Kattints ide a Projektek nézet megnyitásához! Itt hozhatod létre és kezelheted a feladatsorokat.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 2. Create Project Button
+    targets.add(
+      TargetFocus(
+        identify: "create_project_btn",
+        keyTarget: _createProjectButtonKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.Circle,
+        contents: [
+          TargetContent(
+            align: ContentAlign.left,
+            builder: (context, controller) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "Új Projekt",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Kattints ide egy új projekt létrehozásához! Adj neki nevet és leírást.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("Project tutorial finished");
+        _isInProjectTutorial = false;
+      },
+      onClickTarget: (target) {
+        if (target.identify == "projects_tab") {
+          // Ensure we switch to projects tab
+          if (mounted) {
+            setState(() {
+              _showProjects = true;
+              _selectedGroup = null;
+              // Open speed dial for next step
+              Future.delayed(const Duration(milliseconds: 500), () {
+                if (mounted) setState(() => _isSpeedDialOpen = true);
+              });
+            });
+          }
+        }
+      },
+      onSkip: () {
+        return true;
+      },
+    );
+
+    // Ensure speed dial is closed initially so user focuses on SideNav
+    if (_isSpeedDialOpen) setState(() => _isSpeedDialOpen = false);
+
+    tutorialCoachMark.show(context: context);
+  }
+
+  bool _isNavigatingToCreateGroup = false;
+
   void _toggleSpeedDial() {
     ThemeInherited.of(context).triggerHaptic();
     setState(() {
@@ -469,7 +995,7 @@ class _HomePageState extends State<HomePage> {
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             body: Row(
               children: [
-                _buildSideNav(_activeTests),
+                Container(key: _sideNavKey, child: _buildSideNav(_activeTests)),
                 Expanded(
                   child: Stack(
                     children: [
@@ -485,21 +1011,57 @@ class _HomePageState extends State<HomePage> {
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      Positioned(
-                        bottom: 24,
-                        right: 24,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 300),
-                          opacity: _isMemberPanelOpen ? 0.0 : 1.0,
-                          child: IgnorePointer(
-                            ignoring: _isMemberPanelOpen,
-                            child: _buildSpeedDial(
-                              context,
-                              isGroupView: isGroupView,
+                      if (!_showStudentTests && !_showStatistics)
+                        Positioned(
+                          bottom: 24,
+                          right: 24,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 300),
+                            opacity: _isMemberPanelOpen ? 0.0 : 1.0,
+                            child: IgnorePointer(
+                              ignoring: _isMemberPanelOpen,
+                              child: _buildSpeedDial(
+                                context,
+                                isGroupView: isGroupView,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+
+                      // Tutorial / Help Button (Top Right)
+                      if (!isGroupView && !_showProjects)
+                        Positioned(
+                          top: 24,
+                          right: 24,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 200),
+                            opacity: _isTutorialButtonVisible ? 1.0 : 0.0,
+                            child: IgnorePointer(
+                              ignoring: !_isTutorialButtonVisible,
+                              child: Material(
+                                color: Theme.of(context).cardColor,
+                                elevation: 4,
+                                type: MaterialType.circle,
+                                child: Tooltip(
+                                  message: 'Interaktív Súgó',
+                                  child: InkWell(
+                                    key: _tutorialButtonKey,
+                                    onTap: _showTutorial,
+                                    customBorder: const CircleBorder(),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Icon(
+                                        Icons.help_outline_rounded,
+                                        color: Theme.of(context).primaryColor,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -553,10 +1115,11 @@ class _HomePageState extends State<HomePage> {
                                 ),
                               ),
                               const Spacer(),
-                              _buildSpeedDial(
-                                context,
-                                isGroupView: isGroupView,
-                              ),
+                              if (!_showStudentTests && !_showStatistics)
+                                _buildSpeedDial(
+                                  context,
+                                  isGroupView: isGroupView,
+                                ),
                             ],
                           ),
                         ),
@@ -572,44 +1135,61 @@ class _HomePageState extends State<HomePage> {
 
   // Az animált tartalomváltó
   Widget _buildAnimatedContent() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: _selectedGroup != null
-          ? GroupPage(
-              key: ValueKey(_selectedGroup!.title),
-              group: _selectedGroup!,
-              onTestExpired: (group) => _fetchGroups(),
-              onMemberPanelToggle: (isOpen) {
-                setState(() {
-                  _isMemberPanelOpen = isOpen;
-                });
-              },
-              onAdminTransferred: () async {
-                _unselectGroup();
-                await _fetchGroups();
-              },
-              onGroupUpdated: () async {
-                final currentGroupId = _selectedGroup?.id;
-                await _fetchGroups();
-                if (currentGroupId != null) {
-                  final allGroups = [..._myGroups, ..._otherGroups];
-                  final updatedGroup = allGroups.firstWhere(
-                    (g) => g.id == currentGroupId,
-                    orElse: () => _selectedGroup!,
-                  );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollUpdateNotification) {
+          final isVisible = notification.metrics.pixels < 50;
+          if (_isTutorialButtonVisible != isVisible) {
+            setState(() {
+              _isTutorialButtonVisible = isVisible;
+            });
+          }
+        }
+        return false;
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _selectedGroup != null
+            ? GroupPage(
+                key: ValueKey(_selectedGroup!.title),
+                group: _selectedGroup!,
+                onTestExpired: (group) => _fetchGroups(),
+                onMemberPanelToggle: (isOpen) {
                   setState(() {
-                    _selectedGroup = updatedGroup;
+                    _isMemberPanelOpen = isOpen;
                   });
-                }
-              },
-              onGroupLeft: () async {
-                _unselectGroup();
-                await _fetchGroups();
-              },
-            )
-          : _showProjects
-          ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
-          : _buildGroupList(),
+                },
+                onAdminTransferred: () async {
+                  _unselectGroup();
+                  await _fetchGroups();
+                },
+                onGroupUpdated: () async {
+                  final currentGroupId = _selectedGroup?.id;
+                  await _fetchGroups();
+                  if (currentGroupId != null) {
+                    final allGroups = [..._myGroups, ..._otherGroups];
+                    final updatedGroup = allGroups.firstWhere(
+                      (g) => g.id == currentGroupId,
+                      orElse: () => _selectedGroup!,
+                    );
+                    setState(() {
+                      _selectedGroup = updatedGroup;
+                    });
+                  }
+                },
+                onGroupLeft: () async {
+                  _unselectGroup();
+                  await _fetchGroups();
+                },
+              )
+            : _showProjects
+            ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
+            : _showStudentTests
+            ? const StudentTestsPage()
+            : _showStatistics
+            ? const StatisticsPage()
+            : _buildGroupList(),
+      ),
     );
   }
 
@@ -643,87 +1223,241 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (_showProjects) {
-      return AnimatedOpacity(
-        duration: const Duration(milliseconds: 300),
-        opacity: 1.0,
-        child: AnimatedScale(
-          duration: const Duration(milliseconds: 300),
-          scale: 1.0,
-          curve: Curves.easeInOut,
-          child: Tooltip(
-            message: 'Új projekt létrehozása',
-            child: InkWell(
-              onTap: () async {
-                final result = await showGeneralDialog<Map<String, String>>(
-                  context: context,
-                  barrierDismissible: true,
-                  barrierLabel: '',
-                  transitionDuration: const Duration(milliseconds: 300),
-                  pageBuilder: (context, animation1, animation2) {
-                    return Container();
-                  },
-                  transitionBuilder: (context, a1, a2, widget) {
-                    return ScaleTransition(
-                      scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
-                      child: FadeTransition(
-                        opacity: a1,
-                        child: const CreateProjectDialog(),
-                      ),
-                    );
-                  },
-                );
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Import Project Button
+                AnimatedScale(
+                  scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                    child: _isSpeedDialOpen
+                        ? Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                buildLabel('Projekt importálása'),
+                                Tooltip(
+                                  message: 'Projekt importálása fájlból',
+                                  child: InkWell(
+                                    onTap: () {
+                                      ThemeInherited.of(
+                                        context,
+                                      ).triggerHaptic();
+                                      setState(() {
+                                        _isSpeedDialOpen = false;
+                                      });
+                                      _importProject();
+                                    },
+                                    customBorder: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12.0),
+                                    ),
+                                    child: Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: theme.primaryColor.withOpacity(
+                                          0.9,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          12.0,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.upload_file,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+                // Create Project Button
+                AnimatedScale(
+                  scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                    child: _isSpeedDialOpen
+                        ? Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                buildLabel('Projekt létrehozása'),
+                                Tooltip(
+                                  message: 'Új projekt létrehozása',
+                                  child: InkWell(
+                                    key: _createProjectButtonKey,
+                                    onTap: () async {
+                                      ThemeInherited.of(
+                                        context,
+                                      ).triggerHaptic();
+                                      setState(() {
+                                        _isSpeedDialOpen = false;
+                                      });
+                                      final result =
+                                          await showGeneralDialog<
+                                            Map<String, String>
+                                          >(
+                                            context: context,
+                                            barrierDismissible: true,
+                                            barrierLabel: '',
+                                            transitionDuration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            pageBuilder:
+                                                (
+                                                  context,
+                                                  animation1,
+                                                  animation2,
+                                                ) {
+                                                  return Container();
+                                                },
+                                            transitionBuilder:
+                                                (context, a1, a2, widget) {
+                                                  return ScaleTransition(
+                                                    scale: Tween<double>(
+                                                      begin: 0.5,
+                                                      end: 1.0,
+                                                    ).animate(a1),
+                                                    child: FadeTransition(
+                                                      opacity: a1,
+                                                      child: CreateProjectDialog(
+                                                        tutorialMode:
+                                                            _isInProjectTutorial,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                          );
 
-                if (result != null) {
-                  final userProvider = Provider.of<UserProvider>(
-                    context,
-                    listen: false,
-                  );
-                  final token = userProvider.token;
-                  if (token != null) {
-                    final api = ApiService();
-                    final project = await api.createProject(
-                      token,
-                      result['name']!,
-                      result['desc']!,
-                    );
-                    if (mounted) {
-                      if (project != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Projekt sikeresen létrehozva!'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                        setState(() {
-                          _projectsRefreshKey++;
-                        });
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Hiba a projekt létrehozása során'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  }
-                }
-              },
+                                      if (result != null) {
+                                        final userProvider =
+                                            Provider.of<UserProvider>(
+                                              context,
+                                              listen: false,
+                                            );
+                                        final token = userProvider.token;
+                                        if (token != null) {
+                                          final api = ApiService();
+                                          final project = await api
+                                              .createProject(
+                                                token,
+                                                result['name']!,
+                                                result['desc']!,
+                                              );
+                                          if (mounted) {
+                                            if (project != null) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Projekt sikeresen létrehozva!',
+                                                  ),
+                                                  backgroundColor: Colors.green,
+                                                ),
+                                              );
+                                              setState(() {
+                                                _projectsRefreshKey++;
+                                              });
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Hiba a projekt létrehozása során',
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    customBorder: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12.0),
+                                    ),
+                                    child: Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: theme.primaryColor.withOpacity(
+                                          0.9,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          12.0,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Main Toggle Button
+          Tooltip(
+            message: _isSpeedDialOpen ? 'Bezárás' : 'Projekt műveletek',
+            child: InkWell(
+              onTap: _toggleSpeedDial,
               customBorder: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16.0),
               ),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
                   color: theme.primaryColor,
                   borderRadius: BorderRadius.circular(16.0),
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
+                child: AnimatedRotation(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  turns: _isSpeedDialOpen ? 0.125 : 0,
+                  child: Icon(
+                    _isSpeedDialOpen ? Icons.close : Icons.add,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       );
     }
 
@@ -856,6 +1590,7 @@ class _HomePageState extends State<HomePage> {
                               Tooltip(
                                 message: 'Csoport létrehozása',
                                 child: InkWell(
+                                  key: _createGroupButtonKey,
                                   onTap: () async {
                                     ThemeInherited.of(context).triggerHaptic();
                                     setState(() {
@@ -905,6 +1640,7 @@ class _HomePageState extends State<HomePage> {
         Tooltip(
           message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
           child: InkWell(
+            key: _speedDialKey,
             onTap: _toggleSpeedDial,
             customBorder: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16.0),
@@ -969,6 +1705,12 @@ class _HomePageState extends State<HomePage> {
 
   // A csoportlista
   Widget _buildGroupList() {
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: Theme.of(context).primaryColor),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
@@ -1035,11 +1777,19 @@ class _HomePageState extends State<HomePage> {
                   SideNavItem(
                     label: 'Csoportok',
                     icon: Icons.group,
-                    isSelected: _selectedGroup == null && !_showProjects,
+                    isSelected:
+                        _selectedGroup == null &&
+                        !_showProjects &&
+                        !_showStudentTests &&
+                        !_showStatistics,
                     onTap: () {
-                      if (_selectedGroup != null || _showProjects) {
+                      if (_selectedGroup != null ||
+                          _showProjects ||
+                          _showStudentTests) {
                         setState(() {
                           _showProjects = false;
+                          _showStudentTests = false;
+                          _showStatistics = false;
                           _selectedGroup = null;
                         });
                       }
@@ -1048,6 +1798,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 8),
                   SideNavItem(
+                    key: _projectsNavKey,
                     label: 'Projektek',
                     icon: Icons.folder,
                     isSelected: _showProjects,
@@ -1055,6 +1806,8 @@ class _HomePageState extends State<HomePage> {
                       if (!_showProjects) {
                         setState(() {
                           _showProjects = true;
+                          _showStudentTests = false;
+                          _showStatistics = false;
                           _selectedGroup = null;
                           _isMemberPanelOpen = false;
                         });
@@ -1063,9 +1816,41 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  SideNavItem(label: 'Tesztek', icon: Icons.quiz),
+                  SideNavItem(
+                    label: 'Tesztek',
+                    icon: Icons.quiz,
+                    isSelected: _showStudentTests,
+                    onTap: () {
+                      if (!_showStudentTests) {
+                        setState(() {
+                          _showStudentTests = true;
+                          _showProjects = false;
+                          _showStatistics = false;
+                          _selectedGroup = null;
+                          _isMemberPanelOpen = false;
+                        });
+                      }
+                      if (isDrawer) Navigator.pop(context);
+                    },
+                  ),
                   const SizedBox(height: 8),
-                  SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
+                  SideNavItem(
+                    label: 'Statisztika',
+                    icon: Icons.bar_chart,
+                    isSelected: _showStatistics,
+                    onTap: () {
+                      if (!_showStatistics) {
+                        setState(() {
+                          _showStatistics = true;
+                          _showProjects = false;
+                          _showStudentTests = false;
+                          _selectedGroup = null;
+                          _isMemberPanelOpen = false;
+                        });
+                      }
+                      if (isDrawer) Navigator.pop(context);
+                    },
+                  ),
                 ],
               ),
             ),
@@ -1359,6 +2144,11 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
     BuildContext context,
     Map<String, dynamic> quiz,
   ) {
+    if (kIsWeb && widget.item.group.kiosk) {
+      _showWebKioskRestrictionDialog(context);
+      return;
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -1528,6 +2318,34 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
     );
   }
 
+  void _showWebKioskRestrictionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.desktop_windows_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Csak alkalmazásban elérhető'),
+          ],
+        ),
+        content: const Text(
+          'Ez a teszt Zárolt védelmi szinttel (Kiosk módban) lett létrehozva. A webes böngésző nem támogatja ezt a szintű biztonságot.\n\nKérjük, nyisd meg az alkalmazást (Windows, Android vagy iOS) a teszt kitöltéséhez!',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rendben'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final group = widget.item.group;
@@ -1624,6 +2442,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                         MaterialPageRoute(
                           builder: (context) => AdminPage(
                             quiz: widget.item.quiz, // Use item quiz
+                            groupId: group.id!,
                             groupName: group.title,
                           ),
                         ),

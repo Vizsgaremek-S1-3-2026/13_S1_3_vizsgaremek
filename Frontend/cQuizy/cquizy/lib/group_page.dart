@@ -12,6 +12,7 @@ import 'api_service.dart';
 import 'providers/user_provider.dart';
 import 'admin_page.dart';
 import 'create_quiz_dialog.dart';
+import 'package:flutter/foundation.dart';
 
 // --- MEOSZTOTT MODELL ---
 class Group {
@@ -169,7 +170,9 @@ class GroupPage extends StatefulWidget {
 
 class _GroupPageState extends State<GroupPage> {
   bool _isMembersPanelVisible = false;
-  late List<Map<String, String>> _pastTests;
+  // late List<Map<String, String>> _pastTests; // Removed mock data
+  List<Map<String, dynamic>> _userResults = [];
+  bool _isLoadingResults = false;
   List<Map<String, dynamic>> _members = [];
   bool _isLoadingMembers = false;
   int? _expandedMemberId;
@@ -206,13 +209,10 @@ class _GroupPageState extends State<GroupPage> {
   @override
   void initState() {
     super.initState();
-    _pastTests = [
-      {'title': 'Algebra Témazáró I.', 'detail': '5'},
-      {'title': 'Számelmélet Dolgozat', 'detail': '4'},
-      {'title': 'Félévi Felmérő', 'detail': '-'},
-    ];
+    // _pastTests = ...; // Removed mock data
     _fetchMembers();
     _fetchQuizzes();
+    _fetchUserResults();
 
     // Init customize state
     _groupNameController = TextEditingController(text: widget.group.title);
@@ -270,21 +270,36 @@ class _GroupPageState extends State<GroupPage> {
     });
   }
 
+  Future<void> _fetchUserResults({bool silent = false}) async {
+    if (widget.group.id == null) return;
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    if (!silent) setState(() => _isLoadingResults = true);
+
+    final apiService = ApiService();
+    final results = await apiService.getUserResults(token, widget.group.id!);
+
+    if (mounted) {
+      setState(() {
+        _userResults = results;
+        if (!silent) _isLoadingResults = false;
+      });
+    }
+  }
+
   @override
   void didUpdateWidget(GroupPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Refresh quizzes silently when group data updates (e.g. from Home Timer)
+    // Refresh quizzes and results silently when group data updates
     _fetchQuizzes(silent: true);
+    _fetchUserResults(silent: true);
 
     if (oldWidget.group.hasNotification &&
         !widget.group.hasNotification &&
         oldWidget.group.activeTestTitle != null) {
-      setState(() {
-        _pastTests.insert(0, {
-          'title': oldWidget.group.activeTestTitle!,
-          'detail': '-',
-        });
-      });
+      // Mock logic removed
     }
   }
 
@@ -307,7 +322,7 @@ class _GroupPageState extends State<GroupPage> {
                     });
                     widget.onMemberPanelToggle?.call(false);
                   },
-                  child: Container(color: Colors.black.withOpacity(0.5)),
+                  child: Container(color: Colors.black.withValues(alpha: 0.5)),
                 ),
               _buildMembersPanel(),
               _buildCustomizePanel(),
@@ -365,7 +380,7 @@ class _GroupPageState extends State<GroupPage> {
                     style: TextStyle(
                       color: widget.group
                           .getTextColor(context)
-                          .withOpacity(0.9),
+                          .withValues(alpha: 0.9),
                       fontSize: isMobile ? 13 : 18,
                     ),
                   ),
@@ -455,7 +470,7 @@ class _GroupPageState extends State<GroupPage> {
                               side: BorderSide(
                                 color: widget.group
                                     .getTextColor(context)
-                                    .withOpacity(0.7),
+                                    .withValues(alpha: 0.7),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -481,7 +496,7 @@ class _GroupPageState extends State<GroupPage> {
                               side: BorderSide(
                                 color: widget.group
                                     .getTextColor(context)
-                                    .withOpacity(0.7),
+                                    .withValues(alpha: 0.7),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -517,7 +532,7 @@ class _GroupPageState extends State<GroupPage> {
                             side: BorderSide(
                               color: widget.group
                                   .getTextColor(context)
-                                  .withOpacity(0.7),
+                                  .withValues(alpha: 0.7),
                             ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
@@ -550,7 +565,7 @@ class _GroupPageState extends State<GroupPage> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             border: Border.all(
-              color: widget.group.getTextColor(context).withOpacity(0.5),
+              color: widget.group.getTextColor(context).withValues(alpha: 0.5),
               width: 1.5,
             ),
             borderRadius: BorderRadius.circular(8),
@@ -596,6 +611,7 @@ class _GroupPageState extends State<GroupPage> {
           MaterialPageRoute(
             builder: (context) => AdminPage(
               quiz: quiz,
+              groupId: widget.group.id!,
               groupName: widget.group.title,
               grade2Limit: widget.group.grade2Limit,
               grade3Limit: widget.group.grade3Limit,
@@ -753,7 +769,8 @@ class _GroupPageState extends State<GroupPage> {
   }
 
   Widget _buildTestContent() {
-    if (_isLoadingQuizzes && _quizzes.isEmpty) {
+    if ((_isLoadingQuizzes && _quizzes.isEmpty) ||
+        (_isLoadingResults && _userResults.isEmpty)) {
       return Center(
         child: LoadingAnimationWidget.newtonCradle(
           color: Theme.of(context).primaryColor,
@@ -804,7 +821,17 @@ class _GroupPageState extends State<GroupPage> {
       return endB.compareTo(endA);
     });
 
-    if (active.isEmpty && future.isEmpty && past.isEmpty) {
+    // Past: most recently ended first
+    past.sort((a, b) {
+      final endA = DateTime.tryParse(a['date_end'] ?? '') ?? DateTime(0);
+      final endB = DateTime.tryParse(b['date_end'] ?? '') ?? DateTime(0);
+      return endB.compareTo(endA);
+    });
+
+    if (active.isEmpty &&
+        future.isEmpty &&
+        past.isEmpty &&
+        _userResults.isEmpty) {
       return Center(
         child: Text(
           'Nincsenek tesztek ebben a csoportban.',
@@ -850,6 +877,7 @@ class _GroupPageState extends State<GroupPage> {
                     MaterialPageRoute(
                       builder: (context) => AdminPage(
                         quiz: q,
+                        groupId: widget.group.id!,
                         groupName: widget.group.title,
                         grade2Limit: widget.group.grade2Limit,
                         grade3Limit: widget.group.grade3Limit,
@@ -872,6 +900,7 @@ class _GroupPageState extends State<GroupPage> {
     required Map<String, dynamic> quiz,
     required String title,
     required String detail,
+    String? subDetail,
     required bool isGrade,
     VoidCallback? onTap,
   }) {
@@ -892,15 +921,32 @@ class _GroupPageState extends State<GroupPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: theme.textTheme.bodyLarge?.color,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 2,
-                softWrap: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: theme.textTheme.bodyLarge?.color,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    softWrap: true,
+                  ),
+                  if (subDetail != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subDetail,
+                      style: TextStyle(
+                        color: theme.textTheme.bodyMedium?.color?.withValues(
+                          alpha: 0.7,
+                        ),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(width: 16),
@@ -1017,7 +1063,7 @@ class _GroupPageState extends State<GroupPage> {
                   const SizedBox(height: 24),
                   if (isDuration) ...[
                     DropdownButtonFormField<int>(
-                      value: 45,
+                      initialValue: 45,
                       decoration: const InputDecoration(
                         labelText: 'Időtartam (perc)',
                       ),
@@ -1047,6 +1093,7 @@ class _GroupPageState extends State<GroupPage> {
                           initialDate: endDate,
                         );
                         if (picked != null) {
+                          if (!mounted) return;
                           final time = await showTimePicker(
                             context: context,
                             initialTime: TimeOfDay.fromDateTime(endDate),
@@ -1099,8 +1146,8 @@ class _GroupPageState extends State<GroupPage> {
         await apiService.updateQuiz(
           userProvider.token!,
           quizId,
-          DateTime.now().toUtc(),
-          (result['endDate'] as DateTime).toUtc(),
+          DateTime.now().toUtc().toIso8601String(),
+          (result['endDate'] as DateTime).toUtc().toIso8601String(),
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1122,6 +1169,11 @@ class _GroupPageState extends State<GroupPage> {
     BuildContext context,
     Map<String, dynamic> quiz,
   ) {
+    if (kIsWeb && widget.group.kiosk) {
+      _showWebKioskRestrictionDialog(context);
+      return;
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -1229,7 +1281,7 @@ class _GroupPageState extends State<GroupPage> {
                                   'Mégse',
                                   style: TextStyle(
                                     color: theme.textTheme.bodyMedium?.color
-                                        ?.withOpacity(0.6),
+                                        ?.withValues(alpha: 0.6),
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -1288,6 +1340,34 @@ class _GroupPageState extends State<GroupPage> {
           ),
         );
       },
+    );
+  }
+
+  void _showWebKioskRestrictionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.desktop_windows_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Csak alkalmazásban elérhető'),
+          ],
+        ),
+        content: const Text(
+          'Ez a teszt Zárolt védelmi szinttel (Kiosk módban) lett létrehozva. A webes böngésző nem támogatja ezt a szintű biztonságot.\n\nKérjük, nyisd meg az alkalmazást (Windows, Android vagy iOS) a teszt kitöltéséhez!',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rendben'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2322,18 +2402,24 @@ class _GroupPageState extends State<GroupPage> {
                                                   () => isLoading = true,
                                                 );
 
+                                                final messenger =
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    );
+                                                final navigator = Navigator.of(
+                                                  context,
+                                                );
+
                                                 final success =
                                                     await _deleteGroup(
                                                       passwordController.text,
                                                     );
 
-                                                if (!mounted) return;
-                                                Navigator.pop(context);
+                                                if (!context.mounted) return;
+                                                navigator.pop();
 
                                                 if (success) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
+                                                  messenger.showSnackBar(
                                                     const SnackBar(
                                                       content: Text(
                                                         'Csoport sikeresen törölve',
@@ -2344,9 +2430,7 @@ class _GroupPageState extends State<GroupPage> {
                                                   );
                                                   widget.onGroupLeft?.call();
                                                 } else {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
+                                                  messenger.showSnackBar(
                                                     const SnackBar(
                                                       content: Text(
                                                         'Hiba a csoport törlésekor. Ellenőrizd a jelszót!',
@@ -2669,7 +2753,8 @@ class _GroupPageState extends State<GroupPage> {
 
     if (token == null || widget.group.id == null) return;
 
-    final colorHex = _selectedColor.value
+    final colorHex = _selectedColor
+        .toARGB32()
         .toRadixString(16)
         .substring(2)
         .toUpperCase();
@@ -2730,8 +2815,8 @@ class _GroupPageState extends State<GroupPage> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(
-                theme.brightness == Brightness.dark ? 0.5 : 0.1,
+              color: Colors.black.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.5 : 0.1,
               ),
               blurRadius: 15,
               offset: const Offset(-5, 0),
@@ -2757,7 +2842,7 @@ class _GroupPageState extends State<GroupPage> {
                   IconButton(
                     icon: Icon(
                       Icons.close,
-                      color: theme.iconTheme.color?.withOpacity(0.7),
+                      color: theme.iconTheme.color?.withValues(alpha: 0.7),
                     ),
                     onPressed: () {
                       setState(() {
@@ -2851,7 +2936,7 @@ class _GroupPageState extends State<GroupPage> {
     return Text(
       text,
       style: TextStyle(
-        color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+        color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
         fontSize: 11,
         fontWeight: FontWeight.w600,
         letterSpacing: 1.2,
@@ -2866,7 +2951,10 @@ class _GroupPageState extends State<GroupPage> {
   ) {
     return InputDecoration(
       hintText: hint,
-      prefixIcon: Icon(icon, color: theme.iconTheme.color?.withOpacity(0.6)),
+      prefixIcon: Icon(
+        icon,
+        color: theme.iconTheme.color?.withValues(alpha: 0.6),
+      ),
       filled: true,
       fillColor: theme.cardColor,
       border: OutlineInputBorder(
@@ -3066,7 +3154,7 @@ class _GroupPageState extends State<GroupPage> {
               activeTrackColor: Colors.transparent,
               inactiveTrackColor: Colors.transparent,
               thumbColor: Colors.white,
-              overlayColor: Colors.white.withOpacity(0.2),
+              overlayColor: Colors.white.withValues(alpha: 0.2),
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
               trackHeight: 32,
             ),
@@ -3121,7 +3209,7 @@ class _GroupPageState extends State<GroupPage> {
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? colors[index].withOpacity(0.2)
+                              ? colors[index].withValues(alpha: 0.2)
                               : Colors.transparent,
                           shape: BoxShape.circle,
                           border: Border.all(
@@ -3135,7 +3223,7 @@ class _GroupPageState extends State<GroupPage> {
                           icons[index],
                           color: isSelected
                               ? colors[index]
-                              : theme.iconTheme.color?.withOpacity(0.5),
+                              : theme.iconTheme.color?.withValues(alpha: 0.5),
                           size: 24,
                         ),
                       ),
@@ -3145,8 +3233,8 @@ class _GroupPageState extends State<GroupPage> {
                         style: TextStyle(
                           color: isSelected
                               ? colors[index]
-                              : theme.textTheme.bodyMedium?.color?.withOpacity(
-                                  0.6,
+                              : theme.textTheme.bodyMedium?.color?.withValues(
+                                  alpha: 0.6,
                                 ),
                           fontSize: 12,
                           fontWeight: isSelected
@@ -3167,7 +3255,7 @@ class _GroupPageState extends State<GroupPage> {
               activeTrackColor: colors[_protectionLevel],
               inactiveTrackColor: theme.dividerColor,
               thumbColor: colors[_protectionLevel],
-              overlayColor: colors[_protectionLevel].withOpacity(0.2),
+              overlayColor: colors[_protectionLevel].withValues(alpha: 0.2),
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
               trackHeight: 6,
             ),
@@ -3185,7 +3273,7 @@ class _GroupPageState extends State<GroupPage> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: colors[_protectionLevel].withOpacity(0.1),
+              color: colors[_protectionLevel].withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -3242,7 +3330,7 @@ class _GroupPageState extends State<GroupPage> {
           Text(
             'Állítsd be a százalékos határokat az osztályzatokhoz (Minimum %).',
             style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
               fontSize: 12,
             ),
           ),
@@ -3324,7 +3412,7 @@ class _GroupPageState extends State<GroupPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
+                color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -3348,10 +3436,10 @@ class _GroupPageState extends State<GroupPage> {
         ),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            activeTrackColor: color.withOpacity(0.5),
+            activeTrackColor: color.withValues(alpha: 0.5),
             inactiveTrackColor: theme.dividerColor,
             thumbColor: color,
-            overlayColor: color.withOpacity(0.2),
+            overlayColor: color.withValues(alpha: 0.2),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
             trackHeight: 4,
             valueIndicatorColor: color,
@@ -3391,8 +3479,8 @@ class _GroupPageState extends State<GroupPage> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(
-                theme.brightness == Brightness.dark ? 0.5 : 0.1,
+              color: Colors.black.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.5 : 0.1,
               ),
               blurRadius: 15,
               offset: const Offset(-5, 0),
@@ -3418,7 +3506,7 @@ class _GroupPageState extends State<GroupPage> {
                   IconButton(
                     icon: Icon(
                       Icons.close,
-                      color: theme.iconTheme.color?.withOpacity(0.7),
+                      color: theme.iconTheme.color?.withValues(alpha: 0.7),
                     ),
                     onPressed: () {
                       setState(() {
@@ -3549,7 +3637,9 @@ class _GroupPageState extends State<GroupPage> {
                           child: Icon(
                             Icons.keyboard_arrow_down,
                             size: 24,
-                            color: theme.iconTheme.color?.withOpacity(0.5),
+                            color: theme.iconTheme.color?.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                         )
                       : null),
@@ -3615,7 +3705,7 @@ class _GroupPageState extends State<GroupPage> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: color.withOpacity(0.15),
+      color: color.withValues(alpha: 0.15),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
@@ -3653,7 +3743,7 @@ class _GroupPageState extends State<GroupPage> {
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
-          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+          color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
           fontSize: 12,
           fontWeight: FontWeight.bold,
           letterSpacing: 0.8,
@@ -3669,7 +3759,7 @@ class _GroupPageState extends State<GroupPage> {
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: theme.cardColor.withOpacity(0.5),
+        color: theme.cardColor.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: theme.dividerColor),
       ),
@@ -3682,7 +3772,9 @@ class _GroupPageState extends State<GroupPage> {
               Text(
                 'MEGHÍVÓKÓD',
                 style: TextStyle(
-                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                  color: theme.textTheme.bodyMedium?.color?.withValues(
+                    alpha: 0.7,
+                  ),
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.8,
@@ -3715,7 +3807,7 @@ class _GroupPageState extends State<GroupPage> {
                   : IconButton(
                       icon: Icon(
                         Icons.refresh,
-                        color: theme.iconTheme.color?.withOpacity(0.7),
+                        color: theme.iconTheme.color?.withValues(alpha: 0.7),
                       ),
                       tooltip: 'Új kód generálása',
                       onPressed: _regenerateInviteCode,
@@ -3723,7 +3815,7 @@ class _GroupPageState extends State<GroupPage> {
               IconButton(
                 icon: Icon(
                   Icons.copy_outlined,
-                  color: theme.iconTheme.color?.withOpacity(0.7),
+                  color: theme.iconTheme.color?.withValues(alpha: 0.7),
                 ),
                 tooltip: 'Kód másolása',
                 onPressed: () {
@@ -3832,7 +3924,7 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.25),
+          color: Colors.black.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -3961,7 +4053,7 @@ class HeaderWithDivider extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            color: theme.textTheme.titleMedium?.color?.withOpacity(0.8),
+            color: theme.textTheme.titleMedium?.color?.withValues(alpha: 0.8),
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),

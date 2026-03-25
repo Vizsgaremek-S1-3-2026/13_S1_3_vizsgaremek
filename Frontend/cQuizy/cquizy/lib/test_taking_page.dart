@@ -7,10 +7,10 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'group_page.dart';
 import 'api_service.dart';
 import 'package:kiosk_mode/kiosk_mode.dart';
 import 'utils/web_protections.dart';
+import 'home_page.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,10 +45,13 @@ class _TestTakingPageState extends State<TestTakingPage>
     with WidgetsBindingObserver, WindowListener {
   // --- Protection State ---
   bool _isBlacklisted = false;
+  bool _isAntiCheatActive = false;
+  bool _isSubmitting = false;
   bool _isOffline = false;
   bool _isKioskModeActive = true;
   DateTime? _finishTime;
   Timer? _countdownTimer;
+  Timer? _statusPollingTimer;
   double _originalVolume = 1.0;
   StreamSubscription<double>? _volumeSubscription;
 
@@ -101,7 +104,12 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   void _initializeWebView() {
-    if (!kIsWeb && Platform.isWindows) {
+    if (kIsWeb) {
+      // WebView nem támogatott weben ebben a formában (külön iframe implementáció kéne)
+      return;
+    }
+
+    if (Platform.isWindows) {
       final urls = _allowedUrls;
       if (urls.isNotEmpty) {
         _selectedWebUrl = urls.first;
@@ -170,6 +178,7 @@ class _TestTakingPageState extends State<TestTakingPage>
     } else {
       _initPersistentTimer();
     }
+    _initStatusPolling();
   }
 
   Future<void> _loadQuiz() async {
@@ -202,10 +211,24 @@ class _TestTakingPageState extends State<TestTakingPage>
       if (data != null && data['blocks'] != null) {
         final List<dynamic> blocks = data['blocks'];
         if (mounted) {
-          setState(() {
-            _questions = blocks.cast<Map<String, dynamic>>();
-            _isLoading = false;
-          });
+          if (widget.anticheat) {
+            // Várakozás a biztonságos környezet inicializálására (kizárja az azonnali fals tiltásokat)
+            await Future.delayed(const Duration(seconds: 2));
+            if (mounted) {
+              setState(() {
+                _isAntiCheatActive = true;
+                _questions = blocks.cast<Map<String, dynamic>>();
+                _isLoading = false;
+              });
+              _reportEvent('TEST_START', 'A diák elkezdte a tesztet.');
+            }
+          } else {
+            setState(() {
+              _questions = blocks.cast<Map<String, dynamic>>();
+              _isLoading = false;
+            });
+            _reportEvent('TEST_START', 'A diák elkezdte a tesztet.');
+          }
         }
       } else {
         if (mounted) {
@@ -230,13 +253,21 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   void _enableScreenshotProtection() async {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await ScreenProtector.protectDataLeakageOn();
+      try {
+        await ScreenProtector.protectDataLeakageOn();
+      } catch (e) {
+        debugPrint('Képernyőkép védelem bekapcsolása sikertelen: $e');
+      }
     }
   }
 
   void _disableScreenshotProtection() async {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await ScreenProtector.protectDataLeakageOff();
+      try {
+        await ScreenProtector.protectDataLeakageOff();
+      } catch (e) {
+        debugPrint('Képernyőkép védelem kikapcsolása sikertelen: $e');
+      }
     }
   }
 
@@ -387,8 +418,12 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-  void _clearClipboard() {
-    Clipboard.setData(const ClipboardData(text: ''));
+  void _clearClipboard() async {
+    try {
+      await Clipboard.setData(const ClipboardData(text: ''));
+    } catch (e) {
+      debugPrint('Vágólap ürítése sikertelen: $e');
+    }
   }
 
   void _muteVolume() async {
@@ -488,9 +523,66 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     // Start UI update timer
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+
+      // Auto-submit if time is up
+      if (_finishTime != null && !_isSubmitting) {
+        final remaining = _finishTime!.difference(DateTime.now()).inSeconds;
+        if (remaining <= 1) {
+          // 1 second buffer
+          timer.cancel();
+          _submitTest(forced: true);
+          return;
+        }
+      }
+
+      setState(() {});
     });
   }
+
+  void _initStatusPolling() {
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 3), (
+      timer,
+    ) async {
+      await _checkLockStatus();
+    });
+  }
+
+  Future<void> _checkLockStatus() async {
+    if (!mounted || _isSubmitting) return;
+
+    final token = context.read<UserProvider>().token;
+    final quizId = widget.quiz['id'];
+    if (token == null || quizId == null) return;
+
+    final statusData = await ApiService().checkLockStatus(token, quizId);
+    if (statusData == null || !mounted || _isSubmitting) return;
+
+    final isClosed = statusData['is_closed'] == true;
+    final isLocked = statusData['is_locked'] == true;
+    final activeEventId = statusData['active_event_id'];
+    debugPrint('[lock-status] is_locked=$isLocked is_closed=$isClosed active_event_id=$activeEventId');
+
+    if (isClosed) {
+      // Tanár lezárta → automatikus beadás, beadás gomb nélkül
+      _statusPollingTimer?.cancel();
+      _submitTest(forced: true); // _submitTest maga küld TEST_FINISH eventet
+    } else if (isLocked && !_isBlacklisted) {
+      // Tanár tiltotta le → overlay megjelenítése
+      setState(() {
+        _isBlacklisted = true;
+      });
+      // Mivel a tanár tiltott le, ő már küldött egy STUDENT_CHEAT eseményt.
+    } else if (!isLocked && _isBlacklisted) {
+      // Tanár feloldotta → folytatás
+      setState(() {
+        _isBlacklisted = false;
+      });
+      // A tanár feloldása már regisztrálva van a szerveren a resolve hívással.
+    }
+  }
+
+
 
   void _setupWebProtections() {
     WebProtections.setup(() {
@@ -501,6 +593,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _statusPollingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
 
     // Cleanup drawings
@@ -529,8 +622,8 @@ class _TestTakingPageState extends State<TestTakingPage>
   Future<void> _enterFullscreen() async {
     try {
       // Mobile fullscreen logic remains same
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      SystemChrome.setPreferredOrientations([
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
       ]);
@@ -543,13 +636,6 @@ class _TestTakingPageState extends State<TestTakingPage>
         // Hide title bar for true fullscreen
         await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
 
-        // Run PowerShell command to minimize all windows (like Win+D)
-        await Process.run('powershell', [
-          '-command',
-          '(New-Object -ComObject Shell.Application).MinimizeAll()',
-        ]);
-        // Give OS a tiny bit of time to process, then bring ourselves back
-        await Future.delayed(const Duration(milliseconds: 300));
         await windowManager.show();
         await windowManager.focus();
         await windowManager.setFullScreen(true);
@@ -568,69 +654,25 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-  /// Kiosk mode with retry - keeps asking user until they enable it
+  /// Kiosk mode with retry - keeps asking user until they enable it natively without blocking Flutter dialogs
   Future<void> _enableKioskModeWithRetry() async {
+    // Attempt to start kiosk mode with OS
+    await startKioskMode();
+
     while (mounted) {
-      // Try to start kiosk mode
-      await startKioskMode();
-
-      // Wait a moment for the system to process
       await Future.delayed(const Duration(milliseconds: 500));
-
-      // Check if kiosk mode is actually enabled now
       final currentMode = await getKioskMode();
 
       if (currentMode == KioskMode.enabled) {
-        setState(() => _isKioskModeActive = true);
+        if (!_isKioskModeActive) {
+          setState(() => _isKioskModeActive = true);
+        }
         return; // Success - exit the loop
-      }
-
-      // Kiosk mode was not enabled - show retry dialog
-      if (!mounted) return;
-
-      final shouldRetry = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.lock_outline, color: Colors.orange, size: 28),
-              SizedBox(width: 12),
-              Expanded(child: Text('Kiosk mód szükséges')),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'A teszt biztonságos kitöltéséhez engedélyezned kell a kiosk módot.',
-                style: TextStyle(fontSize: 16),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'A következő párbeszédablakban nyomd meg az "Indítás" vagy "Start" gombot a folytatáshoz.',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).pop(true),
-              icon: const Icon(Icons.check),
-              label: const Text('Rendben'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldRetry != true) {
-        // This shouldn't happen with barrierDismissible: false, but just in case
-        break;
+      } else {
+        // Not enabled - show the fullscreen overlay implicitly by updating state
+        if (_isKioskModeActive) {
+          setState(() => _isKioskModeActive = false);
+        }
       }
     }
   }
@@ -648,14 +690,17 @@ class _TestTakingPageState extends State<TestTakingPage>
       }
 
       // Reset Mobile UI
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
 
       // Reset Desktop
       if (!kIsWeb && Platform.isWindows) {
         await windowManager.setPreventClose(false);
         await windowManager.setAlwaysOnTop(false);
         await windowManager.setFullScreen(false);
+        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+        // Give the window manager time to apply changes
+        await Future.delayed(const Duration(milliseconds: 200));
       } else if (!kIsWeb && (Platform.isLinux || Platform.isMacOS)) {
         await windowManager.setFullScreen(false);
       }
@@ -692,152 +737,15 @@ class _TestTakingPageState extends State<TestTakingPage>
   void _triggerAntiCheat() {
     // Double-check: only block if anticheat is enabled
     if (!widget.anticheat) return;
+    if (!_isAntiCheatActive) return; // Ne kapcsoljon be a betöltés közben
+    if (_isSubmitting) return; // Don't re-trigger during submission
 
     if (!_isBlacklisted) {
       setState(() {
         _isBlacklisted = true;
       });
-      _showAntiCheatDialog();
+      _reportEvent('STUDENT_CHEAT', 'Rendszer általi letiltás (Anticheat).');
     }
-  }
-
-  void _showAntiCheatDialog() {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.8),
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation1, animation2) => Container(),
-      transitionBuilder: (context, a1, a2, child) {
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.8, end: 1.0).animate(a1),
-          child: FadeTransition(
-            opacity: a1,
-            child: AlertDialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              content: Container(
-                width: 400,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.red, width: 3),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(20),
-                        ),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(
-                            Icons.gpp_bad_rounded,
-                            color: Colors.white,
-                            size: 64,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'LE LETTÉL TILTVA!',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Detektáltuk, hogy elhagytad a teszt felületét. A tesztedet blokkoltuk.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextButton(
-                                  onPressed: () {
-                                    // Navigator jump back to group page
-                                    _exitFullscreen().then((_) {
-                                      Navigator.of(context).pushAndRemoveUntil(
-                                        MaterialPageRoute(
-                                          builder: (context) => GroupPage(
-                                            group: widget
-                                                .quiz['group_obj'], // We'll need to pass this
-                                            onTestExpired: (g) {},
-                                          ),
-                                        ),
-                                        (route) => false,
-                                      );
-                                    });
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.grey[600],
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Lezárás',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    setState(() => _isBlacklisted = false);
-                                    Navigator.pop(context);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Engedélyez',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   String _getFormattedRemainingTime() {
@@ -916,30 +824,44 @@ class _TestTakingPageState extends State<TestTakingPage>
                       Expanded(
                         child: Stack(
                           children: [
-                            // 1. Scrollable Questions List
-                            ListView.builder(
-                              controller: _scrollController,
-                              padding: EdgeInsets.only(
-                                top: 140, // Space for fixed header
-                                bottom: 100, // Space for bottom padding
-                                left: needsExtraLeftPadding ? 60 : 20,
-                                right: 20,
+                            // 1. Scrollable Questions List or Loading
+                            if (_isLoading)
+                              const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Biztonságos környezet előkészítése...',
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              ListView.builder(
+                                controller: _scrollController,
+                                padding: EdgeInsets.only(
+                                  top: 140, // Space for fixed header
+                                  bottom: 100, // Space for bottom padding
+                                  left: needsExtraLeftPadding ? 60 : 20,
+                                  right: 20,
+                                ),
+                                itemCount: _questions.length,
+                                itemBuilder: (context, index) {
+                                  return Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: _maxContentWidth,
+                                      ),
+                                      child: _buildQuestionCard(
+                                        _questions[index],
+                                        index,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                              itemCount: _questions.length,
-                              itemBuilder: (context, index) {
-                                return Center(
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxWidth: _maxContentWidth,
-                                    ),
-                                    child: _buildQuestionCard(
-                                      _questions[index],
-                                      index,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
 
                             // 2. Fixed Header
                             Align(
@@ -958,7 +880,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                               ),
                             ),
 
-                            // 3. Anti-Cheat & Kiosk Overlays
+                            // 3. Anti-Cheat Overlay
                             if (_isBlacklisted)
                               Container(
                                 color: Colors.black87,
@@ -967,66 +889,49 @@ class _TestTakingPageState extends State<TestTakingPage>
                                     margin: const EdgeInsets.all(32),
                                     padding: const EdgeInsets.all(32),
                                     decoration: BoxDecoration(
-                                      color: Colors.red,
+                                      color: theme.cardColor,
                                       borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 4,
-                                      ),
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         const Icon(
-                                          Icons.gpp_bad_rounded,
-                                          color: Colors.white,
-                                          size: 80,
+                                          Icons.warning_amber_rounded,
+                                          color: Colors.orange,
+                                          size: 64,
                                         ),
                                         const SizedBox(height: 24),
                                         const Text(
-                                          'TESZT ZÁROLVA',
+                                          'Letiltva',
                                           style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 32,
+                                            fontSize: 28,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                         const SizedBox(height: 16),
                                         const Text(
-                                          'Tiltott tevékenységet észleltünk. A folytatáshoz tanári engedély szükséges.',
+                                          'A felületed zárolva lett, vagy szabálytalan tevékenységet észlelt a rendszer.\nVárd meg a tanári feloldást.',
                                           textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 18,
-                                          ),
+                                          style: TextStyle(fontSize: 16),
                                         ),
                                         const SizedBox(height: 32),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            ElevatedButton(
-                                              onPressed: () {
-                                                // In real app, verify strict password or teacher action
-                                                // For demo, just unlock
-                                                setState(() {
-                                                  _isBlacklisted = false;
-                                                });
-                                              },
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.white,
-                                                foregroundColor: Colors.red,
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 32,
-                                                      vertical: 16,
-                                                    ),
-                                              ),
-                                              child: const Text(
-                                                'Feloldás (Demo)',
-                                              ),
+                                        // Wait for teacher button
+                                        OutlinedButton.icon(
+                                          onPressed:
+                                              null, // Disabled - waiting for teacher
+                                          icon: const Icon(
+                                            Icons.hourglass_top,
+                                            size: 18,
+                                          ),
+                                          label: const Text(
+                                            'Várakozás a tanári feloldásra...',
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 12,
                                             ),
-                                          ],
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1608,13 +1513,35 @@ class _TestTakingPageState extends State<TestTakingPage>
             ),
           ),
         Expanded(
-          child: _webViewController != null || _windowsWebViewController != null
-              ? ((!kIsWeb && Platform.isWindows)
-                    ? (_windowsWebViewController?.value.isInitialized ?? false
-                          ? Webview(_windowsWebViewController!)
-                          : const Center(child: CircularProgressIndicator()))
-                    : WebViewWidget(controller: _webViewController!))
-              : const Center(child: CircularProgressIndicator()),
+          child: kIsWeb
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.web_asset_off,
+                        size: 48,
+                        color: theme.hintColor,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'A webes tartalmak megjelenítése a böngészős verzióban nem támogatott.\nKérjük, használd az alkalmazást ezen feladatok megtekintéséhez.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: theme.hintColor),
+                      ),
+                    ],
+                  ),
+                )
+              : (_webViewController != null || _windowsWebViewController != null
+                    ? (Platform.isWindows
+                          ? (_windowsWebViewController?.value.isInitialized ??
+                                    false
+                                ? Webview(_windowsWebViewController!)
+                                : const Center(
+                                    child: CircularProgressIndicator(),
+                                  ))
+                          : WebViewWidget(controller: _webViewController!))
+                    : const Center(child: CircularProgressIndicator())),
         ),
       ],
     );
@@ -2040,71 +1967,199 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildSubmitButton(ThemeData theme) {
     return ElevatedButton.icon(
       onPressed: () {
-        // Count actual questions (exclude text_block and divider)
-        int totalQuestions = 0;
-        int answeredQuestions = 0;
+        // Check each question and collect unanswered ones
+        List<Map<String, dynamic>> unansweredQuestions = [];
+        int questionNumber = 0;
 
         for (int i = 0; i < _questions.length; i++) {
-          final type = _questions[i]['type']?.toString().toLowerCase() ?? '';
+          final question = _questions[i];
+          final type = question['type']?.toString().toLowerCase() ?? '';
+          final questionId = question['id'];
+
+          // Skip non-question types
           if (type == 'text_block' || type == 'divider') continue;
-          totalQuestions++;
-          if (_userAnswers.containsKey(i) && _userAnswers[i] != null) {
-            final answer = _userAnswers[i];
-            bool hasAnswer = false;
-            if (answer is String && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is List && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is Map && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is num)
-              hasAnswer = true;
-            if (hasAnswer) answeredQuestions++;
+          questionNumber++;
+
+          // Ordering and sentence_ordering always have answers (auto-initialized)
+          if (type == 'ordering' || type == 'sentence_ordering') {
+            continue; // Always accepted
+          }
+
+          // Check if user provided an answer
+          final answer = _userAnswers[questionId];
+          bool hasAnswer = false;
+
+          if (answer != null) {
+            switch (type) {
+              case 'single':
+                hasAnswer = answer is int;
+                break;
+              case 'multiple':
+                hasAnswer = answer is List && answer.isNotEmpty;
+                break;
+              case 'text':
+                hasAnswer = answer is String && answer.trim().isNotEmpty;
+                break;
+              case 'range':
+                hasAnswer = answer is num;
+                break;
+              case 'matching':
+                if (answer is Map && answer.isNotEmpty) {
+                  final answers = question['answers'] as List? ?? [];
+                  // Check if ALL pairs have non-empty values
+                  hasAnswer = answers.every((pair) {
+                    final pairId = pair['id']; // Use ID for lookup
+                    final userVal = answer[pairId];
+                    return userVal != null &&
+                        userVal.toString().trim().isNotEmpty;
+                  });
+                }
+                break;
+              case 'gap_fill':
+                if (answer is Map) {
+                  final answers = question['answers'] as List? ?? [];
+                  final gapIndices = answers
+                      .map((a) => a['gap_index']?.toString())
+                      .where((idx) => idx != null)
+                      .toSet();
+                  hasAnswer =
+                      gapIndices.isNotEmpty &&
+                      gapIndices.every((idx) {
+                        final val = answer[idx];
+                        return val != null && val.toString().trim().isNotEmpty;
+                      });
+                }
+                break;
+              case 'category':
+                if (answer is Map && answer.isNotEmpty) {
+                  final items = question['items'] as List? ?? [];
+                  // Check if ALL items are categorized
+                  hasAnswer = items.every((item) {
+                    final itemId = item['id']?.toString();
+                    return answer.containsKey(itemId);
+                  });
+                }
+                break;
+              default:
+                if (answer is String && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is List && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is Map && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is num)
+                  hasAnswer = true;
+            }
+          }
+
+          if (!hasAnswer) {
+            final questionText =
+                question['question']?.toString() ?? 'Kérdés #$questionNumber';
+            final shortText = questionText.length > 40
+                ? '${questionText.substring(0, 40)}...'
+                : questionText;
+            unansweredQuestions.add({
+              'number': questionNumber,
+              'text': shortText,
+              'type': type,
+            });
           }
         }
 
-        final unansweredCount = totalQuestions - answeredQuestions;
-        final hasUnanswered = unansweredCount > 0;
+        final hasUnanswered = unansweredQuestions.isNotEmpty;
 
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Dolgozat beadása'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (hasUnanswered) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.orange,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasUnanswered) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.3),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Nem válaszoltál minden kérdésre!\n$unansweredCount megválaszolatlan kérdés.',
-                            style: const TextStyle(
-                              color: Colors.orange,
-                              fontWeight: FontWeight.w500,
-                            ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.orange,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${unansweredQuestions.length} hiányzó válasz:',
+                                style: const TextStyle(
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          ...unansweredQuestions
+                              .take(5)
+                              .map(
+                                (q) => Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 8,
+                                    top: 4,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '#${q['number']} ',
+                                        style: const TextStyle(
+                                          color: Colors.orange,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          q['text'],
+                                          style: TextStyle(
+                                            color: Colors.orange.shade700,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          if (unansweredQuestions.length > 5)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, top: 8),
+                              child: Text(
+                                '...és még ${unansweredQuestions.length - 5} további',
+                                style: TextStyle(
+                                  color: Colors.orange.shade600,
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
+                  const Text('Biztosan be szeretnéd adni a dolgozatot?'),
                 ],
-                const Text('Biztosan be szeretnéd adni a dolgozatot?'),
-              ],
+              ),
             ),
             actions: [
               TextButton(
@@ -2137,76 +2192,112 @@ class _TestTakingPageState extends State<TestTakingPage>
     );
   }
 
-  Future<void> _submitTest() async {
+  // Robust submit (fire-and-forget navigation)
+  void _submitTest({bool forced = false}) {
+    if (!mounted) return;
+
+    _isSubmitting = true;
+    _countdownTimer?.cancel();
+    _statusPollingTimer?.cancel();
+
+    _reportEvent('TEST_FINISH', 'A diák leadta/befejezte a tesztet.');
+
+    // 1. Format Answers
     final token = context.read<UserProvider>().token;
-    if (token == null) return;
+    if (token != null) {
+      final formattedAnswers = <Map<String, dynamic>>[];
+      _userAnswers.forEach((key, value) {
+        final int blockId = key;
+        final Map<String, dynamic> q = _questions.firstWhere(
+          (element) => element['id'] == blockId,
+          orElse: () => {},
+        );
+        if (q.isEmpty || value == null) return;
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+        final String type = q['type'] ?? '';
 
-    // Prepare answers
-    final List<Map<String, dynamic>> answers = [];
-    _userAnswers.forEach((index, value) {
-      if (index < _questions.length) {
-        final q = _questions[index];
-        final qId = q['id'];
-
-        // Skip structural elements just in case, though they shouldn't be in _userAnswers
-        if (q['type'] == 'text_block' || q['type'] == 'divider') return;
-
-        answers.add({
-          'block_id': qId,
-          'answer_text': jsonEncode(
-            value,
-          ), // Send as JSON string for flexibility
-        });
-      }
-    });
-
-    final submissionData = {'quiz_id': widget.quiz['id'], 'answers': answers};
-
-    try {
-      final response = await ApiService().submitQuiz(token, submissionData);
-
-      // Close loading
-      if (mounted) Navigator.pop(context);
-
-      if (response != null) {
-        // Success
-        await _exitFullscreen();
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (c) => GroupPage(
-                group:
-                    widget.quiz['group_obj'] ??
-                    widget
-                        .groupName, // Hopefully group object is passed or we fetch it
-                onTestExpired: (g) {},
-              ),
-            ),
-            (route) => false,
-          );
+        if (type == 'single') {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'option_id': value as int,
+            'answer_text': '',
+          });
+        } else if (type == 'multiple') {
+          final selectedIds = (value as List).cast<int>();
+          for (var id in selectedIds) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'option_id': id,
+              'answer_text': '',
+            });
+          }
+        } else if (type == 'text' || type == 'range') {
+          formattedAnswers.add({
+            'block_id': blockId,
+            'answer_text': value.toString(),
+            'option_id': null,
+          });
+        } else if (type == 'matching') {
+          final userMap = (value as Map);
+          userMap.forEach((leftId, userString) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'option_id': leftId,
+              'answer_text': userString,
+            });
+          });
+        } else if (type == 'ordering') {
+          final orderedItems = (value as List);
+          for (var item in orderedItems) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'option_id': item['id'],
+              'answer_text': '',
+            });
+          }
+        } else if (type == 'gap_fill') {
+          final gapsMap = (value as Map);
+          final sortedKeys = gapsMap.keys.toList()
+            ..sort(
+              (a, b) =>
+                  int.parse(a.toString()).compareTo(int.parse(b.toString())),
+            );
+          for (var key in sortedKeys) {
+            formattedAnswers.add({
+              'block_id': blockId,
+              'answer_text': gapsMap[key],
+              'option_id': null,
+            });
+          }
+        } else if (type == 'sentence_ordering') {
+          final words = (value as List).cast<String>();
+          for (var word in words) {
+            formattedAnswers.add({'block_id': blockId, 'answer_text': word});
+          }
         }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Hiba a beadás során. Próbáld újra!')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) Navigator.pop(context); // Close loading
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hálózati hiba: $e')));
-      }
+      });
+
+      final submissionData = {
+        'quiz_id': widget.quiz['id'],
+        'answers': formattedAnswers,
+      };
+
+      // Fire-and-forget API call
+      ApiService().submitQuiz(token, submissionData).catchError((_) => null);
     }
+
+    // 2. Trigger Guaranteed Navigation Immediately
+    // Tests have shown that delays or dialogs here can cause the UI to freeze
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (c) => HomePage(
+          onLogout: () {
+            Provider.of<UserProvider>(c, listen: false).logout();
+          },
+        ),
+      ),
+      (route) => false,
+    );
   }
 
   Widget _buildQuestionCard(Map<String, dynamic> question, int index) {
@@ -2392,7 +2483,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildTextBlock(Map<String, dynamic> question) {
-    final content = question['content'] ?? '';
+    final content = question['maintext']?.toString() ?? '';
     final theme = Theme.of(context);
 
     return Container(
@@ -2418,7 +2509,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildDivider(Map<String, dynamic> question) {
-    final content = question['content'] ?? '';
+    final content = question['maintext']?.toString() ?? '';
     final theme = Theme.of(context);
 
     if (content.isEmpty) {
@@ -2602,14 +2693,20 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildMatching(Map<String, dynamic> question) {
-    // Structure of userAnswers: { left_text: right_text, ... }
-    final pairs = (question['pairs'] as List);
+    // Read from 'answers' (as backend sends answers, not pairs)
+    final List pairs = (question['answers'] as List?) ?? [];
+
+    // User answers map: { pair_id : user_text_input }
+    // We cast to Map<dynamic, dynamic> to handle potential int/string key issues safely
     final userMap = (_userAnswers[question['id']] as Map?) ?? {};
 
     return Column(
       children: pairs.map<Widget>((pair) {
-        final String leftTxt = pair['left'];
-        final String? selectedRight = userMap[leftTxt];
+        final String leftTxt = pair['text']?.toString() ?? '';
+        final int pairId = pair['id']; // We MUST use this ID as the key
+
+        // Retrieve answer using the ID, not the Text
+        final String? selectedRight = userMap[pairId];
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -2658,10 +2755,12 @@ class _TestTakingPageState extends State<TestTakingPage>
                           _userAnswers[question['id']] is! Map) {
                         _userAnswers[question['id']] = {};
                       }
-                      final newMap = Map<String, dynamic>.from(
+
+                      // CRITICAL FIX: Use pairId (int) as the key, NOT the text
+                      final newMap = Map<dynamic, dynamic>.from(
                         _userAnswers[question['id']],
                       );
-                      newMap[leftTxt] = val;
+                      newMap[pairId] = val;
                       _userAnswers[question['id']] = newMap;
                     });
                   },
@@ -2678,13 +2777,9 @@ class _TestTakingPageState extends State<TestTakingPage>
     // Initialize items if not yet in userAnswers
     List<dynamic> currentOrder;
     if (_userAnswers[question['id']] == null) {
-      currentOrder = List.from(question['items']);
+      currentOrder = List.from(question['answers']);
       if (currentOrder.length > 1) {
-        // Shuffle strictly until NO item is in its original place (Derangement)
-        // Complexity:
-        // - Random shuffle: ~36% chance of derangement for n >= 4.
-        // - We retry up to 20 times to be safe.
-        final original = List.from(question['items']);
+        final original = List.from(question['answers']);
         bool hasMatch = true;
         int attempts = 0;
 
@@ -3046,7 +3141,8 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     // Initialize stable shuffled pool if not present
     if (!_shuffledOptions.containsKey(question['id'])) {
-      final words = List<String>.from(question['words']);
+      final answersList = question['answers'] as List? ?? [];
+      final words = answersList.map((a) => a['text'].toString()).toList();
       words.shuffle(); // Shuffle once
       _shuffledOptions[question['id']] = words;
     }
@@ -3221,7 +3317,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildGapFill(Map<String, dynamic> question) {
     // Text: "Aaa {1} bbb {2}."
     // Normalize whitespace: replace newlines and multiple spaces with single space
-    final text = (question['text'] as String)
+    final text = (question['gap_text'] as String)
         .replaceAll('\n', ' ')
         .replaceAll('\r', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')

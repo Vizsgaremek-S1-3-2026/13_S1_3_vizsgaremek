@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 
 class CreateProjectDialog extends StatefulWidget {
-  const CreateProjectDialog({super.key});
+  final bool tutorialMode;
+  const CreateProjectDialog({super.key, this.tutorialMode = false});
 
   @override
   State<CreateProjectDialog> createState() => _CreateProjectDialogState();
@@ -12,11 +14,160 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
   late final TextEditingController _descController;
   final _formKey = GlobalKey<FormState>();
 
+  // Tutorial Keys
+  final GlobalKey _nameInputKey = GlobalKey();
+  final GlobalKey _descInputKey = GlobalKey();
+  final GlobalKey _createButtonKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController();
     _descController = TextEditingController();
+
+    if (widget.tutorialMode) {
+      _startTutorial();
+    }
+  }
+
+  void _startTutorial() {
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // 1. Name Input
+    targets.add(
+      TargetFocus(
+        identify: "project_name",
+        keyTarget: _nameInputKey,
+        alignSkip: Alignment.topRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Projekt Neve",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Itt adhatsz nevet a projektednek. Ez fog megjelenni a listádban.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 2. Description Input
+    targets.add(
+      TargetFocus(
+        identify: "project_desc",
+        keyTarget: _descInputKey,
+        alignSkip: Alignment.topRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Leírás",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Opcionálisan megadhatsz egy rövid leírást is a projekthez.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 3. Create Button
+    targets.add(
+      TargetFocus(
+        identify: "create_btn",
+        keyTarget: _createButtonKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        contents: [
+          TargetContent(
+            align: ContentAlign.top,
+            builder: (context, controller) {
+              return const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "Létrehozás",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Ha készen vagy, kattints erre a gombra a projekt létrehozásához!",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("Create Project tutorial finished");
+      },
+      onClickTarget: (target) {
+        debugPrint("onClickTarget: $target");
+      },
+      onSkip: () {
+        return true;
+      },
+    );
+
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        tutorialCoachMark.show(context: context);
+      }
+    });
   }
 
   @override
@@ -104,6 +255,7 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
                 child: Column(
                   children: [
                     TextFormField(
+                      key: _nameInputKey,
                       controller: _nameController,
                       decoration: InputDecoration(
                         labelText: 'Projekt neve',
@@ -133,6 +285,7 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
                     ),
                     const SizedBox(height: 24),
                     TextFormField(
+                      key: _descInputKey,
                       controller: _descController,
                       decoration: InputDecoration(
                         labelText: 'Leírás (opcionális)',
@@ -180,6 +333,7 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
                         ),
                         const SizedBox(width: 16),
                         ElevatedButton(
+                          key: _createButtonKey,
                           onPressed: () {
                             if (_formKey.currentState!.validate()) {
                               Navigator.pop(context, {
