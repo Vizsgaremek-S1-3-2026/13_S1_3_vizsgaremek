@@ -717,7 +717,7 @@ def get_quiz_status(request, quiz_id: int):
     """
     Returns lists of students in the quiz grouped by their current status:
     - writing: Opened the test (TEST_START event exists) but not submitted or locked.
-    - locked: Currently locked out due to an ACTIVE anti-cheat event.
+    - locked: Currently locked out due to an ACTIVE anti-cheat event, teacher block, or permanent close.
     - finished: Successfully submitted the quiz (Submission record exists).
     - idle: In the group but hasn't opened the test yet.
     """
@@ -741,10 +741,16 @@ def get_quiz_status(request, quiz_id: int):
     # Students who have already finished
     finished_ids = set(Submission.objects.filter(quiz=quiz).values_list('student_id', flat=True))
     
-    # Students who have a currently "ACTIVE" lock event
+    # Students who are currently locked (ACTIVE cheat/block event, or permanently closed by teacher)
     locked_ids = set(Event.objects.filter(
         quiz=quiz, 
+        type__in=[Event.Type.STUDENT_CHEAT, Event.Type.TEACHER_BLOCK],
         status=Event.Status.ACTIVE
+    ).values_list('student_id', flat=True))
+
+    locked_ids.update(Event.objects.filter(
+        quiz=quiz,
+        type=Event.Type.TEACHER_CLOSE
     ).values_list('student_id', flat=True))
 
     # Students who have at least triggered the "TEST_START" event
