@@ -563,10 +563,18 @@ class _TestTakingPageState extends State<TestTakingPage>
     final activeEventId = statusData['active_event_id'];
     debugPrint('[lock-status] is_locked=$isLocked is_closed=$isClosed active_event_id=$activeEventId');
 
-    if (isClosed || isLocked) {
-      // Tanár lezárta vagy letiltotta → automatikus beadás
+    if (isClosed) {
+      // Tanár lezárta → automatikus beadás
       _statusPollingTimer?.cancel();
-      _submitTest(forced: true); // _submitTest maga küld TEST_FINISH eventet és elküldi a válaszokat
+      _submitTest(forced: true);
+    } else if (isLocked) {
+      // Tanár letiltotta → felület zárolása (ha még nincs zárolva)
+      if (!_isBlacklisted) {
+        setState(() {
+          _isBlacklisted = true;
+        });
+        _reportEvent('STUDENT_CHEAT', 'Tanár általi letiltás.');
+      }
     } else if (!isLocked && _isBlacklisted) {
       // Tanár feloldotta → folytatás
       setState(() {
