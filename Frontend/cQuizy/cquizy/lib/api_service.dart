@@ -1267,6 +1267,7 @@ class ApiService {
     int submissionId,
   ) async {
     final url = Uri.parse('$_baseUrl/quizzes/submission/$submissionId');
+    debugPrint('=== getSubmissionDetails === URL: $url');
     try {
       final response = await http.get(
         url,
@@ -1276,12 +1277,15 @@ class ApiService {
         },
       );
 
+      debugPrint('getSubmissionDetails response: ${response.statusCode} - ${response.body}');
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes));
       } else {
+        debugPrint('getSubmissionDetails HIBA: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
+      debugPrint('getSubmissionDetails EXCEPTION: $e');
       return null;
     }
   }
@@ -1327,7 +1331,7 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'new_grade': grade}),
+        body: jsonEncode({'new_grade': grade.toString()}),
       );
 
       return response.statusCode == 200;

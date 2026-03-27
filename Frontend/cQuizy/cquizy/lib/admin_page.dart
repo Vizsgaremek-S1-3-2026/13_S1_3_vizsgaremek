@@ -154,7 +154,29 @@ class _AdminPageState extends State<AdminPage> {
 
       // Process submissions
       for (var sub in submissions) {
-        final userId = sub['user_id'].toString(); // Assuming user_id exists
+        // Find matching user from targetStudents by name if user_id is missing
+        String? inferredUserId = sub['user_id']?.toString();
+
+        if (inferredUserId == null || inferredUserId == 'null') {
+          final studentName = sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? sub['nickname'] ?? '';
+          for (var s in targetStudents) {
+            final u = s['user'];
+            if (u == null) continue;
+            final fullName = '${u['last_name'] ?? ''} ${u['first_name'] ?? ''}'.trim();
+            final username = u['username'] ?? '';
+            final nickname = u['nickname'] ?? '';
+
+            if (studentName.isNotEmpty &&
+                (studentName == fullName ||
+                 studentName == username ||
+                 studentName == nickname)) {
+              inferredUserId = u['id']?.toString();
+              break;
+            }
+          }
+        }
+
+        final userId = inferredUserId ?? 'unmatched_${sub['id']}'; // Prevent "null" key collapsing
         // Normalize status
         String rawStatus = (sub['status'] ?? '').toString().toLowerCase();
         String status = 'writing';
@@ -309,6 +331,69 @@ class _AdminPageState extends State<AdminPage> {
             studentMap[uid]!['status'] = 'idle';
           }
         }
+      }
+
+      // === RECONCILE: Merge submission_id from unmatched submissions into real students ===
+      // The submissions API returns student_name but NOT user_id,
+      // so submissions end up as 'unmatched_*' entries while real students have numeric IDs.
+      // We need to match them by name and copy over submission_id + score + grade.
+      final unmatchedKeys = studentMap.keys.where((k) => k.startsWith('unmatched_')).toList();
+      for (var unmatchedKey in unmatchedKeys) {
+        final unmatchedEntry = studentMap[unmatchedKey]!;
+        final unmatchedName = (unmatchedEntry['name'] as String?)?.toLowerCase() ?? '';
+        
+        // Find a real student entry (numeric key) with the same name
+        for (var realKey in studentMap.keys.toList()) {
+          if (realKey.startsWith('unmatched_')) continue;
+          final realEntry = studentMap[realKey]!;
+          final realName = (realEntry['name'] as String?)?.toLowerCase() ?? '';
+          
+          if (unmatchedName.isNotEmpty && unmatchedName == realName) {
+            // Merge the submission data into the real student entry
+            realEntry['submission_id'] = unmatchedEntry['submission_id'];
+            if (unmatchedEntry['score'] != null && unmatchedEntry['score'] != 0) {
+              realEntry['score'] = unmatchedEntry['score'];
+            }
+            if (unmatchedEntry['grade'] != null) {
+              realEntry['grade'] = unmatchedEntry['grade'];
+            }
+            // Mark as submitted if they have a submission
+            if (realEntry['status'] == 'idle' || realEntry['status'] == 'writing') {
+              realEntry['status'] = 'submitted';
+            }
+            // Remove the unmatched entry
+            studentMap.remove(unmatchedKey);
+            debugPrint('Reconciled submission_id ${unmatchedEntry['submission_id']} -> student "$realName" (key: $realKey)');
+            break;
+          }
+        }
+      }
+
+      // Also: for submitted students who STILL don't have submission_id,
+      // try to find their submission from the original submissions list by name
+      for (var entry in studentMap.values) {
+        if (entry['submission_id'] == null && 
+            (entry['status'] == 'submitted' || entry['status'] == 'closed')) {
+          final entryName = (entry['name'] as String?)?.toLowerCase() ?? '';
+          for (var sub in submissions) {
+            final subName = (sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? '').toString().toLowerCase();
+            if (entryName.isNotEmpty && entryName == subName) {
+              entry['submission_id'] = sub['id'];
+              if (sub['percentage'] != null) {
+                entry['score'] = sub['percentage'];
+              }
+              if (sub['grade_value'] != null) {
+                entry['grade'] = int.tryParse(sub['grade_value'].toString());
+              }
+              debugPrint('Direct match: submission_id ${sub['id']} -> student "$entryName"');
+              break;
+            }
+          }
+        }
+      }
+      debugPrint('=== Final studentMap keys: ${studentMap.keys.toList()}');
+      for (var e in studentMap.entries) {
+        debugPrint('  ${e.key}: name=${e.value['name']}, status=${e.value['status']}, submission_id=${e.value['submission_id']}');
       }
 
       // Fetch Quiz Stats
@@ -556,13 +641,18 @@ class _AdminPageState extends State<AdminPage> {
     if (token == null) return;
 
     final api = ApiService();
-    // Assuming widget.quiz['id'] or widget.quiz['project_id'] exists
-    final projectId = widget.quiz['id'] ?? widget.quiz['project_id'];
+    debugPrint('=== _fetchProjectDetails ===');
+    debugPrint('Quiz keys: ${widget.quiz.keys.toList()}');
+    debugPrint('Quiz data: ${widget.quiz}');
+    
+    final projectId = widget.quiz['project_id'] ?? widget.quiz['blueprint_id'];
     if (projectId == null) {
+      debugPrint('No project_id found in quiz object, skipping project details fetch.');
       setState(() => _isLoadingDetails = false);
       return;
     }
 
+    debugPrint('Fetching project details for projectId: $projectId');
     try {
       final data = await api.getProjectDetails(token, projectId);
       if (mounted) {

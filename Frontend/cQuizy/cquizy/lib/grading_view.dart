@@ -59,6 +59,7 @@ class _GradingViewState extends State<GradingView> {
   bool _isEditing = false;
   bool _hasUnsavedChanges = false;
   bool _showStatisticsPanel = false;
+  String _debugMessage = '';
 
   int _manualGradeOffset = 0;
 
@@ -138,17 +139,51 @@ class _GradingViewState extends State<GradingView> {
     if (token == null) return;
 
     final submissionId = widget.student['submission_id'];
+    debugPrint('=== GradingView _fetchSubmissionDetails ===');
+    debugPrint('Student keys: ${widget.student.keys.toList()}');
+    debugPrint('Student data: ${widget.student}');
+    debugPrint('submission_id: $submissionId');
     if (submissionId == null) {
-      // Fallback for mock/testing if needed, or show error
-      setState(() => _isLoading = false);
+      // Fallback for mock/testing if needed
+      setState(() {
+        _submissions = [
+          GradingSubmission(
+            id: 1,
+            question: 'Mi Magyarország fővárosa?',
+            userAnswer: 'Budapest',
+            correctAnswer: 'Budapest',
+            awardedPoints: 10,
+            maxPoints: 10,
+          ),
+          GradingSubmission(
+            id: 2,
+            question: 'Mennyi 5 * 6?',
+            userAnswer: '30',
+            correctAnswer: '30',
+            awardedPoints: 5,
+            maxPoints: 5,
+          ),
+          GradingSubmission(
+            id: 3,
+            question: 'Melyik bolygó a harmadik a Naptól?',
+            userAnswer: 'Mars',
+            correctAnswer: 'Föld',
+            awardedPoints: 0,
+            maxPoints: 10,
+          ),
+        ];
+        _isLoading = false;
+      });
       return;
     }
 
     final api = ApiService();
     final details = await api.getSubmissionDetails(token, submissionId);
+    debugPrint('getSubmissionDetails result: $details');
 
     if (details != null && mounted) {
       final answers = details['answers'] as List<dynamic>? ?? [];
+      debugPrint('answers count: ${answers.length}');
 
       setState(() {
         _submissions = answers.map((a) {
@@ -194,9 +229,9 @@ class _GradingViewState extends State<GradingView> {
           }
 
           return GradingSubmission(
-            id: a['id'],
-            question: a['block_question'] ?? 'Kérdés',
-            userAnswer: a['student_answer'] ?? '',
+            id: a['id'] ?? 0,
+            question: a['block_question']?.toString() ?? 'Kérdés',
+            userAnswer: a['student_answer']?.toString() ?? '',
             correctAnswer: correctAnswer,
             awardedPoints: a['points_awarded'] ?? 0,
             maxPoints: maxPoints > 0 ? maxPoints : (a['points_awarded'] ?? 1),
@@ -204,9 +239,20 @@ class _GradingViewState extends State<GradingView> {
           );
         }).toList();
         _isLoading = false;
+        if (_submissions.isEmpty) {
+          _debugMessage = 'API call succeeded, but answers list is empty. Submission ID: $submissionId.';
+          if (details.containsKey('detail') || details.containsKey('error')) {
+             _debugMessage += ' API Message: ${details['detail'] ?? details['error']}';
+          }
+        }
       });
     } else {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _debugMessage = 'API call failed or returned null for Submission ID: $submissionId.';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -217,11 +263,11 @@ class _GradingViewState extends State<GradingView> {
 
   int get _calculatedGrade {
     if (_maxPoints == 0) return 1;
-    final percentage = _totalPoints / _maxPoints;
-    if (percentage < 0.40) return 1;
-    if (percentage < 0.55) return 2;
-    if (percentage < 0.70) return 3;
-    if (percentage < 0.85) return 4;
+    final percentage = (_totalPoints / _maxPoints) * 100;
+    if (percentage < _grade2Min) return 1;
+    if (percentage < _grade3Min) return 2;
+    if (percentage < _grade4Min) return 3;
+    if (percentage < _grade5Min) return 4;
     return 5;
   }
 
@@ -449,38 +495,66 @@ class _GradingViewState extends State<GradingView> {
                                     width: 0,
                                   ), // Hidden if not editing
                             Expanded(
-                              child: ListView.builder(
-                                padding: const EdgeInsets.only(
-                                  left: 24,
-                                  right: 24,
-                                  top: 120,
-                                  bottom: 120,
-                                ),
-                                itemCount: _submissions.length,
-                                itemBuilder: (context, index) {
-                                  return _buildQuestionCard(
-                                    _submissions[index],
-                                  );
-                                },
-                              ),
+                              child: _submissions.isEmpty
+                                  ? Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(32.0),
+                                        child: Text(
+                                          'Nincsenek válaszok a dolgozatban.\n\nDebug Info:\n$_debugMessage\n\nStudent Object keys: ${widget.student.keys.join(", ")}',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                              color: theme.textTheme.bodyMedium?.color
+                                                  ?.withValues(alpha: 0.5),
+                                              fontSize: 18),
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      padding: const EdgeInsets.only(
+                                        left: 24,
+                                        right: 24,
+                                        top: 120,
+                                        bottom: 120,
+                                      ),
+                                      itemCount: _submissions.length,
+                                      itemBuilder: (context, index) {
+                                        return _buildQuestionCard(
+                                          _submissions[index],
+                                        );
+                                      },
+                                    ),
                             ),
                           ],
                         )
                       else
                         Padding(
                           padding: const EdgeInsets.only(top: 0),
-                          child: ListView.builder(
-                            padding: const EdgeInsets.only(
-                              left: 16,
-                              right: 16,
-                              top: 120,
-                              bottom: 120,
-                            ),
-                            itemCount: _submissions.length,
-                            itemBuilder: (context, index) {
-                              return _buildQuestionCard(_submissions[index]);
-                            },
-                          ),
+                          child: _submissions.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(32.0),
+                                    child: Text(
+                                      'Nincsenek válaszok a dolgozatban.\n\nDebug Info:\n$_debugMessage',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: theme.textTheme.bodyMedium?.color
+                                              ?.withValues(alpha: 0.5),
+                                          fontSize: 16),
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.only(
+                                    left: 16,
+                                    right: 16,
+                                    top: 120,
+                                    bottom: 120,
+                                  ),
+                                  itemCount: _submissions.length,
+                                  itemBuilder: (context, index) {
+                                    return _buildQuestionCard(_submissions[index]);
+                                  },
+                                ),
                         ),
                       Positioned(
                         left: 0,
