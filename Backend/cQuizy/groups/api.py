@@ -88,6 +88,8 @@ def create_group(request, data: GroupCreateSchema):
         rank='ADMIN'
     )
 
+    new_group.rank = 'ADMIN'
+
     return new_group
 
 #? Retrieval by listing (all the groups the user has access to)
@@ -310,6 +312,8 @@ def regenerate_invite_code(request, group_id: int):
     if not is_admin and not current_user.is_superuser:
         return 403, {"detail": "You do not have permission to perform this action."}
     
+    group.rank = "SUPERUSER" if current_user.is_superuser else "ADMIN"
+    
     # 2. Generate a new unique code (same logic as create_group)
     while True:
         new_code = generate_invite_code()
@@ -362,6 +366,8 @@ def update_group_settings(request, group_id: int, payload: GroupUpdateSchema):
     is_admin = GroupMember.objects.filter(group=group, user=current_user, rank='ADMIN').exists()
     if not is_admin and not current_user.is_superuser:
         return 403, {"detail": "You do not have permission to modify this group."}
+
+    group.rank = "SUPERUSER" if current_user.is_superuser else "ADMIN"
 
     # 2. Get the data the client actually sent
     update_data = payload.dict(exclude_none=True)
