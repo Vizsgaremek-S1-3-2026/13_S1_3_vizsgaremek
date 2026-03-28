@@ -200,7 +200,9 @@ class _AdminPageState extends State<AdminPage> {
               'Ismeretlen tanuló',
           'status': status,
           'wasBlocked': false, // Default
-          'score': sub['percentage'] ?? sub['score'] ?? 0,
+          'score': num.tryParse(sub['percentage']?.toString() ?? '') ??
+              num.tryParse(sub['score']?.toString() ?? '') ??
+              0,
           'maxScore': 100, // Should come from quiz details
           'grade': sub['grade_value']?.toString() ?? sub['grade']?.toString(),
           'profilePicture':
@@ -378,13 +380,8 @@ class _AdminPageState extends State<AdminPage> {
           for (var sub in submissions) {
             final subName = (sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? '').toString().toLowerCase();
             if (entryName.isNotEmpty && entryName == subName) {
-              entry['submission_id'] = sub['id'];
-              if (sub['percentage'] != null) {
-                entry['score'] = sub['percentage'];
-              }
-              if (sub['grade_value'] != null) {
-                entry['grade'] = sub['grade_value'].toString();
-              }
+              entry['score'] = num.tryParse(sub['percentage']?.toString() ?? '') ?? 0;
+              entry['grade'] = (sub['grade_value'] ?? sub['grade'])?.toString();
               debugPrint('Direct match: submission_id ${sub['id']} -> student "$entryName"');
               break;
             }
@@ -2601,9 +2598,12 @@ class _AdminPageState extends State<AdminPage> {
 
     double average = 0;
     if (rated > 0) {
-      final sum = _members
-          .where((m) => m['grade'] != null)
-          .fold(0, (prev, m) => prev + (int.tryParse(m['grade'].toString()) ?? 0));
+      double sum = 0;
+      for (var m in _members) {
+        if (m['grade'] != null) {
+          sum += double.tryParse(m['grade'].toString()) ?? 0;
+        }
+      }
       average = sum / rated;
     }
 
@@ -2631,57 +2631,10 @@ class _AdminPageState extends State<AdminPage> {
   void _updatePreviewCallback() {
     final quizTitle =
         widget.quiz['project_name'] ?? widget.quiz['name'] ?? 'Teszt neve';
-    final groupName = widget.groupName ?? '10.A osztály';
-    final mockStudents = [
-      {
-        'name': 'Kovács Anna',
-        'grade': 5,
-        'score': 92,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Nagy Péter',
-        'grade': 4,
-        'score': 78,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Szabó Eszter',
-        'grade': 3,
-        'score': 61,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Tóth Bence',
-        'grade': 2,
-        'score': 45,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Horváth Réka',
-        'grade': 5,
-        'score': 95,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Kiss Dávid',
-        'grade': 1,
-        'score': 28,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-    ];
-    final mockStats = {
-      'average': 66.5,
-      'submitted': 6,
-      'total': 8,
-      'distribution': {1: 1, 2: 1, 3: 1, 4: 1, 5: 2},
-    };
+    final groupName = widget.groupName ?? '';
+    // Use real live data – same as _exportPdf
+    final liveStudents = _members;
+    final liveStats = _calculateStats();
     final options = {
       'orientation': _optOrientation,
       'compactMode': _optCompactMode,
@@ -2708,13 +2661,13 @@ class _AdminPageState extends State<AdminPage> {
     _cachedPdfBuilder = (format) => PdfService.generateGradesReport(
       quizTitle: quizTitle,
       groupName: groupName,
-      students: mockStudents,
-      stats: mockStats,
-      quizData: null,
+      students: liveStudents,
+      stats: liveStats,
+      quizData: _fullQuizData,
       includeStats: _exportIncludeStats,
       includeStudentList: _exportIncludeStudentList,
-      includeStudentDetails: false,
-      includeQuestions: false,
+      includeStudentDetails: _exportIncludeStudentDetails,
+      includeQuestions: _exportIncludeQuestions,
       includeWarnings: _exportIncludeWarnings,
       warningLayout: _exportWarningLayout,
       options: options,
@@ -2963,17 +2916,6 @@ class _AdminPageState extends State<AdminPage> {
                   (value) => setState(() => _exportIncludeStudentList = value),
                 ),
                 _buildExportToggle(
-                  'Tanulói részletek (válaszok, idő)',
-                  _exportIncludeStudentDetails,
-                  (value) =>
-                      setState(() => _exportIncludeStudentDetails = value),
-                ),
-                _buildExportToggle(
-                  'Kérdések és helyes válaszok',
-                  _exportIncludeQuestions,
-                  (value) => setState(() => _exportIncludeQuestions = value),
-                ),
-                _buildExportToggle(
                   'Tanulói Státuszok (pl. Leadta, Letiltva)',
                   _exportIncludeWarnings,
                   (value) => setState(() => _exportIncludeWarnings = value),
@@ -3051,16 +2993,6 @@ class _AdminPageState extends State<AdminPage> {
                     'Névtelenítés',
                     _optAnonymize,
                     (v) => setState(() => _optAnonymize = v),
-                  ),
-                  _buildSettingsGroupToggle(
-                    'Pass/Fail kiemelés',
-                    _optPassFail,
-                    (v) => setState(() => _optPassFail = v),
-                  ),
-                  _buildSettingsGroupToggle(
-                    'Tanuló ID mutatása',
-                    _optShowStudentId,
-                    (v) => setState(() => _optShowStudentId = v),
                   ),
                 ]),
                 const Divider(),
