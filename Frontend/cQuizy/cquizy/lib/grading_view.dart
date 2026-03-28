@@ -143,6 +143,22 @@ class _GradingViewState extends State<GradingView> {
     _fetchSubmissionDetails();
   }
 
+  /// Adjust _manualGradeOffset so _finalGrade matches the student's saved grade_value from API
+  void _initGradeOffsetFromStudent() {
+    final gradeRaw = _selectedStudent['grade'];
+    if (gradeRaw == null) return;
+    final savedGrade = int.tryParse(gradeRaw.toString());
+    if (savedGrade == null) return;
+    // _calculatedGrade is based on points, savedGrade is what the API already has
+    // Offset = savedGrade - calculatedGrade
+    final offset = (savedGrade - _calculatedGrade).clamp(-4, 4);
+    if (_manualGradeOffset != offset) {
+      setState(() {
+        _manualGradeOffset = offset;
+      });
+    }
+  }
+
   /// Switch to a different student and reload their submission
   void _switchStudent(Map<String, dynamic> student) {
     // Use toString() to handle int vs string type mismatch
@@ -348,6 +364,8 @@ class _GradingViewState extends State<GradingView> {
           }
         }
       });
+      // After data loaded, sync grade offset to match saved grade_value
+      _initGradeOffsetFromStudent();
     } else {
       if (mounted) {
         setState(() {

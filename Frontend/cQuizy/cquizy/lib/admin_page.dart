@@ -1642,7 +1642,7 @@ class _AdminPageState extends State<AdminPage> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${member['score']} / ${member['maxScore']} pont',
+                        '${(member['score'] as num?)?.toInt() ?? 0}%',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       if (member['grade'] != null)
@@ -2510,13 +2510,32 @@ class _AdminPageState extends State<AdminPage> {
         ),
       );
     } else if (isFinished) {
-      return Text(
-        '${member['score']} / ${member['maxScore']} pont',
-        style: TextStyle(
-          color: theme.textTheme.bodyLarge?.color,
-          fontSize: 15,
-          fontWeight: FontWeight.bold,
-        ),
+      // Show percentage and grade_value from API directly
+      final percentage = (member['score'] as num?)?.toInt() ?? 0;
+      final grade = member['grade']?.toString();
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$percentage%',
+            style: TextStyle(
+              color: theme.textTheme.bodyLarge?.color,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (grade != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              grade,
+              style: TextStyle(
+                color: theme.primaryColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ],
       );
     }
 
