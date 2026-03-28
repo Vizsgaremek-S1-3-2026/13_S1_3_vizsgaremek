@@ -159,7 +159,8 @@ Future<Uint8List> _generatePdfRoot(Map<String, dynamic> params) async {
   PdfColor getGradeColor(dynamic grade) {
     if (grade == null) return PdfColors.black;
     if (grayscale) return PdfColors.black;
-    switch (grade) {
+    final g = grade is int ? grade : int.tryParse(grade.toString());
+    switch (g) {
       case 1:
         return PdfColors.red;
       case 2:

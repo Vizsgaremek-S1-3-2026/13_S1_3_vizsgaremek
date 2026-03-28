@@ -162,8 +162,10 @@ class _TestTakingPageState extends State<TestTakingPage>
     // Initial API Load
     _loadQuiz();
 
-    // Only enable focus monitoring... (rest of initState)
-    if (widget.anticheat) {
+    // Only enable focus monitoring on desktop platforms
+    if (widget.anticheat &&
+        !kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       windowManager.addListener(this);
     }
     if (widget.kiosk) {
@@ -298,11 +300,15 @@ class _TestTakingPageState extends State<TestTakingPage>
     // 4. Initialize Persistent Timer
     _initPersistentTimer();
 
-    // 5. Keep screen awake during test
-    WakelockPlus.enable();
+    // 5. Keep screen awake during test (not supported on web)
+    if (!kIsWeb) {
+      WakelockPlus.enable();
+    }
 
-    // 6. Mute volume to prevent audio cheating
-    _muteVolume();
+    // 6. Mute volume to prevent audio cheating (not supported on web)
+    if (!kIsWeb) {
+      _muteVolume();
+    }
 
     // 7. Desktop keyboard shortcut blocking
     if (!kIsWeb) {
@@ -606,9 +612,14 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     // Only cleanup protections if they were enabled
     if (widget.anticheat) {
-      windowManager.removeListener(this);
+      if (!kIsWeb &&
+          (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+        windowManager.removeListener(this);
+      }
       _disableScreenshotProtection();
-      WakelockPlus.disable();
+      if (!kIsWeb) {
+        WakelockPlus.disable();
+      }
       _restoreVolume();
       _cleanupDesktopKeyboardProtection();
       _cleanupDesktopScreenProtection();

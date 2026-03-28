@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'api_service.dart';
@@ -6,6 +7,7 @@ import 'providers/user_provider.dart';
 class GradingView extends StatefulWidget {
   final Map<String, dynamic> student;
   final String quizTitle;
+  final List<Map<String, dynamic>> allStudents;
 
   final int grade2Limit;
   final int grade3Limit;
@@ -16,6 +18,7 @@ class GradingView extends StatefulWidget {
     super.key,
     required this.student,
     required this.quizTitle,
+    this.allStudents = const [],
     this.grade2Limit = 40,
     this.grade3Limit = 55,
     this.grade4Limit = 70,
@@ -76,14 +79,21 @@ class _GradingViewState extends State<GradingView> {
   bool get _areThresholdsValid =>
       _isGrade5Valid && _isGrade4Valid && _isGrade3Valid && _isGrade2Valid;
 
-  // We are handling a single student passed via widget.student
-  // Removing the full list logic for now as it complicates things without a robust student list API here.
-  // We will trust widget.student contains necessary info.
+  // Current student - can be switched from the student list
+  late Map<String, dynamic> _selectedStudent;
 
-  Map<String, dynamic> get _currentStudent => widget.student;
+  Map<String, dynamic> get _currentStudent => _selectedStudent;
 
   String get _cheatingStatus =>
       _currentStudent['cheatingStatus'] as String? ?? 'none';
+
+  // Get filtered submitted students list
+  List<Map<String, dynamic>> get _submittedStudents {
+    if (widget.allStudents.isEmpty) return [_selectedStudent];
+    return widget.allStudents
+        .where((m) => m['status'] == 'submitted' || m['status'] == 'closed')
+        .toList();
+  }
 
   Map<String, dynamic> get _statistics {
     int totalQuestions = _submissions.length;
@@ -124,11 +134,63 @@ class _GradingViewState extends State<GradingView> {
   @override
   void initState() {
     super.initState();
+    _selectedStudent = widget.student;
     _grade2Min = widget.grade2Limit;
     _grade3Min = widget.grade3Limit;
     _grade4Min = widget.grade4Limit;
     _grade5Min = widget.grade5Limit;
 
+    _fetchSubmissionDetails();
+  }
+
+  /// Switch to a different student and reload their submission
+  void _switchStudent(Map<String, dynamic> student) {
+    // Use toString() to handle int vs string type mismatch
+    if (student['id']?.toString() == _selectedStudent['id']?.toString()) return;
+    if (_hasUnsavedChanges) {
+      showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nem mentett változások'),
+          content: const Text(
+            'Biztosan váltasz? A módosítások elvesznek.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Mégse'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Váltás mentés nélkül'),
+            ),
+          ],
+        ),
+      ).then((result) {
+        if (result == true) {
+          _doSwitchStudent(student);
+        }
+      });
+    } else {
+      _doSwitchStudent(student);
+    }
+  }
+
+  void _doSwitchStudent(Map<String, dynamic> student) {
+    // Close drawer on mobile first
+    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+      Navigator.of(context).pop();
+    }
+    setState(() {
+      _selectedStudent = student;
+      _submissions = [];
+      _isLoading = true;
+      _isEditing = false;
+      _hasUnsavedChanges = false;
+      _manualGradeOffset = 0;
+      _debugMessage = '';
+    });
     _fetchSubmissionDetails();
   }
 
@@ -138,42 +200,21 @@ class _GradingViewState extends State<GradingView> {
     final token = userProvider.token;
     if (token == null) return;
 
-    final submissionId = widget.student['submission_id'];
+    final submissionId = _selectedStudent['submission_id'];
     debugPrint('=== GradingView _fetchSubmissionDetails ===');
-    debugPrint('Student keys: ${widget.student.keys.toList()}');
-    debugPrint('Student data: ${widget.student}');
+    debugPrint('Student keys: ${_selectedStudent.keys.toList()}');
+    debugPrint('Student data: $_selectedStudent');
     debugPrint('submission_id: $submissionId');
     if (submissionId == null) {
-      // Fallback for mock/testing if needed
-      setState(() {
-        _submissions = [
-          GradingSubmission(
-            id: 1,
-            question: 'Mi Magyarország fővárosa?',
-            userAnswer: 'Budapest',
-            correctAnswer: 'Budapest',
-            awardedPoints: 10,
-            maxPoints: 10,
-          ),
-          GradingSubmission(
-            id: 2,
-            question: 'Mennyi 5 * 6?',
-            userAnswer: '30',
-            correctAnswer: '30',
-            awardedPoints: 5,
-            maxPoints: 5,
-          ),
-          GradingSubmission(
-            id: 3,
-            question: 'Melyik bolygó a harmadik a Naptól?',
-            userAnswer: 'Mars',
-            correctAnswer: 'Föld',
-            awardedPoints: 0,
-            maxPoints: 10,
-          ),
-        ];
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _submissions = [];
+          _isLoading = false;
+          _debugMessage =
+              'Ehhez a diákhoz nincs beadott dolgozat (submission_id hiányzik).\n'
+              'Diák adatai: ${_selectedStudent.keys.toList()}';
+        });
+      }
       return;
     }
 
@@ -184,58 +225,119 @@ class _GradingViewState extends State<GradingView> {
     if (details != null && mounted) {
       final answers = details['answers'] as List<dynamic>? ?? [];
       debugPrint('answers count: ${answers.length}');
+      if (answers.isNotEmpty) {
+        debugPrint('=== FIRST ANSWER KEYS: ${(answers.first as Map).keys.toList()} ===');
+        debugPrint('=== FIRST ANSWER DATA: ${answers.first} ===');
+        if (mounted) {
+           setState(() {
+             _debugMessage = 'DEBUG KEYS: ${(answers.first as Map).keys.toList()}\nDATA: ${answers.first}';
+           });
+        }
+      }
 
       setState(() {
         _submissions = answers.map((a) {
-          // Find corresponding block for maxPoints and correctAnswer
-          final blockId = a['block_id'];
-          Map<String, dynamic>? block;
-          if (widget.quizBlocks != null) {
+          // Directly use max_points from API response
+          int maxPoints = 0;
+          final rawMax = a['max_points'];
+          if (rawMax != null) {
+            maxPoints = (rawMax as num).toInt();
+          }
+
+          int awardedPoints = 0;
+          final rawAwarded = a['points_awarded'];
+          if (rawAwarded != null) {
+            awardedPoints = (rawAwarded as num).toInt();
+          }
+
+          // If max_points not in API response, try finding in quizBlocks
+          if (maxPoints == 0 && widget.quizBlocks != null) {
+            final blockId = a['block_id'];
             try {
-              block = widget.quizBlocks!.firstWhere((b) => b['id'] == blockId);
+              final block = widget.quizBlocks!.firstWhere(
+                (b) => b['id'] == blockId,
+              );
+              if (block.containsKey('answers')) {
+                int sum = 0;
+                final blockAnswers = block['answers'] as List<dynamic>? ?? [];
+                for (var opt in blockAnswers) {
+                  if (opt['points'] != null) {
+                    final p = (opt['points'] as num).toInt();
+                    if (p > 0) sum += p;
+                  }
+                }
+                maxPoints = sum;
+              }
             } catch (_) {}
           }
 
-          int maxPoints = 0;
+          // Fallback: if still 0, use awarded points (at least shows something)
+          if (maxPoints == 0) maxPoints = awardedPoints > 0 ? awardedPoints : 1;
+
+          // Build correct answer string from block data
           String correctAnswer = '';
+          List<String>? alternativeAnswers;
+          if (widget.quizBlocks != null) {
+            final blockId = a['block_id'];
+            try {
+              final block = widget.quizBlocks!.firstWhere(
+                (b) => b['id'] == blockId,
+              );
+              final blockAnswers = block['answers'] as List<dynamic>? ?? [];
+              final correctOpts = blockAnswers
+                  .where((ans) => ans['is_correct'] == true)
+                  .toList();
+              if (correctOpts.isNotEmpty) {
+                correctAnswer = correctOpts.first['answer_text']?.toString() ?? '';
+                if (correctOpts.length > 1) {
+                  alternativeAnswers = correctOpts
+                      .skip(1)
+                      .map((ans) => ans['answer_text']?.toString() ?? '')
+                      .toList();
+                }
+              }
+            } catch (_) {}
+          }
 
-          if (block != null) {
-            // Try to find max points logic (assuming it might be in 'data' or inferred)
-            // For now, if block has 'answers', checking for correct ones
-            final blockAnswers = block['answers'] as List<dynamic>? ?? [];
-            final correctOpts = blockAnswers
-                .where((ans) => ans['is_correct'] == true)
-                .toList();
-
-            if (correctOpts.isNotEmpty) {
-              correctAnswer = correctOpts
-                  .map((ans) => ans['answer_text'].toString())
-                  .join(', ');
-            }
-
-            // If manual points are not in block, we might default or check specific structure
-            // Using points_awarded as base if max is unknown, or look for max_score in block if exists
-            // block['score'] might exist?
-            // As fallback, maxPoints = awardedPoints if we can't find it, but that's bad for grading.
-            // We will assume block has 'score' or 'time_limit' etc.
-            // Let's assume block data has it? Or we use 100/count?
-            // Without explicit max points in schema, we rely on block['score'] if exists.
-            if (block.containsKey('score')) {
-              maxPoints = block['score'];
+          // Format student_answer: API may return string, list, bool, or JSON-encoded string
+          String userAnswer;
+          final raw = a['student_answer'] ?? a['answer_text'] ?? a['answer'] ?? a['submitted_answer'];
+          if (raw == null) {
+            userAnswer = '(Nem válaszolt)';
+          } else if (raw is bool) {
+            userAnswer = raw ? 'Igaz' : 'Hamis';
+          } else if (raw is List) {
+            userAnswer = raw.map((e) => e.toString()).join(', ');
+          } else {
+            // Might be a JSON-encoded list string like '["answer"]'
+            final str = raw.toString();
+            if (str.isEmpty) {
+              userAnswer = '(Nem válaszolt)';
+            } else if (str.startsWith('[') && str.endsWith(']')) {
+              try {
+                final decoded = jsonDecode(str);
+                if (decoded is List) {
+                  userAnswer = decoded.map((e) => e.toString()).join(', ');
+                } else {
+                  userAnswer = str;
+                }
+              } catch (_) {
+                userAnswer = str;
+              }
             } else {
-              // If not in block, maybe not available. Default to 1?
-              maxPoints = 1;
+              userAnswer = str;
             }
           }
 
           return GradingSubmission(
             id: a['id'] ?? 0,
             question: a['block_question']?.toString() ?? 'Kérdés',
-            userAnswer: a['student_answer']?.toString() ?? '',
+            userAnswer: userAnswer,
             correctAnswer: correctAnswer,
-            awardedPoints: a['points_awarded'] ?? 0,
-            maxPoints: maxPoints > 0 ? maxPoints : (a['points_awarded'] ?? 1),
-            teacherComment: null, // API doesn't seem to return it yet
+            alternativeAnswers: alternativeAnswers,
+            awardedPoints: awardedPoints,
+            maxPoints: maxPoints,
+            teacherComment: a['teacher_comment']?.toString(),
           );
         }).toList();
         _isLoading = false;
@@ -318,7 +420,7 @@ class _GradingViewState extends State<GradingView> {
     final token = userProvider.token;
     if (token == null) return;
 
-    final submissionId = widget.student['submission_id'];
+    final submissionId = _selectedStudent['submission_id'];
     if (submissionId == null) return;
 
     setState(() => _isLoading = true);
@@ -488,19 +590,19 @@ class _GradingViewState extends State<GradingView> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Student List Panel (Desktop) - always visible if multiple students
+                            if (_submittedStudents.length > 1)
+                              _buildStudentListPanel(theme, false),
                             // Settings Panel (Desktop)
-                            _isEditing
-                                ? _buildGradeSettingsPanel(theme, false)
-                                : const SizedBox(
-                                    width: 0,
-                                  ), // Hidden if not editing
+                            if (_isEditing)
+                              _buildGradeSettingsPanel(theme, false),
                             Expanded(
                               child: _submissions.isEmpty
                                   ? Center(
                                       child: Padding(
                                         padding: const EdgeInsets.all(32.0),
                                         child: Text(
-                                          'Nincsenek válaszok a dolgozatban.\n\nDebug Info:\n$_debugMessage\n\nStudent Object keys: ${widget.student.keys.join(", ")}',
+                                          'Nincsenek válaszok a dolgozatban.\n\nDebug Info:\n$_debugMessage\n\nStudent Object keys: ${_selectedStudent.keys.join(", ")}',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                               color: theme.textTheme.bodyMedium?.color
@@ -577,11 +679,229 @@ class _GradingViewState extends State<GradingView> {
       surfaceTintColor: theme.scaffoldBackgroundColor,
       child: _isEditing
           ? _buildGradeSettingsPanel(theme, true)
-          : Center(child: Text("Nincs elérhető tartalom")),
+          : _buildStudentListPanel(theme, true),
     );
   }
 
-  // _buildStudentListBox is removed as we focus on single student view
+  /// Builds a student list panel for switching between submissions
+  Widget _buildStudentListPanel(ThemeData theme, bool isMobile) {
+    final students = _submittedStudents;
+
+    return Container(
+      width: isMobile ? double.infinity : 280,
+      margin: isMobile
+          ? EdgeInsets.zero
+          : const EdgeInsets.only(top: 100, left: 16, bottom: 80),
+      decoration: isMobile
+          ? null
+          : BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: theme.dividerColor.withValues(alpha: 0.5),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, isMobile ? 60 : 16, 16, 12),
+            child: Row(
+              children: [
+                Icon(Icons.people, color: theme.primaryColor, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Diákok',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.bodyLarge?.color,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${students.length}',
+                    style: TextStyle(
+                      color: theme.primaryColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.5)),
+          // Student List
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: students.length,
+              itemBuilder: (context, index) {
+                final student = students[index];
+                final isSelected = student['id'] == _selectedStudent['id'];
+                final name = student['name'] ?? 'Diák';
+                final profilePic = student['profilePicture'] as String?;
+                final grade = student['grade'] as int?;
+                final status = student['status'] as String? ?? '';
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  child: Material(
+                    color: isSelected
+                        ? theme.primaryColor.withValues(alpha: 0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      onTap: () => _switchStudent(student),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: isSelected
+                            ? BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: theme.primaryColor.withValues(alpha: 0.4),
+                                  width: 1.5,
+                                ),
+                              )
+                            : null,
+                        child: Row(
+                          children: [
+                            // Avatar
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor:
+                                  theme.primaryColor.withValues(alpha: 0.1),
+                              backgroundImage:
+                                  profilePic != null && profilePic.isNotEmpty
+                                      ? NetworkImage(profilePic)
+                                      : null,
+                              child:
+                                  profilePic == null || profilePic.isEmpty
+                                      ? Text(
+                                          name[0].toUpperCase(),
+                                          style: TextStyle(
+                                            color: theme.primaryColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        )
+                                      : null,
+                            ),
+                            const SizedBox(width: 10),
+                            // Name + status
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: TextStyle(
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.w500,
+                                      fontSize: 14,
+                                      color: isSelected
+                                          ? theme.primaryColor
+                                          : theme.textTheme.bodyLarge?.color,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (status.isNotEmpty)
+                                    Text(
+                                      status == 'submitted'
+                                          ? 'Leadva'
+                                          : status == 'closed'
+                                              ? 'Lezárva'
+                                              : status,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: status == 'submitted'
+                                            ? Colors.green
+                                            : Colors.grey,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            // Grade badge
+                            if (grade != null)
+                              Container(
+                                width: 28,
+                                height: 28,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _getStudentGradeColor(grade)
+                                      .withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  '$grade',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: _getStudentGradeColor(grade),
+                                  ),
+                                ),
+                              ),
+                            // Selected indicator
+                            if (isSelected) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.chevron_right,
+                                size: 18,
+                                color: theme.primaryColor,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getStudentGradeColor(int grade) {
+    switch (grade) {
+      case 5: return Colors.green;
+      case 4: return Colors.lightGreen;
+      case 3: return Colors.amber;
+      case 2: return Colors.deepOrange;
+      case 1: return Colors.red;
+      default: return Colors.grey;
+    }
+  }
 
   Widget _buildQuestionCard(GradingSubmission submission) {
     final theme = Theme.of(context);
@@ -674,34 +994,41 @@ class _GradingViewState extends State<GradingView> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: statusColor.withOpacity(0.3)),
                       ),
-                      child: Text(
-                        submission.userAnswer,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      child: submission.userAnswer == '(Nem válaszolt)'
+                          ? Text(
+                              submission.userAnswer,
+                              style: TextStyle(
+                                color: theme.hintColor,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            )
+                          : Text(
+                              submission.userAnswer,
+                              style: TextStyle(
+                                color: theme.textTheme.bodyLarge?.color,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 15,
+                              ),
+                            ),
                     ),
-                    const SizedBox(height: 16),
-
-                    // All correct/accepted answers (if not fully correct)
-                    if (!isCorrect) ...[
+                    if (submission.correctAnswer.isNotEmpty) ...[
+                      const SizedBox(height: 12),
                       Text(
-                        // Singular or plural based on answer count
-                        (submission.alternativeAnswers?.isEmpty ?? true)
-                            ? 'Elfogadott válasz:'
-                            : 'Elfogadott válaszok:',
+                        'Helyes válasz:',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: theme.textTheme.bodyMedium?.color?.withOpacity(
-                            0.7,
-                          ),
+                          color: statusColor,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      // Build list of all accepted answers
-                      ..._buildAcceptedAnswersList(submission, theme),
+                      Text(
+                        submission.correctAnswer,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -713,49 +1040,7 @@ class _GradingViewState extends State<GradingView> {
     );
   }
 
-  // Build a uniform list of all accepted answers
-  List<Widget> _buildAcceptedAnswersList(
-    GradingSubmission submission,
-    ThemeData theme,
-  ) {
-    // Combine main answer with alternatives into one list
-    final allAnswers = <String>[submission.correctAnswer];
-    if (submission.alternativeAnswers != null) {
-      allAnswers.addAll(submission.alternativeAnswers!);
-    }
 
-    return allAnswers.map((answer) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.green.withOpacity(0.2)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.check_circle_outline,
-                size: 16,
-                color: Colors.green.withOpacity(0.7),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  answer,
-                  style: TextStyle(color: Colors.green.shade700, fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }).toList();
-  }
 
   Widget _buildPointsEditor(GradingSubmission submission) {
     if (_isEditing) {

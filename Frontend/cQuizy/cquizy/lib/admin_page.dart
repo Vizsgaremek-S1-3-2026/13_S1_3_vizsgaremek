@@ -200,9 +200,9 @@ class _AdminPageState extends State<AdminPage> {
               'Ismeretlen tanuló',
           'status': status,
           'wasBlocked': false, // Default
-          'score': sub['score'] ?? 0,
+          'score': sub['percentage'] ?? sub['score'] ?? 0,
           'maxScore': 100, // Should come from quiz details
-          'grade': sub['grade'],
+          'grade': sub['grade_value']?.toString() ?? sub['grade']?.toString(),
           'profilePicture':
               sub['user_avatar'] ?? 'https://i.pravatar.cc/150?u=$userId',
           'submission_id': sub['id'],
@@ -383,7 +383,7 @@ class _AdminPageState extends State<AdminPage> {
                 entry['score'] = sub['percentage'];
               }
               if (sub['grade_value'] != null) {
-                entry['grade'] = int.tryParse(sub['grade_value'].toString());
+                entry['grade'] = sub['grade_value'].toString();
               }
               debugPrint('Direct match: submission_id ${sub['id']} -> student "$entryName"');
               break;
@@ -1081,7 +1081,7 @@ class _AdminPageState extends State<AdminPage> {
     double totalGradeSum = 0;
 
     for (var m in gradedStudents) {
-      final g = m['grade'] as int;
+      final g = int.tryParse(m['grade'].toString()) ?? 0;
       gradeCounts[g] = (gradeCounts[g] ?? 0) + 1;
       totalGradeSum += g;
     }
@@ -1230,12 +1230,9 @@ class _AdminPageState extends State<AdminPage> {
             itemCount: _members.length,
             itemBuilder: (context, index) {
               final member = _members[index];
-              final grade = member['grade'] as int?;
-              final score = member['score'] as int? ?? 0;
-              final maxScore = member['maxScore'] as int? ?? 100;
-              final percent = maxScore > 0
-                  ? (score / maxScore * 100).round()
-                  : 0;
+              // API returns: percentage (number), grade_value (string)
+              final grade = member['grade']?.toString(); // mapped from grade_value
+              final percentage = (member['score'] as num?)?.toInt() ?? 0; // mapped from percentage
               final profilePic = member['profilePicture'] as String?;
 
               return Card(
@@ -1264,17 +1261,18 @@ class _AdminPageState extends State<AdminPage> {
                     member['name'],
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: grade != null
-                      ? Text('$score / $maxScore pont ($percent%)')
-                      : const Text(
-                          'Nincs osztályozva',
-                          style: TextStyle(color: Colors.grey),
-                        ),
+                  subtitle: Text(
+                    grade != null
+                        ? '$percentage%'
+                        : 'Nincs osztályozva',
+                    style: TextStyle(
+                      color: grade != null ? null : Colors.grey,
+                    ),
+                  ),
                   trailing: grade != null
                       ? Text(
-                          grade.toString(),
-                          style: TextStyle(
-                            color: _getGradeColor(grade),
+                          grade,
+                          style: const TextStyle(
                             fontWeight: FontWeight.w900,
                             fontSize: 24,
                           ),
@@ -1560,7 +1558,7 @@ class _AdminPageState extends State<AdminPage> {
                         : {
                             'id': 999,
                             'name': 'Teszt Elek',
-                            'grade': 5,
+                            'grade': '5',
                             'cheatingStatus': 'none',
                           };
 
@@ -1570,6 +1568,7 @@ class _AdminPageState extends State<AdminPage> {
                         builder: (context) => GradingView(
                           student: studentToPass,
                           quizTitle: widget.quiz['project_name'] ?? 'Teszt',
+                          allStudents: _members,
                           grade2Limit: widget.grade2Limit,
                           grade3Limit: widget.grade3Limit,
                           grade4Limit: widget.grade4Limit,
@@ -1579,7 +1578,9 @@ class _AdminPageState extends State<AdminPage> {
                               : null,
                         ),
                       ),
-                    );
+                    ).then((_) {
+                      _fetchData();
+                    });
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.primaryColor,
@@ -1608,6 +1609,9 @@ class _AdminPageState extends State<AdminPage> {
     Map<String, dynamic> member, {
     bool showStatus = true,
   }) {
+    final isSubmitted =
+        member['status'] == 'submitted' || member['status'] == 'closed';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
@@ -1629,24 +1633,54 @@ class _AdminPageState extends State<AdminPage> {
                 style: TextStyle(color: _getStatusColor(member['status'])),
               )
             : null,
-        trailing:
-            (member['status'] == 'submitted' || member['status'] == 'closed')
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: isSubmitted
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    '${member['score']} / ${member['maxScore']} pont',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${member['score']} / ${member['maxScore']} pont',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (member['grade'] != null)
+                        Text(
+                          'Jegy: ${member['grade']}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                    ],
                   ),
-                  const Text(
-                    'Jegy: 4',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.grey.shade400,
                   ),
                 ],
               )
             : null,
-        onTap: null, // Disabled click as requested
+        onTap: isSubmitted
+            ? () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GradingView(
+                      student: member,
+                      quizTitle: widget.quiz['project_name'] ?? 'Teszt',
+                      allStudents: _members,
+                      grade2Limit: widget.grade2Limit,
+                      grade3Limit: widget.grade3Limit,
+                      grade4Limit: widget.grade4Limit,
+                      grade5Limit: widget.grade5Limit,
+                      quizBlocks: _fullQuizData != null
+                          ? _fullQuizData!['blocks'] as List<dynamic>?
+                          : null,
+                    ),
+                  ),
+                );
+              }
+            : null,
       ),
     );
   }
@@ -2550,14 +2584,14 @@ class _AdminPageState extends State<AdminPage> {
     if (rated > 0) {
       final sum = _members
           .where((m) => m['grade'] != null)
-          .fold(0, (prev, m) => prev + (m['grade'] as int));
+          .fold(0, (prev, m) => prev + (int.tryParse(m['grade'].toString()) ?? 0));
       average = sum / rated;
     }
 
     Map<int, int> distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
     for (var m in _members) {
       if (m['grade'] != null) {
-        int g = m['grade'];
+        int g = int.tryParse(m['grade'].toString()) ?? 0;
         distribution[g] = (distribution[g] ?? 0) + 1;
       }
     }
