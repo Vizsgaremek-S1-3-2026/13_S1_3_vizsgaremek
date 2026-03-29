@@ -1565,7 +1565,6 @@ class _AdminPageState extends State<AdminPage> {
                         builder: (context) => GradingView(
                           student: studentToPass,
                           quizTitle: widget.quiz['project_name'] ?? 'Teszt',
-                          allStudents: _members,
                           grade2Limit: widget.grade2Limit,
                           grade3Limit: widget.grade3Limit,
                           grade4Limit: widget.grade4Limit,
@@ -1665,7 +1664,6 @@ class _AdminPageState extends State<AdminPage> {
                     builder: (context) => GradingView(
                       student: member,
                       quizTitle: widget.quiz['project_name'] ?? 'Teszt',
-                      allStudents: _members,
                       grade2Limit: widget.grade2Limit,
                       grade3Limit: widget.grade3Limit,
                       grade4Limit: widget.grade4Limit,

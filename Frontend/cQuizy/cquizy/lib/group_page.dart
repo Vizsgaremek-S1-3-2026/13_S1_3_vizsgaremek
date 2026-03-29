@@ -184,13 +184,6 @@ class _GroupPageState extends State<GroupPage> {
   // Protection level: 0 = Nyitott, 1 = Védett, 2 = Zárolt
   int _protectionLevel = 1; // Default to Védett
 
-  // Grading State
-  int _grade2 = 40;
-  int _grade3 = 55;
-  int _grade4 = 70;
-  int _grade5 = 85;
-
-  // HSL Color State
   double _hue = 0.0;
   double _saturation = 0.7;
   double _lightness = 0.6;
@@ -221,12 +214,6 @@ class _GroupPageState extends State<GroupPage> {
     _hue = hsl.hue;
     _saturation = hsl.saturation;
     _lightness = hsl.lightness;
-
-    // Init grading state
-    _grade2 = widget.group.grade2Limit;
-    _grade3 = widget.group.grade3Limit;
-    _grade4 = widget.group.grade4Limit;
-    _grade5 = widget.group.grade5Limit;
 
     // Initialize invite code
     _currentInviteCode =
@@ -604,24 +591,7 @@ class _GroupPageState extends State<GroupPage> {
 
     final isAdmin = widget.group.rank == 'ADMIN';
 
-    void openAdmin() {
-      if (isAdmin) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AdminPage(
-              quiz: quiz,
-              groupId: widget.group.id!,
-              groupName: widget.group.title,
-              grade2Limit: widget.group.grade2Limit,
-              grade3Limit: widget.group.grade3Limit,
-              grade4Limit: widget.group.grade4Limit,
-              grade5Limit: widget.group.grade5Limit,
-            ),
-          ),
-        );
-      }
-    }
+    void openAdmin() => _openAdmin(quiz);
 
     return GestureDetector(
       onLongPress: openAdmin,
@@ -890,7 +860,19 @@ class _GroupPageState extends State<GroupPage> {
               subDetail: formattedDate.isNotEmpty ? 'Lezárult: $formattedDate' : null,
               isGrade: grade != null,
               onTap: () {
-                // For students, this could lead to their detailed result view
+                if (widget.group.rank == 'ADMIN') {
+                  // Find the full quiz object for this result
+                  final quizId = res['quiz_id'];
+                  final quiz = _quizzes.firstWhere(
+                    (q) => q['id'] == quizId,
+                    orElse: () => <String, dynamic>{},
+                  );
+                  if (quiz.isNotEmpty) {
+                    _openAdmin(quiz);
+                  }
+                } else {
+                  // For students, this could lead to their detailed result view
+                }
               },
             );
           }),
@@ -904,6 +886,7 @@ class _GroupPageState extends State<GroupPage> {
             title: q['project_name'] ?? 'Névtelen',
             detail: 'Lezárult: ${_formatDate(q['date_end'])}',
             isGrade: false,
+            onTap: widget.group.rank == 'ADMIN' ? () => _openAdmin(q) : null,
           )),
           const SizedBox(height: 24),
         ],
@@ -1011,6 +994,23 @@ class _GroupPageState extends State<GroupPage> {
     } catch (e) {
       return iso;
     }
+  }
+
+  void _openAdmin(Map<String, dynamic> quiz) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AdminPage(
+          quiz: quiz,
+          groupId: widget.group.id!,
+          groupName: widget.group.title,
+          grade2Limit: widget.group.grade2Limit,
+          grade3Limit: widget.group.grade3Limit,
+          grade4Limit: widget.group.grade4Limit,
+          grade5Limit: widget.group.grade5Limit,
+        ),
+      ),
+    );
   }
 
   void _showEditQuiz(Map<String, dynamic> quiz) async {
@@ -2781,10 +2781,6 @@ class _GroupPageState extends State<GroupPage> {
       color: '#$colorHex',
       anticheat: _protectionLevel >= 1, // Védett or Zárolt
       kiosk: _protectionLevel >= 2, // Only Zárolt
-      grade2Limit: _grade2,
-      grade3Limit: _grade3,
-      grade4Limit: _grade4,
-      grade5Limit: _grade5,
     );
 
     if (!mounted) return;
@@ -2899,8 +2895,6 @@ class _GroupPageState extends State<GroupPage> {
                   _buildSectionLabel('BEÁLLÍTÁSOK', theme),
                   const SizedBox(height: 16),
                   _buildProtectionSlider(theme),
-                  const SizedBox(height: 24),
-                  _buildGradingSection(theme),
                   const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
@@ -3316,162 +3310,6 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  Widget _buildGradingSection(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.grade_outlined, color: theme.primaryColor, size: 24),
-              const SizedBox(width: 12),
-              Text(
-                'Értékelési rendszer',
-                style: TextStyle(
-                  color: theme.textTheme.bodyLarge?.color,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Állítsd be a százalékos határokat az osztályzatokhoz (Minimum %).',
-            style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 2,
-            value: _grade2,
-            color: Colors.redAccent,
-            onChanged: (val) {
-              setState(() {
-                _grade2 = val.round().clamp(0, 100);
-                if (_grade2 >= _grade3) _grade3 = (_grade2 + 1).clamp(0, 100);
-                if (_grade3 >= _grade4) _grade4 = (_grade3 + 1).clamp(0, 100);
-                if (_grade4 >= _grade5) _grade5 = (_grade4 + 1).clamp(0, 100);
-              });
-            },
-          ),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 3,
-            value: _grade3,
-            color: Colors.orangeAccent,
-            onChanged: (val) {
-              setState(() {
-                _grade3 = val.round().clamp(0, 100);
-                if (_grade3 <= _grade2) _grade2 = (_grade3 - 1).clamp(0, 100);
-                if (_grade3 >= _grade4) _grade4 = (_grade3 + 1).clamp(0, 100);
-                if (_grade4 >= _grade5) _grade5 = (_grade4 + 1).clamp(0, 100);
-              });
-            },
-          ),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 4,
-            value: _grade4,
-            color: Colors.lightGreen,
-            onChanged: (val) {
-              setState(() {
-                _grade4 = val.round().clamp(0, 100);
-                if (_grade4 <= _grade3) _grade3 = (_grade4 - 1).clamp(0, 100);
-                if (_grade3 <= _grade2) _grade2 = (_grade3 - 1).clamp(0, 100);
-                if (_grade4 >= _grade5) _grade5 = (_grade4 + 1).clamp(0, 100);
-              });
-            },
-          ),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 5,
-            value: _grade5,
-            color: Colors.green,
-            onChanged: (val) {
-              setState(() {
-                _grade5 = val.round().clamp(0, 100);
-                if (_grade5 <= _grade4) _grade4 = (_grade5 - 1).clamp(0, 100);
-                if (_grade4 <= _grade3) _grade3 = (_grade4 - 1).clamp(0, 100);
-                if (_grade3 <= _grade2) _grade2 = (_grade3 - 1).clamp(0, 100);
-              });
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSliderForGrade({
-    required ThemeData theme,
-    required int grade,
-    required int value,
-    required Color color,
-    required ValueChanged<double> onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '$grade-es (Minimum)',
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            Text(
-              '$value%',
-              style: TextStyle(
-                color: theme.textTheme.bodyLarge?.color,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            activeTrackColor: color.withValues(alpha: 0.5),
-            inactiveTrackColor: theme.dividerColor,
-            thumbColor: color,
-            overlayColor: color.withValues(alpha: 0.2),
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-            trackHeight: 4,
-            valueIndicatorColor: color,
-          ),
-          child: Slider(
-            value: value.toDouble(),
-            min: 0,
-            max: 100,
-            divisions: 100,
-            label: '$value%',
-            onChanged: onChanged,
-          ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
 
   Widget _buildMembersPanel() {
     final screenWidth = MediaQuery.of(context).size.width;

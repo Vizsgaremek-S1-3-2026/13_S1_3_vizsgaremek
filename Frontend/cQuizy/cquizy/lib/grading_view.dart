@@ -7,7 +7,6 @@ import 'providers/user_provider.dart';
 class GradingView extends StatefulWidget {
   final Map<String, dynamic> student;
   final String quizTitle;
-  final List<Map<String, dynamic>> allStudents;
 
   final int grade2Limit;
   final int grade3Limit;
@@ -18,7 +17,6 @@ class GradingView extends StatefulWidget {
     super.key,
     required this.student,
     required this.quizTitle,
-    this.allStudents = const [],
     this.grade2Limit = 40,
     this.grade3Limit = 55,
     this.grade4Limit = 70,
@@ -58,6 +56,7 @@ class _GradingViewState extends State<GradingView> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   bool _isLoading = true;
+  late final ScrollController _scrollController;
   List<GradingSubmission> _submissions = [];
   bool _isEditing = false;
   bool _hasUnsavedChanges = false;
@@ -85,15 +84,8 @@ class _GradingViewState extends State<GradingView> {
   Map<String, dynamic> get _currentStudent => _selectedStudent;
 
   String get _cheatingStatus =>
-      _currentStudent['cheatingStatus'] as String? ?? 'none';
+      _currentStudent['cheatingStatus']?.toString() ?? 'none';
 
-  // Get filtered submitted students list
-  List<Map<String, dynamic>> get _submittedStudents {
-    if (widget.allStudents.isEmpty) return [_selectedStudent];
-    return widget.allStudents
-        .where((m) => m['status'] == 'submitted' || m['status'] == 'closed')
-        .toList();
-  }
 
   Map<String, dynamic> get _statistics {
     int totalQuestions = _submissions.length;
@@ -139,8 +131,15 @@ class _GradingViewState extends State<GradingView> {
     _grade3Min = widget.grade3Limit;
     _grade4Min = widget.grade4Limit;
     _grade5Min = widget.grade5Limit;
+    _scrollController = ScrollController();
 
     _fetchSubmissionDetails();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   /// Adjust _manualGradeOffset so _finalGrade matches the student's saved grade_value from API
@@ -159,56 +158,6 @@ class _GradingViewState extends State<GradingView> {
     }
   }
 
-  /// Switch to a different student and reload their submission
-  void _switchStudent(Map<String, dynamic> student) {
-    // Use toString() to handle int vs string type mismatch
-    if (student['id']?.toString() == _selectedStudent['id']?.toString()) return;
-    if (_hasUnsavedChanges) {
-      showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Nem mentett változások'),
-          content: const Text(
-            'Biztosan váltasz? A módosítások elvesznek.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Mégse'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Váltás mentés nélkül'),
-            ),
-          ],
-        ),
-      ).then((result) {
-        if (result == true) {
-          _doSwitchStudent(student);
-        }
-      });
-    } else {
-      _doSwitchStudent(student);
-    }
-  }
-
-  void _doSwitchStudent(Map<String, dynamic> student) {
-    // Close drawer on mobile first
-    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
-      Navigator.of(context).pop();
-    }
-    setState(() {
-      _selectedStudent = student;
-      _submissions = [];
-      _isLoading = true;
-      _isEditing = false;
-      _hasUnsavedChanges = false;
-      _manualGradeOffset = 0;
-      _debugMessage = '';
-    });
-    _fetchSubmissionDetails();
-  }
 
   Future<void> _fetchSubmissionDetails() async {
     setState(() => _isLoading = true);
@@ -216,7 +165,11 @@ class _GradingViewState extends State<GradingView> {
     final token = userProvider.token;
     if (token == null) return;
 
-    final submissionId = _selectedStudent['submission_id'];
+    final submissionIdRaw = _selectedStudent['submission_id'];
+    final int? submissionId = submissionIdRaw != null
+        ? int.tryParse(submissionIdRaw.toString())
+        : null;
+
     debugPrint('=== GradingView _fetchSubmissionDetails ===');
     debugPrint('Student keys: ${_selectedStudent.keys.toList()}');
     debugPrint('Student data: $_selectedStudent');
@@ -242,12 +195,15 @@ class _GradingViewState extends State<GradingView> {
       final answers = details['answers'] as List<dynamic>? ?? [];
       debugPrint('answers count: ${answers.length}');
       if (answers.isNotEmpty) {
-        debugPrint('=== FIRST ANSWER KEYS: ${(answers.first as Map).keys.toList()} ===');
+        debugPrint(
+          '=== FIRST ANSWER KEYS: ${(answers.first as Map).keys.toList()} ===',
+        );
         debugPrint('=== FIRST ANSWER DATA: ${answers.first} ===');
         if (mounted) {
-           setState(() {
-             _debugMessage = 'DEBUG KEYS: ${(answers.first as Map).keys.toList()}\nDATA: ${answers.first}';
-           });
+          setState(() {
+            _debugMessage =
+                'DEBUG KEYS: ${(answers.first as Map).keys.toList()}\nDATA: ${answers.first}';
+          });
         }
       }
 
@@ -304,7 +260,8 @@ class _GradingViewState extends State<GradingView> {
                   .where((ans) => ans['is_correct'] == true)
                   .toList();
               if (correctOpts.isNotEmpty) {
-                correctAnswer = correctOpts.first['answer_text']?.toString() ?? '';
+                correctAnswer =
+                    correctOpts.first['answer_text']?.toString() ?? '';
                 if (correctOpts.length > 1) {
                   alternativeAnswers = correctOpts
                       .skip(1)
@@ -317,7 +274,11 @@ class _GradingViewState extends State<GradingView> {
 
           // Format student_answer: API may return string, list, bool, or JSON-encoded string
           String userAnswer;
-          final raw = a['student_answer'] ?? a['answer_text'] ?? a['answer'] ?? a['submitted_answer'];
+          final raw =
+              a['student_answer'] ??
+              a['answer_text'] ??
+              a['answer'] ??
+              a['submitted_answer'];
           if (raw == null) {
             userAnswer = '(Nem válaszolt)';
           } else if (raw is bool) {
@@ -358,9 +319,11 @@ class _GradingViewState extends State<GradingView> {
         }).toList();
         _isLoading = false;
         if (_submissions.isEmpty) {
-          _debugMessage = 'API call succeeded, but answers list is empty. Submission ID: $submissionId.';
+          _debugMessage =
+              'API call succeeded, but answers list is empty. Submission ID: $submissionId.';
           if (details.containsKey('detail') || details.containsKey('error')) {
-             _debugMessage += ' API Message: ${details['detail'] ?? details['error']}';
+            _debugMessage +=
+                ' API Message: ${details['detail'] ?? details['error']}';
           }
         }
       });
@@ -369,7 +332,8 @@ class _GradingViewState extends State<GradingView> {
     } else {
       if (mounted) {
         setState(() {
-          _debugMessage = 'API call failed or returned null for Submission ID: $submissionId.';
+          _debugMessage =
+              'API call failed or returned null for Submission ID: $submissionId.';
           _isLoading = false;
         });
       }
@@ -438,7 +402,9 @@ class _GradingViewState extends State<GradingView> {
     final token = userProvider.token;
     if (token == null) return;
 
-    final submissionId = _selectedStudent['submission_id'];
+    final int? submissionId = _selectedStudent['submission_id'] != null
+        ? int.tryParse(_selectedStudent['submission_id'].toString())
+        : null;
     if (submissionId == null) return;
 
     setState(() => _isLoading = true);
@@ -506,7 +472,6 @@ class _GradingViewState extends State<GradingView> {
           child: Scaffold(
             key: _scaffoldKey,
             backgroundColor: theme.scaffoldBackgroundColor,
-            drawer: !isDesktop ? _buildMobileDrawer(theme) : null,
             extendBodyBehindAppBar: true,
             appBar: AppBar(
               toolbarHeight: 80,
@@ -569,17 +534,18 @@ class _GradingViewState extends State<GradingView> {
                                   isDesktop
                                       ? (_getStatusAttributes(
                                               _cheatingStatus,
-                                            )['text']
-                                            as String)
-                                      : (_currentStudent['name'] ?? 'Diák'),
+                                            )['text']?.toString() ??
+                                            'Ismeretlen')
+                                      : (_currentStudent['name']?.toString() ??
+                                            'Diák'),
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                     color:
-                                        _getStatusAttributes(
+                                        (_getStatusAttributes(
                                               _cheatingStatus,
                                             )['color']
-                                            as Color,
+                                            as Color),
                                   ),
                                 ),
                               ),
@@ -608,9 +574,6 @@ class _GradingViewState extends State<GradingView> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Student List Panel (Desktop) - always visible if multiple students
-                            if (_submittedStudents.length > 1)
-                              _buildStudentListPanel(theme, false),
                             // Settings Panel (Desktop)
                             if (_isEditing)
                               _buildGradeSettingsPanel(theme, false),
@@ -623,13 +586,18 @@ class _GradingViewState extends State<GradingView> {
                                           'Nincsenek válaszok a dolgozatban.\n\nDebug Info:\n$_debugMessage\n\nStudent Object keys: ${_selectedStudent.keys.join(", ")}',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
-                                              color: theme.textTheme.bodyMedium?.color
-                                                  ?.withValues(alpha: 0.5),
-                                              fontSize: 18),
+                                            color: theme
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.color
+                                                ?.withValues(alpha: 0.5),
+                                            fontSize: 18,
+                                          ),
                                         ),
                                       ),
                                     )
                                   : ListView.builder(
+                                      controller: _scrollController,
                                       padding: const EdgeInsets.only(
                                         left: 24,
                                         right: 24,
@@ -657,13 +625,15 @@ class _GradingViewState extends State<GradingView> {
                                       'Nincsenek válaszok a dolgozatban.\n\nDebug Info:\n$_debugMessage',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                          color: theme.textTheme.bodyMedium?.color
-                                              ?.withValues(alpha: 0.5),
-                                          fontSize: 16),
+                                        color: theme.textTheme.bodyMedium?.color
+                                            ?.withValues(alpha: 0.5),
+                                        fontSize: 16,
+                                      ),
                                     ),
                                   ),
                                 )
                               : ListView.builder(
+                                  controller: _scrollController,
                                   padding: const EdgeInsets.only(
                                     left: 16,
                                     right: 16,
@@ -672,7 +642,9 @@ class _GradingViewState extends State<GradingView> {
                                   ),
                                   itemCount: _submissions.length,
                                   itemBuilder: (context, index) {
-                                    return _buildQuestionCard(_submissions[index]);
+                                    return _buildQuestionCard(
+                                      _submissions[index],
+                                    );
                                   },
                                 ),
                         ),
@@ -691,235 +663,7 @@ class _GradingViewState extends State<GradingView> {
     );
   }
 
-  Widget _buildMobileDrawer(ThemeData theme) {
-    return Drawer(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      surfaceTintColor: theme.scaffoldBackgroundColor,
-      child: _isEditing
-          ? _buildGradeSettingsPanel(theme, true)
-          : _buildStudentListPanel(theme, true),
-    );
-  }
 
-  /// Builds a student list panel for switching between submissions
-  Widget _buildStudentListPanel(ThemeData theme, bool isMobile) {
-    final students = _submittedStudents;
-
-    return Container(
-      width: isMobile ? double.infinity : 280,
-      margin: isMobile
-          ? EdgeInsets.zero
-          : const EdgeInsets.only(top: 100, left: 16, bottom: 80),
-      decoration: isMobile
-          ? null
-          : BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: theme.dividerColor.withValues(alpha: 0.5),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: EdgeInsets.fromLTRB(16, isMobile ? 60 : 16, 16, 12),
-            child: Row(
-              children: [
-                Icon(Icons.people, color: theme.primaryColor, size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Diákok',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: theme.textTheme.bodyLarge?.color,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.primaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${students.length}',
-                    style: TextStyle(
-                      color: theme.primaryColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.5)),
-          // Student List
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: students.length,
-              itemBuilder: (context, index) {
-                final student = students[index];
-                final isSelected = student['id'] == _selectedStudent['id'];
-                final name = student['name'] ?? 'Diák';
-                final profilePic = student['profilePicture'] as String?;
-                final grade = student['grade'] as int?;
-                final status = student['status'] as String? ?? '';
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  child: Material(
-                    color: isSelected
-                        ? theme.primaryColor.withValues(alpha: 0.12)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () => _switchStudent(student),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: isSelected
-                            ? BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: theme.primaryColor.withValues(alpha: 0.4),
-                                  width: 1.5,
-                                ),
-                              )
-                            : null,
-                        child: Row(
-                          children: [
-                            // Avatar
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor:
-                                  theme.primaryColor.withValues(alpha: 0.1),
-                              backgroundImage:
-                                  profilePic != null && profilePic.isNotEmpty
-                                      ? NetworkImage(profilePic)
-                                      : null,
-                              child:
-                                  profilePic == null || profilePic.isEmpty
-                                      ? Text(
-                                          name[0].toUpperCase(),
-                                          style: TextStyle(
-                                            color: theme.primaryColor,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                          ),
-                                        )
-                                      : null,
-                            ),
-                            const SizedBox(width: 10),
-                            // Name + status
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: TextStyle(
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.w500,
-                                      fontSize: 14,
-                                      color: isSelected
-                                          ? theme.primaryColor
-                                          : theme.textTheme.bodyLarge?.color,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (status.isNotEmpty)
-                                    Text(
-                                      status == 'submitted'
-                                          ? 'Leadva'
-                                          : status == 'closed'
-                                              ? 'Lezárva'
-                                              : status,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: status == 'submitted'
-                                            ? Colors.green
-                                            : Colors.grey,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            // Grade badge
-                            if (grade != null)
-                              Container(
-                                width: 28,
-                                height: 28,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: _getStudentGradeColor(grade)
-                                      .withValues(alpha: 0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Text(
-                                  '$grade',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: _getStudentGradeColor(grade),
-                                  ),
-                                ),
-                              ),
-                            // Selected indicator
-                            if (isSelected) ...[
-                              const SizedBox(width: 4),
-                              Icon(
-                                Icons.chevron_right,
-                                size: 18,
-                                color: theme.primaryColor,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _getStudentGradeColor(int grade) {
-    switch (grade) {
-      case 5: return Colors.green;
-      case 4: return Colors.lightGreen;
-      case 3: return Colors.amber;
-      case 2: return Colors.deepOrange;
-      case 1: return Colors.red;
-      default: return Colors.grey;
-    }
-  }
 
   Widget _buildQuestionCard(GradingSubmission submission) {
     final theme = Theme.of(context);
@@ -1057,8 +801,6 @@ class _GradingViewState extends State<GradingView> {
       ),
     );
   }
-
-
 
   Widget _buildPointsEditor(GradingSubmission submission) {
     if (_isEditing) {
