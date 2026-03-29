@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'models/user.dart';
+import 'models/stats_models.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -1390,5 +1391,130 @@ class ApiService {
       debugPrint('Hálózati hiba eredmények lekérése során: $e');
       return [];
     }
+  }
+  // --- Statistics & Insights (New) ---
+
+  // Get status of user (self)
+  Future<Map<String, dynamic>?> getMe(String token) async {
+    final url = Uri.parse('$_baseUrl/users/me');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Get groups with rank (re-using existing logic but as a clean helper)
+  Future<List<GroupWithRankOutSchema>> getGroupsWithRank(String token) async {
+    final data = await getUserGroups(token);
+    return data.map((e) => GroupWithRankOutSchema.fromJson(e)).toList();
+  }
+
+  // Teacher: Get group overview stats
+  Future<AdminGroupOverviewSchema?> getGroupStatsOverview(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/stats/overview');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return AdminGroupOverviewSchema.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Teacher: Get student leaderboard
+  Future<List<AdminStudentStatSchema>> getGroupStudentStats(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/stats/students');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => AdminStudentStatSchema.fromJson(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Teacher: Get quiz difficulty map
+  Future<List<AdminQuizStatSchema>> getGroupQuizStats(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/stats/quizzes');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => AdminQuizStatSchema.fromJson(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Get grading scale for a group
+  Future<List<GradePercentageSchema>> getGroupGradingScale(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/grading-scale');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => GradePercentageSchema.fromJson(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Student: Get own results for a group
+  Future<List<SubmissionOutSchema>> getStudentResults(String token, int groupId) async {
+    final data = await getUserResults(token, groupId);
+    return data.map((e) => SubmissionOutSchema.fromJson(e)).toList();
+  }
+
+  // Common: Get quiz stats (avg/min/max)
+  Future<QuizStatsSchema?> getQuizStatsModel(String token, int quizId) async {
+    final data = await getQuizStats(token, quizId);
+    if (data != null) {
+      return QuizStatsSchema.fromJson(data);
+    }
+    return null;
   }
 }

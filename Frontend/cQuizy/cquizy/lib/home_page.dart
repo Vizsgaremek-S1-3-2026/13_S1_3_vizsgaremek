@@ -133,231 +133,153 @@ class _HomePageState extends State<HomePage>
       return;
     }
 
-    final Map<int, String> groupAdminNames = {};
-    final Map<int, String> groupAdminFirstNames = {};
-    final Map<int, String> groupAdminLastNames = {};
-    final List<Future<void>> adminNameFutures = [];
+    // 1. Initial State Update - Show groups immediately with basic info
+    if (mounted) {
+      setState(() {
+        final initialGroups = groupsData.map((json) {
+          final isAdmin = json['rank'] == 'ADMIN';
+          return Group(
+            id: json['id'],
+            title: json['name'] ?? 'Névtelen csoport',
+            ownerName: json['owner_name'] ?? (isAdmin ? 'Én' : 'Admin'),
+            subtitle: json['owner_name'] ?? (isAdmin ? '' : 'Admin'),
+            color: _parseGroupColor(json['color']),
+            inviteCode: json['invite_code'],
+            inviteCodeFormatted: json['invite_code_formatted'],
+            rank: json['rank'] ?? 'MEMBER',
+            hasNotification: false,
+            anticheat: json['anticheat'] ?? false,
+            kiosk: json['kiosk'] ?? false,
+          );
+        }).toList();
 
-    for (var json in groupsData) {
-      if (json['rank'] != 'ADMIN') {
-        final groupId = json['id'];
-        if (groupId != null) {
-          adminNameFutures.add(() async {
-            try {
-              final members = await apiService.getGroupMembers(token, groupId);
-              final adminMember = members.firstWhere(
-                (m) => m['rank'] == 'ADMIN',
-                orElse: () => <String, dynamic>{},
-              );
-
-              if (adminMember.isNotEmpty && adminMember['user'] != null) {
-                final user = adminMember['user'] as Map<String, dynamic>;
-                final firstName = user['first_name']?.toString() ?? '';
-                final lastName = user['last_name']?.toString() ?? '';
-                final nickname = user['nickname']?.toString() ?? '';
-                final username = user['username']?.toString() ?? '';
-
-                // Store first and last name separately
-                groupAdminFirstNames[groupId] = firstName;
-                groupAdminLastNames[groupId] = lastName;
-
-                // Prioritize full name over nickname
-                String displayName = 'Admin';
-                if (firstName.isNotEmpty || lastName.isNotEmpty) {
-                  displayName = '$lastName $firstName'.trim();
-                } else if (nickname.isNotEmpty) {
-                  displayName = nickname;
-                } else if (username.isNotEmpty) {
-                  displayName = username;
-                }
-                groupAdminNames[groupId] = displayName;
-              }
-            } catch (e) {
-              debugPrint('Error fetching admin for group $groupId: $e');
-            }
-          }());
-        }
-      }
+        _updateGroupsState(initialGroups);
+        _isLoading = false;
+      });
     }
 
-    // Fetch Quizzes for each group to determine active tests
-    final Map<int, List<Map<String, dynamic>>> groupAllActiveQuizzes = {};
-    final List<Future<void>> quizFutures = [];
-
+    // 2. Background Task: Load Admin Names & Active Quizzes
+    // We do this asynchronously without blocking the main UI
     for (var json in groupsData) {
       final groupId = json['id'];
-      if (groupId != null) {
-        quizFutures.add(() async {
-          try {
-            final quizzes = await apiService.getGroupQuizzes(token, groupId);
-            final now = DateTime.now();
+      if (groupId == null) continue;
 
-            final activeQuizzes = quizzes.where((q) {
-              final end = DateTime.tryParse(q['date_end'] ?? '');
-              final start = DateTime.tryParse(q['date_start'] ?? '');
-              return end != null &&
-                  start != null &&
-                  end.toLocal().isAfter(now) &&
-                  start.toLocal().isBefore(now);
-            }).toList();
-
-            if (activeQuizzes.isNotEmpty) {
-              // Sort by end date (closest to expiry first)
-              activeQuizzes.sort((a, b) {
-                final endA = DateTime.parse(a['date_end']);
-                final endB = DateTime.parse(b['date_end']);
-                return endA.compareTo(endB);
-              });
-              groupAllActiveQuizzes[groupId] = activeQuizzes;
-            }
-          } catch (e) {
-            debugPrint('Error fetching quizzes for group $groupId: $e');
-          }
-        }());
+      // a) Load Admin/Owner details if not already perfect
+      if (json['rank'] != 'ADMIN') {
+        _loadGroupAdminBackground(token, groupId, apiService);
       }
+      
+      // b) Load Active Quizzes (Notifications)
+      _loadGroupQuizzesBackground(token, groupId, apiService);
     }
+  }
 
-    await Future.wait([...adminNameFutures, ...quizFutures]);
-
+  void _updateGroupsState(List<Group> allGroups) {
     if (!mounted) return;
+    _myGroups = allGroups.where((g) => g.rank == 'ADMIN').toList();
+    _otherGroups = allGroups.where((g) => g.rank != 'ADMIN').toList();
 
-    setState(() {
-      final allGroups = groupsData.map((json) {
-        // Parse color from hex string
-        Color groupColor = Colors.blue;
-        if (json['color'] != null) {
-          try {
-            String colorStr = json['color'].toString();
-            if (colorStr.startsWith('#')) {
-              colorStr = colorStr.substring(1);
-            }
-            if (colorStr.length == 6) {
-              groupColor = Color(int.parse('FF$colorStr', radix: 16));
-            }
-          } catch (e) {
-            debugPrint('Color parsing error: $e');
-          }
+    if (_selectedGroup != null) {
+      _selectedGroup = allGroups.firstWhere(
+        (g) => g.id == _selectedGroup!.id,
+        orElse: () => _selectedGroup!,
+      );
+    }
+    _activeTests = _getActiveTests();
+    _cleanupExpiredNotifications();
+  }
+
+  Future<void> _loadGroupAdminBackground(String token, int groupId, ApiService api) async {
+    try {
+      final members = await api.getGroupMembers(token, groupId);
+      final adminMember = members.firstWhere(
+        (m) => m['rank'] == 'ADMIN',
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (adminMember.isNotEmpty && adminMember['user'] != null && mounted) {
+        final user = adminMember['user'] as Map<String, dynamic>;
+        final firstName = user['first_name']?.toString() ?? '';
+        final lastName = user['last_name']?.toString() ?? '';
+        
+        String displayName = 'Admin';
+        if (firstName.isNotEmpty || lastName.isNotEmpty) {
+          displayName = '$lastName $firstName'.trim();
         }
 
-        // ADMIN rank means teacher/admin
-        final isAdmin = json['rank'] == 'ADMIN';
-        final groupId = json['id'];
+        setState(() {
+          _updateGroupInLists(groupId, (g) => g.copyWith(
+            ownerName: displayName,
+            instructorFirstName: firstName,
+            instructorLastName: lastName,
+            subtitle: displayName,
+          ));
+        });
+      }
+    } catch (e) {
+      debugPrint('Error bg-loading admin: $e');
+    }
+  }
 
-        // Extract instructor first and last name separately
-        String instructorFirstName = '';
-        String instructorLastName = '';
+  Future<void> _loadGroupQuizzesBackground(String token, int groupId, ApiService api) async {
+    try {
+      final quizzes = await api.getGroupQuizzes(token, groupId);
+      final now = DateTime.now();
 
-        if (isAdmin) {
-          // If I am admin, use my name from UserProvider
-          final user = userProvider.user;
-          if (user != null) {
-            instructorFirstName = user.firstName;
-            instructorLastName = user.lastName;
-          }
-        } else {
-          // First try to get from members API lookup
-          if (groupId != null && groupAdminFirstNames.containsKey(groupId)) {
-            instructorFirstName = groupAdminFirstNames[groupId]!;
-            instructorLastName = groupAdminLastNames[groupId] ?? '';
-          }
-          // Fall back to owner object in API response
-          else if (json['owner'] != null && json['owner'] is Map) {
-            final owner = json['owner'];
-            instructorFirstName = owner['first_name']?.toString() ?? '';
-            instructorLastName = owner['last_name']?.toString() ?? '';
-          }
-        }
-
-        // Resolve owner name (Teacher's Full Name) for display
-        String ownerName = (() {
-          if (isAdmin) {
-            final user = userProvider.user;
-            if (user != null &&
-                (user.firstName.isNotEmpty || user.lastName.isNotEmpty)) {
-              return '${user.lastName} ${user.firstName}'.trim();
-            }
-            return user?.username ?? 'Én';
-          }
-
-          // 1. Try fetched admin name (from group members lookup)
-          if (groupId != null && groupAdminNames.containsKey(groupId)) {
-            return groupAdminNames[groupId]!;
-          }
-
-          // 2. Try owner_name field (API provided name)
-          if (json['owner_name'] != null &&
-              json['owner_name'].toString().isNotEmpty) {
-            return json['owner_name'].toString();
-          }
-
-          if (instructorFirstName.isNotEmpty || instructorLastName.isNotEmpty) {
-            return '$instructorLastName $instructorFirstName'.trim();
-          }
-
-          return 'Admin';
-        })();
-
-        // Determine active quiz data
-        bool hasNotification = false;
-        DateTime? testExpiry;
-        String? activeTestTitle;
-        Map<String, dynamic>? primaryActiveQuiz;
-        List<Map<String, dynamic>> allActiveQuizzes = [];
-
-        if (groupId != null && groupAllActiveQuizzes.containsKey(groupId)) {
-          allActiveQuizzes = groupAllActiveQuizzes[groupId]!;
-          if (allActiveQuizzes.isNotEmpty) {
-            primaryActiveQuiz = allActiveQuizzes.first;
-            hasNotification = true;
-            testExpiry = DateTime.parse(
-              primaryActiveQuiz['date_end'],
-            ).toLocal();
-
-            if (primaryActiveQuiz['project_name'] != null) {
-              activeTestTitle = primaryActiveQuiz['project_name'];
-            } else {
-              activeTestTitle = 'Aktív Teszt';
-            }
-          }
-        }
-
-        return Group(
-          id: groupId,
-          title: json['name'] ?? 'Névtelen csoport',
-          ownerName: ownerName,
-          instructorFirstName: instructorFirstName,
-          instructorLastName: instructorLastName,
-          subtitle: isAdmin ? '' : ownerName, // Logic for Home Page Card
-          color: groupColor,
-          inviteCode: json['invite_code'],
-          inviteCodeFormatted: json['invite_code_formatted'],
-          rank: json['rank'] ?? 'MEMBER',
-          hasNotification: hasNotification,
-          testExpiryDate: testExpiry,
-          activeTestTitle: activeTestTitle,
-          activeQuizData: primaryActiveQuiz,
-          allActiveQuizzes: allActiveQuizzes, // Pass all active quizzes
-          anticheat:
-              json['anticheat'] ?? false, // Protection level: Nyitott default
-          kiosk: json['kiosk'] ?? false, // Kiosk mode default disabled
-        );
+      final activeQuizzes = quizzes.where((q) {
+        final end = DateTime.tryParse(q['date_end'] ?? '');
+        final start = DateTime.tryParse(q['date_start'] ?? '');
+        return end != null && start != null && 
+               end.toLocal().isAfter(now) && 
+               start.toLocal().isBefore(now);
       }).toList();
 
-      _myGroups = allGroups.where((g) => g.rank == 'ADMIN').toList();
-      _otherGroups = allGroups.where((g) => g.rank != 'ADMIN').toList();
-
-      if (_selectedGroup != null) {
-        // Update selected group with fresh data
-        _selectedGroup = allGroups.firstWhere(
-          (g) => g.id == _selectedGroup!.id,
-          orElse: () => _selectedGroup!,
-        );
+      if (mounted) {
+        setState(() {
+          _updateGroupInLists(groupId, (g) {
+            if (activeQuizzes.isEmpty) return g.copyWith(hasNotification: false, allActiveQuizzes: []);
+            
+            activeQuizzes.sort((a, b) => DateTime.parse(a['date_end']).compareTo(DateTime.parse(b['date_end'])));
+            final primary = activeQuizzes.first;
+            
+            return g.copyWith(
+              hasNotification: true,
+              testExpiryDate: DateTime.parse(primary['date_end']).toLocal(),
+              activeTestTitle: primary['project_name'] ?? 'Aktív Teszt',
+              activeQuizData: primary,
+              allActiveQuizzes: activeQuizzes.cast<Map<String, dynamic>>(),
+            );
+          });
+        });
       }
+    } catch (e) {
+      debugPrint('Error bg-loading quizzes: $e');
+    }
+  }
 
-      _cleanupExpiredNotifications();
-      _activeTests = _getActiveTests();
-      _isLoading = false;
-    });
+  void _updateGroupInLists(int groupId, Group Function(Group) updater) {
+    _myGroups = _myGroups.map((g) => g.id == groupId ? updater(g) : g).toList();
+    _otherGroups = _otherGroups.map((g) => g.id == groupId ? updater(g) : g).toList();
+    if (_selectedGroup?.id == groupId) {
+      _selectedGroup = updater(_selectedGroup!);
+    }
+    _activeTests = _getActiveTests();
+  }
+
+  Color _parseGroupColor(dynamic colorData) {
+    Color groupColor = Colors.blue;
+    if (colorData != null) {
+      try {
+        String colorStr = colorData.toString();
+        if (colorStr.startsWith('#')) colorStr = colorStr.substring(1);
+        if (colorStr.length == 6) {
+          groupColor = Color(int.parse('FF$colorStr', radix: 16));
+        }
+      } catch (e) {
+        debugPrint('Color parse error: $e');
+      }
+    }
+    return groupColor;
   }
 
   void _cleanupExpiredNotifications() {

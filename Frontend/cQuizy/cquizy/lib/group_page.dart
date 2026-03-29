@@ -753,12 +753,25 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                   elevation: 0,
                 ),
-                child: Text(
-                  isAdmin ? 'Admin felület megnyitása' : 'Teszt kitöltése',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Builder(
+                  builder: (context) {
+                    if (isAdmin) return const Text('Admin felület megnyitása', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
+                    
+                    final quizId = quiz['id'];
+                    final projectName = quiz['project_name'];
+                    final result = _userResults.firstWhere(
+                      (r) => r['quiz_id'] == quizId || r['quiz_project'] == projectName,
+                      orElse: () => <String, dynamic>{},
+                    );
+                    if (result.isNotEmpty) {
+                      final grade = result['grade_value']?.toString();
+                      return Text(
+                        grade != null ? 'Befejezve (Jegy: $grade)' : 'Teszt leadva',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      );
+                    }
+                    return const Text('Teszt kitöltése', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
+                  },
                 ),
               ),
             ),
@@ -861,35 +874,37 @@ class _GroupPageState extends State<GroupPage> {
           ),
           const SizedBox(height: 24),
         ],
-        if (past.isNotEmpty) ...[
+        if (past.isNotEmpty || _userResults.isNotEmpty) ...[
           const HeaderWithDivider(title: 'Múltbeli tesztek'),
           const SizedBox(height: 16),
-          ...past.map(
-            (q) => _buildTestCard(
-              quiz: q,
-              title: q['project_name'] ?? 'Névtelen',
-              detail: 'Lezárult: ${_formatDate(q['date_end'])}',
-              isGrade: false,
+          // 1. First, show all items from _userResults (Submissions)
+          ..._userResults.map((res) {
+            final grade = res['grade_value']?.toString();
+            final dateStr = res['date_submitted'] ?? res['submitted_at'];
+            final formattedDate = _formatDate(dateStr);
+
+            return _buildTestCard(
+              quiz: res, // Could be the submission result itself
+              title: res['quiz_project'] ?? res['quiz_title'] ?? 'Névtelen',
+              detail: grade ?? 'Leadva',
+              subDetail: formattedDate.isNotEmpty ? 'Lezárult: $formattedDate' : null,
+              isGrade: grade != null,
               onTap: () {
-                if (widget.group.rank == 'ADMIN') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AdminPage(
-                        quiz: q,
-                        groupId: widget.group.id!,
-                        groupName: widget.group.title,
-                        grade2Limit: widget.group.grade2Limit,
-                        grade3Limit: widget.group.grade3Limit,
-                        grade4Limit: widget.group.grade4Limit,
-                        grade5Limit: widget.group.grade5Limit,
-                      ),
-                    ),
-                  );
-                }
+                // For students, this could lead to their detailed result view
               },
-            ),
-          ),
+            );
+          }),
+          // 2. Then, show any past quizzes that are NOT in _userResults (Missed)
+          ...past.where((q) {
+            final quizId = q['id'];
+            final projectName = q['project_name'];
+            return !_userResults.any((r) => r['quiz_id'] == quizId || r['quiz_project'] == projectName);
+          }).map((q) => _buildTestCard(
+            quiz: q,
+            title: q['project_name'] ?? 'Névtelen',
+            detail: 'Lezárult: ${_formatDate(q['date_end'])}',
+            isGrade: false,
+          )),
           const SizedBox(height: 24),
         ],
       ],

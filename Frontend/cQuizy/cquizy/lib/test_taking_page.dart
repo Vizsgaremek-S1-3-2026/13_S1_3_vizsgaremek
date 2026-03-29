@@ -2319,18 +2319,22 @@ class _TestTakingPageState extends State<TestTakingPage>
       ApiService().submitQuiz(token, submissionData).catchError((_) => null);
     }
 
-    // 2. Trigger Guaranteed Navigation Immediately
-    // Tests have shown that delays or dialogs here can cause the UI to freeze
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (c) => HomePage(
-          onLogout: () {
-            Provider.of<UserProvider>(c, listen: false).logout();
-          },
+    // 2. Trigger Guaranteed Navigation
+    // We use a microtask to ensure the Navigator.pop() from the dialog has time to start
+    // while ensuring the UI doesn't hang.
+    Future.microtask(() {
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (c) => HomePage(
+            onLogout: () {
+              Provider.of<UserProvider>(c, listen: false).logout();
+            },
+          ),
         ),
-      ),
-      (route) => false,
-    );
+        (route) => false,
+      );
+    });
   }
 
   Widget _buildQuestionCard(Map<String, dynamic> question, int index) {
