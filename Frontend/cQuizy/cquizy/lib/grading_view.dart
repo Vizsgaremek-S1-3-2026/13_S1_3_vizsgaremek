@@ -86,7 +86,6 @@ class _GradingViewState extends State<GradingView> {
   String get _cheatingStatus =>
       _currentStudent['cheatingStatus']?.toString() ?? 'none';
 
-
   Map<String, dynamic> get _statistics {
     int totalQuestions = _submissions.length;
     int correctCount = 0;
@@ -157,7 +156,6 @@ class _GradingViewState extends State<GradingView> {
       });
     }
   }
-
 
   Future<void> _fetchSubmissionDetails() async {
     setState(() => _isLoading = true);
@@ -662,8 +660,6 @@ class _GradingViewState extends State<GradingView> {
       ],
     );
   }
-
-
 
   Widget _buildQuestionCard(GradingSubmission submission) {
     final theme = Theme.of(context);

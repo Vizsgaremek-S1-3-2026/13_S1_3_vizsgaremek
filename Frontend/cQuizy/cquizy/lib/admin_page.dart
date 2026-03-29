@@ -158,25 +158,33 @@ class _AdminPageState extends State<AdminPage> {
         String? inferredUserId = sub['user_id']?.toString();
 
         if (inferredUserId == null || inferredUserId == 'null') {
-          final studentName = sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? sub['nickname'] ?? '';
+          final studentName =
+              sub['student_name'] ??
+              sub['user_name'] ??
+              sub['name'] ??
+              sub['nickname'] ??
+              '';
           for (var s in targetStudents) {
             final u = s['user'];
             if (u == null) continue;
-            final fullName = '${u['last_name'] ?? ''} ${u['first_name'] ?? ''}'.trim();
+            final fullName = '${u['last_name'] ?? ''} ${u['first_name'] ?? ''}'
+                .trim();
             final username = u['username'] ?? '';
             final nickname = u['nickname'] ?? '';
 
             if (studentName.isNotEmpty &&
                 (studentName == fullName ||
-                 studentName == username ||
-                 studentName == nickname)) {
+                    studentName == username ||
+                    studentName == nickname)) {
               inferredUserId = u['id']?.toString();
               break;
             }
           }
         }
 
-        final userId = inferredUserId ?? 'unmatched_${sub['id']}'; // Prevent "null" key collapsing
+        final userId =
+            inferredUserId ??
+            'unmatched_${sub['id']}'; // Prevent "null" key collapsing
         // Normalize status
         String rawStatus = (sub['status'] ?? '').toString().toLowerCase();
         String status = 'writing';
@@ -200,7 +208,8 @@ class _AdminPageState extends State<AdminPage> {
               'Ismeretlen tanuló',
           'status': status,
           'wasBlocked': false, // Default
-          'score': num.tryParse(sub['percentage']?.toString() ?? '') ??
+          'score':
+              num.tryParse(sub['percentage']?.toString() ?? '') ??
               num.tryParse(sub['score']?.toString() ?? '') ??
               0,
           'maxScore': 100, // Should come from quiz details
@@ -339,33 +348,40 @@ class _AdminPageState extends State<AdminPage> {
       // The submissions API returns student_name but NOT user_id,
       // so submissions end up as 'unmatched_*' entries while real students have numeric IDs.
       // We need to match them by name and copy over submission_id + score + grade.
-      final unmatchedKeys = studentMap.keys.where((k) => k.startsWith('unmatched_')).toList();
+      final unmatchedKeys = studentMap.keys
+          .where((k) => k.startsWith('unmatched_'))
+          .toList();
       for (var unmatchedKey in unmatchedKeys) {
         final unmatchedEntry = studentMap[unmatchedKey]!;
-        final unmatchedName = (unmatchedEntry['name'] as String?)?.toLowerCase() ?? '';
-        
+        final unmatchedName =
+            (unmatchedEntry['name'] as String?)?.toLowerCase() ?? '';
+
         // Find a real student entry (numeric key) with the same name
         for (var realKey in studentMap.keys.toList()) {
           if (realKey.startsWith('unmatched_')) continue;
           final realEntry = studentMap[realKey]!;
           final realName = (realEntry['name'] as String?)?.toLowerCase() ?? '';
-          
+
           if (unmatchedName.isNotEmpty && unmatchedName == realName) {
             // Merge the submission data into the real student entry
             realEntry['submission_id'] = unmatchedEntry['submission_id'];
-            if (unmatchedEntry['score'] != null && unmatchedEntry['score'] != 0) {
+            if (unmatchedEntry['score'] != null &&
+                unmatchedEntry['score'] != 0) {
               realEntry['score'] = unmatchedEntry['score'];
             }
             if (unmatchedEntry['grade'] != null) {
               realEntry['grade'] = unmatchedEntry['grade'];
             }
             // Mark as submitted if they have a submission
-            if (realEntry['status'] == 'idle' || realEntry['status'] == 'writing') {
+            if (realEntry['status'] == 'idle' ||
+                realEntry['status'] == 'writing') {
               realEntry['status'] = 'submitted';
             }
             // Remove the unmatched entry
             studentMap.remove(unmatchedKey);
-            debugPrint('Reconciled submission_id ${unmatchedEntry['submission_id']} -> student "$realName" (key: $realKey)');
+            debugPrint(
+              'Reconciled submission_id ${unmatchedEntry['submission_id']} -> student "$realName" (key: $realKey)',
+            );
             break;
           }
         }
@@ -374,15 +390,21 @@ class _AdminPageState extends State<AdminPage> {
       // Also: for submitted students who STILL don't have submission_id,
       // try to find their submission from the original submissions list by name
       for (var entry in studentMap.values) {
-        if (entry['submission_id'] == null && 
+        if (entry['submission_id'] == null &&
             (entry['status'] == 'submitted' || entry['status'] == 'closed')) {
           final entryName = (entry['name'] as String?)?.toLowerCase() ?? '';
           for (var sub in submissions) {
-            final subName = (sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? '').toString().toLowerCase();
+            final subName =
+                (sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? '')
+                    .toString()
+                    .toLowerCase();
             if (entryName.isNotEmpty && entryName == subName) {
-              entry['score'] = num.tryParse(sub['percentage']?.toString() ?? '') ?? 0;
+              entry['score'] =
+                  num.tryParse(sub['percentage']?.toString() ?? '') ?? 0;
               entry['grade'] = (sub['grade_value'] ?? sub['grade'])?.toString();
-              debugPrint('Direct match: submission_id ${sub['id']} -> student "$entryName"');
+              debugPrint(
+                'Direct match: submission_id ${sub['id']} -> student "$entryName"',
+              );
               break;
             }
           }
@@ -390,7 +412,9 @@ class _AdminPageState extends State<AdminPage> {
       }
       debugPrint('=== Final studentMap keys: ${studentMap.keys.toList()}');
       for (var e in studentMap.entries) {
-        debugPrint('  ${e.key}: name=${e.value['name']}, status=${e.value['status']}, submission_id=${e.value['submission_id']}');
+        debugPrint(
+          '  ${e.key}: name=${e.value['name']}, status=${e.value['status']}, submission_id=${e.value['submission_id']}',
+        );
       }
 
       // Fetch Quiz Stats
@@ -482,7 +506,9 @@ class _AdminPageState extends State<AdminPage> {
     final quizId = widget.quiz['id'];
     if (quizId == null) return;
 
-    final blockedMembers = _members.where((m) => m['status'] == 'blocked').toList();
+    final blockedMembers = _members
+        .where((m) => m['status'] == 'blocked')
+        .toList();
     if (blockedMembers.isEmpty) return;
 
     final api = ApiService();
@@ -574,7 +600,9 @@ class _AdminPageState extends State<AdminPage> {
       final body = result['body'] ?? '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Nem sikerült lezárni a diák tesztjét. ($statusCode: $body)'),
+          content: Text(
+            'Nem sikerült lezárni a diák tesztjét. ($statusCode: $body)',
+          ),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 5),
         ),
@@ -594,9 +622,9 @@ class _AdminPageState extends State<AdminPage> {
     final quizId = widget.quiz['id'];
     if (quizId == null) return;
 
-    final activeMembers = _members.where((m) =>
-      m['status'] == 'writing' || m['status'] == 'blocked'
-    ).toList();
+    final activeMembers = _members
+        .where((m) => m['status'] == 'writing' || m['status'] == 'blocked')
+        .toList();
     if (activeMembers.isEmpty) return;
 
     final api = ApiService();
@@ -641,10 +669,12 @@ class _AdminPageState extends State<AdminPage> {
     debugPrint('=== _fetchProjectDetails ===');
     debugPrint('Quiz keys: ${widget.quiz.keys.toList()}');
     debugPrint('Quiz data: ${widget.quiz}');
-    
+
     final projectId = widget.quiz['project_id'] ?? widget.quiz['blueprint_id'];
     if (projectId == null) {
-      debugPrint('No project_id found in quiz object, skipping project details fetch.');
+      debugPrint(
+        'No project_id found in quiz object, skipping project details fetch.',
+      );
       setState(() => _isLoadingDetails = false);
       return;
     }
@@ -1228,8 +1258,11 @@ class _AdminPageState extends State<AdminPage> {
             itemBuilder: (context, index) {
               final member = _members[index];
               // API returns: percentage (number), grade_value (string)
-              final grade = member['grade']?.toString(); // mapped from grade_value
-              final percentage = (member['score'] as num?)?.toInt() ?? 0; // mapped from percentage
+              final grade = member['grade']
+                  ?.toString(); // mapped from grade_value
+              final percentage =
+                  (member['score'] as num?)?.toInt() ??
+                  0; // mapped from percentage
               final profilePic = member['profilePicture'] as String?;
 
               return Card(
@@ -1259,12 +1292,8 @@ class _AdminPageState extends State<AdminPage> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
-                    grade != null
-                        ? '$percentage%'
-                        : 'Nincs osztályozva',
-                    style: TextStyle(
-                      color: grade != null ? null : Colors.grey,
-                    ),
+                    grade != null ? '$percentage%' : 'Nincs osztályozva',
+                    style: TextStyle(color: grade != null ? null : Colors.grey),
                   ),
                   trailing: grade != null
                       ? Text(
@@ -1637,22 +1666,61 @@ class _AdminPageState extends State<AdminPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        '${(member['score'] as num?)?.toInt() ?? 0}%',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      if (member['grade'] != null)
+                      if (member['grade'] != null && member['grade'] == "1")
                         Text(
-                          'Jegy: ${member['grade']}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF44336),
+                          ),
                         ),
+
+                        if (member['grade'] != null && member['grade'] == "2")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFF5722),
+                          ),
+                        ),
+
+                        if (member['grade'] != null && member['grade'] == "3")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFFC107),
+                          ),
+                        ),
+
+                        if (member['grade'] != null && member['grade'] == "4")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16, 
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF8BC34A),
+                          ),
+                        ),
+
+                        if (member['grade'] != null && member['grade'] == "5")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF4CAF50),
+                          ),
+                        ),
+
+
+
                     ],
                   ),
                   const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right,
-                    color: Colors.grey.shade400,
-                  ),
+                  Icon(Icons.chevron_right, color: Colors.grey.shade400),
                 ],
               )
             : null,
