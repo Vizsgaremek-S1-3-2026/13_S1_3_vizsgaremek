@@ -305,8 +305,8 @@ class _TestTakingPageState extends State<TestTakingPage>
       WakelockPlus.enable();
     }
 
-    // 6. Mute volume to prevent audio cheating (not supported on web)
-    if (!kIsWeb) {
+    // 6. Mute volume to prevent audio cheating (only on mobile)
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       _muteVolume();
     }
 
@@ -567,7 +567,9 @@ class _TestTakingPageState extends State<TestTakingPage>
     final isClosed = statusData['is_closed'] == true;
     final isLocked = statusData['is_locked'] == true;
     final activeEventId = statusData['active_event_id'];
-    debugPrint('[lock-status] is_locked=$isLocked is_closed=$isClosed active_event_id=$activeEventId');
+    debugPrint(
+      '[lock-status] is_locked=$isLocked is_closed=$isClosed active_event_id=$activeEventId',
+    );
 
     if (isClosed) {
       // Tanár lezárta → automatikus beadás
@@ -590,8 +592,6 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-
-
   void _setupWebProtections() {
     WebProtections.setup(() {
       _triggerAntiCheat();
@@ -600,34 +600,37 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   @override
   void dispose() {
-    _countdownTimer?.cancel();
-    _statusPollingTimer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
+    try { _countdownTimer?.cancel(); } catch (_) {}
+    try { _statusPollingTimer?.cancel(); } catch (_) {}
+    try { WidgetsBinding.instance.removeObserver(this); } catch (_) {}
 
     // Cleanup drawings
-    for (var notifier in _imageDrawings.values) {
-      notifier.dispose();
-    }
-    _imageDrawings.clear();
-
-    // Only cleanup protections if they were enabled
-    if (widget.anticheat) {
-      if (!kIsWeb &&
-          (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-        windowManager.removeListener(this);
+    try {
+      for (var notifier in _imageDrawings.values) {
+        notifier.dispose();
       }
-      _disableScreenshotProtection();
-      if (!kIsWeb) {
-        WakelockPlus.disable();
-      }
-      _restoreVolume();
-      _cleanupDesktopKeyboardProtection();
-      _cleanupDesktopScreenProtection();
-    }
+      _imageDrawings.clear();
+    } catch (_) {}
 
-    if (widget.kiosk) {
-      _exitFullscreen();
-    }
+    // Cleanup protections silently
+    try {
+      if (widget.anticheat) {
+        if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          windowManager.removeListener(this);
+        }
+        _disableScreenshotProtection();
+        if (!kIsWeb) WakelockPlus.disable();
+        if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+          try { _restoreVolume(); } catch (_) {}
+        }
+        try { _cleanupDesktopKeyboardProtection(); } catch (_) {}
+        try { _cleanupDesktopScreenProtection(); } catch (_) {}
+      }
+    } catch (_) {}
+
+    try {
+      if (widget.kiosk) _exitFullscreen();
+    } catch (_) {}
 
     super.dispose();
   }
@@ -792,7 +795,7 @@ class _TestTakingPageState extends State<TestTakingPage>
     final needsExtraLeftPadding = horizontalMargin < 60;
 
     return PopScope(
-      canPop: false, // Prevent back button
+      canPop: _isSubmitting, // Prevent back button unless submitting
       child: Focus(
         autofocus: true,
         onKeyEvent: (node, event) {
@@ -950,9 +953,13 @@ class _TestTakingPageState extends State<TestTakingPage>
                                         // Final Submit button
                                         ElevatedButton.icon(
                                           onPressed: () => _submitTest(),
-                                          icon: const Icon(Icons.check_circle_outline,
-                                              size: 18),
-                                          label: const Text('Beadás és kilépés'),
+                                          icon: const Icon(
+                                            Icons.check_circle_outline,
+                                            size: 18,
+                                          ),
+                                          label: const Text(
+                                            'Beadás és kilépés',
+                                          ),
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: theme.primaryColor,
                                             foregroundColor: Colors.white,
@@ -2201,7 +2208,6 @@ class _TestTakingPageState extends State<TestTakingPage>
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(ctx);
                   _submitTest();
                 },
                 style: ElevatedButton.styleFrom(
@@ -2227,108 +2233,129 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   // Robust submit (fire-and-forget navigation)
   void _submitTest({bool forced = false}) {
-    if (!mounted) return;
+    if (!mounted || _isSubmitting) return;
 
-    _isSubmitting = true;
-    _countdownTimer?.cancel();
-    _statusPollingTimer?.cancel();
+    setState(() {
+      _isSubmitting = true;
+    });
+    try { _countdownTimer?.cancel(); } catch (_) {}
+    try { _statusPollingTimer?.cancel(); } catch (_) {}
 
-    _reportEvent('TEST_FINISH', 'A diák leadta/befejezte a tesztet.');
-
-    // 1. Format Answers
-    final token = context.read<UserProvider>().token;
-    if (token != null) {
-      final formattedAnswers = <Map<String, dynamic>>[];
-      _userAnswers.forEach((key, value) {
-        final int blockId = key;
-        final Map<String, dynamic> q = _questions.firstWhere(
-          (element) => element['id'] == blockId,
-          orElse: () => {},
-        );
-        if (q.isEmpty || value == null) return;
-
-        final String type = q['type'] ?? '';
-
-        if (type == 'single') {
-          formattedAnswers.add({
-            'block_id': blockId,
-            'option_id': value as int,
-            'answer_text': '',
-          });
-        } else if (type == 'multiple') {
-          final selectedIds = (value as List).cast<int>();
-          for (var id in selectedIds) {
-            formattedAnswers.add({
-              'block_id': blockId,
-              'option_id': id,
-              'answer_text': '',
-            });
-          }
-        } else if (type == 'text' || type == 'range') {
-          formattedAnswers.add({
-            'block_id': blockId,
-            'answer_text': value.toString(),
-            'option_id': null,
-          });
-        } else if (type == 'matching') {
-          final userMap = (value as Map);
-          userMap.forEach((leftId, userString) {
-            formattedAnswers.add({
-              'block_id': blockId,
-              'option_id': leftId,
-              'answer_text': userString,
-            });
-          });
-        } else if (type == 'ordering') {
-          final orderedItems = (value as List);
-          for (var item in orderedItems) {
-            formattedAnswers.add({
-              'block_id': blockId,
-              'option_id': item['id'],
-              'answer_text': '',
-            });
-          }
-        } else if (type == 'gap_fill') {
-          final gapsMap = (value as Map);
-          final sortedKeys = gapsMap.keys.toList()
-            ..sort(
-              (a, b) =>
-                  int.parse(a.toString()).compareTo(int.parse(b.toString())),
-            );
-          for (var key in sortedKeys) {
-            formattedAnswers.add({
-              'block_id': blockId,
-              'answer_text': gapsMap[key],
-              'option_id': null,
-            });
-          }
-        } else if (type == 'sentence_ordering') {
-          final words = (value as List).cast<String>();
-          for (var word in words) {
-            formattedAnswers.add({'block_id': blockId, 'answer_text': word});
-          }
+    // 1. Safe cleanup - ignoring all errors, sequentializing to prevent Win32 hang
+    try {
+      if (widget.anticheat) {
+        try { _disableScreenshotProtection(); } catch (_) {}
+        if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+          try { _restoreVolume(); } catch (_) {}
         }
-      });
+        try { _cleanupDesktopKeyboardProtection(); } catch (_) {}
+        try { _cleanupDesktopScreenProtection(); } catch (_) {}
+      }
+      if (widget.kiosk) {
+        _exitFullscreen().catchError((_) => null);
+      }
+      if (!kIsWeb) {
+        WakelockPlus.disable().catchError((_) => null);
+      }
+    } catch (_) {}
 
-      final submissionData = {
-        'quiz_id': widget.quiz['id'],
-        'answers': formattedAnswers,
-      };
+    try {
+      _reportEvent('TEST_FINISH', 'A diák leadta/befejezte a tesztet.');
 
-      // Fire-and-forget API call
-      ApiService().submitQuiz(token, submissionData).catchError((_) => null);
-    }
+      // 2. Format Answers
+      final token = context.read<UserProvider>().token;
+      if (token != null) {
+        final formattedAnswers = <Map<String, dynamic>>[];
+        _userAnswers.forEach((key, value) {
+          try {
+            final int blockId = key;
+            final Map<String, dynamic> q = _questions.firstWhere(
+              (element) => element['id'] == blockId,
+              orElse: () => {},
+            );
+            if (q.isEmpty || value == null) return;
 
-    // 2. Trigger Guaranteed Navigation
-    // We use a microtask to ensure the Navigator.pop() from the dialog has time to start
-    // while ensuring the UI doesn't hang.
-    Future.microtask(() {
+            final String type = q['type'] ?? '';
+
+            if (type == 'single') {
+              formattedAnswers.add({
+                'block_id': blockId,
+                'option_id': value as int,
+                'answer_text': '',
+              });
+            } else if (type == 'multiple') {
+              final selectedIds = (value as List).cast<int>();
+              for (var id in selectedIds) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'option_id': id,
+                  'answer_text': '',
+                });
+              }
+            } else if (type == 'text' || type == 'range') {
+              formattedAnswers.add({
+                'block_id': blockId,
+                'answer_text': value.toString(),
+                'option_id': null,
+              });
+            } else if (type == 'matching') {
+              final userMap = (value as Map);
+              userMap.forEach((leftId, userString) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'option_id': leftId,
+                  'answer_text': userString,
+                });
+              });
+            } else if (type == 'ordering') {
+              final orderedItems = (value as List);
+              for (var item in orderedItems) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'option_id': item['id'],
+                  'answer_text': '',
+                });
+              }
+            } else if (type == 'gap_fill') {
+              final gapsMap = (value as Map);
+              final sortedKeys = gapsMap.keys.toList()
+                ..sort(
+                  (a, b) => int.parse(a.toString()).compareTo(int.parse(b.toString())),
+                );
+              for (var key in sortedKeys) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'answer_text': gapsMap[key],
+                  'option_id': null,
+                });
+              }
+            } else if (type == 'sentence_ordering') {
+              final words = (value as List).cast<String>();
+              for (var word in words) {
+                formattedAnswers.add({'block_id': blockId, 'answer_text': word});
+              }
+            }
+          } catch (_) {}
+        });
+
+        final submissionData = {
+          'quiz_id': widget.quiz['id'],
+          'answers': formattedAnswers,
+        };
+
+        // Fire-and-forget API call
+        ApiService().submitQuiz(token, submissionData).catchError((_) => null);
+      }
+    } catch (_) {}
+
+    // 3. FORCE Guaranteed Navigation to HomePage
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (c) => HomePage(
             onLogout: () {
-              Provider.of<UserProvider>(c, listen: false).logout();
+              try { Provider.of<UserProvider>(c, listen: false).logout(); } catch (_) {}
             },
           ),
         ),

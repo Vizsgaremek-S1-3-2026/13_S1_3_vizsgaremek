@@ -103,6 +103,10 @@ class _HomePageState extends State<HomePage>
     _otherGroups = [];
     _activeTests = [];
     _fetchGroups();
+    // Safety: if still loading after 10s (e.g. network hang), clear spinner
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && _isLoading) setState(() => _isLoading = false);
+    });
   }
 
   Future<void> _fetchGroups() async {
@@ -125,27 +129,36 @@ class _HomePageState extends State<HomePage>
 
     // 1. Initial State Update - Show groups immediately with basic info
     if (mounted) {
-      setState(() {
-        final initialGroups = groupsData.map((json) {
-          final isAdmin = json['rank'] == 'ADMIN';
-          return Group(
-            id: json['id'],
-            title: json['name'] ?? 'Névtelen csoport',
-            ownerName: json['owner_name'] ?? (isAdmin ? 'Én' : 'Admin'),
-            subtitle: json['owner_name'] ?? (isAdmin ? '' : 'Admin'),
-            color: _parseGroupColor(json['color']),
-            inviteCode: json['invite_code'],
-            inviteCodeFormatted: json['invite_code_formatted'],
-            rank: json['rank'] ?? 'MEMBER',
-            hasNotification: false,
-            anticheat: json['anticheat'] ?? false,
-            kiosk: json['kiosk'] ?? false,
-          );
-        }).toList();
+      try {
+        setState(() {
+          final initialGroups = groupsData.map((json) {
+            try {
+              final isAdmin = json['rank'] == 'ADMIN';
+              return Group(
+                id: json['id'],
+                title: json['name'] ?? 'Névtelen csoport',
+                ownerName: json['owner_name'] ?? (isAdmin ? 'Én' : 'Admin'),
+                subtitle: json['owner_name'] ?? (isAdmin ? '' : 'Admin'),
+                color: _parseGroupColor(json['color']),
+                inviteCode: json['invite_code'],
+                inviteCodeFormatted: json['invite_code_formatted'],
+                rank: json['rank'] ?? 'MEMBER',
+                hasNotification: false,
+                anticheat: json['anticheat'] ?? false,
+                kiosk: json['kiosk'] ?? false,
+              );
+            } catch (_) {
+              return null;
+            }
+          }).whereType<Group>().toList();
 
-        _updateGroupsState(initialGroups);
-        _isLoading = false;
-      });
+          _updateGroupsState(initialGroups);
+          _isLoading = false;
+        });
+      } catch (e) {
+        debugPrint('Error updating groups state: $e');
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
 
     // 2. Background Task: Load Admin Names & Active Quizzes
@@ -158,7 +171,7 @@ class _HomePageState extends State<HomePage>
       if (json['rank'] != 'ADMIN') {
         _loadGroupAdminBackground(token, groupId, apiService);
       }
-      
+
       // b) Load Active Quizzes (Notifications)
       _loadGroupQuizzesBackground(token, groupId, apiService);
     }
@@ -179,7 +192,11 @@ class _HomePageState extends State<HomePage>
     _cleanupExpiredNotifications();
   }
 
-  Future<void> _loadGroupAdminBackground(String token, int groupId, ApiService api) async {
+  Future<void> _loadGroupAdminBackground(
+    String token,
+    int groupId,
+    ApiService api,
+  ) async {
     try {
       final members = await api.getGroupMembers(token, groupId);
       final adminMember = members.firstWhere(
@@ -191,19 +208,22 @@ class _HomePageState extends State<HomePage>
         final user = adminMember['user'] as Map<String, dynamic>;
         final firstName = user['first_name']?.toString() ?? '';
         final lastName = user['last_name']?.toString() ?? '';
-        
+
         String displayName = 'Admin';
         if (firstName.isNotEmpty || lastName.isNotEmpty) {
           displayName = '$lastName $firstName'.trim();
         }
 
         setState(() {
-          _updateGroupInLists(groupId, (g) => g.copyWith(
-            ownerName: displayName,
-            instructorFirstName: firstName,
-            instructorLastName: lastName,
-            subtitle: displayName,
-          ));
+          _updateGroupInLists(
+            groupId,
+            (g) => g.copyWith(
+              ownerName: displayName,
+              instructorFirstName: firstName,
+              instructorLastName: lastName,
+              subtitle: displayName,
+            ),
+          );
         });
       }
     } catch (e) {
@@ -211,7 +231,11 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  Future<void> _loadGroupQuizzesBackground(String token, int groupId, ApiService api) async {
+  Future<void> _loadGroupQuizzesBackground(
+    String token,
+    int groupId,
+    ApiService api,
+  ) async {
     try {
       final quizzes = await api.getGroupQuizzes(token, groupId);
       final now = DateTime.now();
@@ -219,19 +243,25 @@ class _HomePageState extends State<HomePage>
       final activeQuizzes = quizzes.where((q) {
         final end = DateTime.tryParse(q['date_end'] ?? '');
         final start = DateTime.tryParse(q['date_start'] ?? '');
-        return end != null && start != null && 
-               end.toLocal().isAfter(now) && 
-               start.toLocal().isBefore(now);
+        return end != null &&
+            start != null &&
+            end.toLocal().isAfter(now) &&
+            start.toLocal().isBefore(now);
       }).toList();
 
       if (mounted) {
         setState(() {
           _updateGroupInLists(groupId, (g) {
-            if (activeQuizzes.isEmpty) return g.copyWith(hasNotification: false, allActiveQuizzes: []);
-            
-            activeQuizzes.sort((a, b) => DateTime.parse(a['date_end']).compareTo(DateTime.parse(b['date_end'])));
+            if (activeQuizzes.isEmpty)
+              return g.copyWith(hasNotification: false, allActiveQuizzes: []);
+
+            activeQuizzes.sort(
+              (a, b) => DateTime.parse(
+                a['date_end'],
+              ).compareTo(DateTime.parse(b['date_end'])),
+            );
             final primary = activeQuizzes.first;
-            
+
             return g.copyWith(
               hasNotification: true,
               testExpiryDate: DateTime.parse(primary['date_end']).toLocal(),
@@ -249,7 +279,9 @@ class _HomePageState extends State<HomePage>
 
   void _updateGroupInLists(int groupId, Group Function(Group) updater) {
     _myGroups = _myGroups.map((g) => g.id == groupId ? updater(g) : g).toList();
-    _otherGroups = _otherGroups.map((g) => g.id == groupId ? updater(g) : g).toList();
+    _otherGroups = _otherGroups
+        .map((g) => g.id == groupId ? updater(g) : g)
+        .toList();
     if (_selectedGroup?.id == groupId) {
       _selectedGroup = updater(_selectedGroup!);
     }
@@ -387,7 +419,6 @@ class _HomePageState extends State<HomePage>
       }
     }
   }
-
 
   Future<void> _importProject() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -795,7 +826,8 @@ class _HomePageState extends State<HomePage>
                                                     ).animate(a1),
                                                     child: FadeTransition(
                                                       opacity: a1,
-                                                      child: const CreateProjectDialog(),
+                                                      child:
+                                                          const CreateProjectDialog(),
                                                     ),
                                                   );
                                                 },

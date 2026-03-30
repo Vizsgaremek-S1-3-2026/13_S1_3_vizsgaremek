@@ -736,7 +736,7 @@ class _GroupPageState extends State<GroupPage> {
                     if (result.isNotEmpty) {
                       final grade = result['grade_value']?.toString();
                       return Text(
-                        grade != null ? 'Befejezve (Jegy: $grade)' : 'Teszt leadva',
+                        grade != null ? 'Teszt indítása' : 'Teszt indítása',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       );
                     }
