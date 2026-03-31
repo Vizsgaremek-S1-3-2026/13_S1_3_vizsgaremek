@@ -813,7 +813,12 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         cleanAnswer['text'] = answer['text']?.toString() ?? '';
 
         // is_correct: required bool
-        cleanAnswer['is_correct'] = answer['is_correct'] == true;
+        // For 'text' type questions, all answers MUST be correct for the backend
+        if (blockType == 'text') {
+          cleanAnswer['is_correct'] = true;
+        } else {
+          cleanAnswer['is_correct'] = answer['is_correct'] == true;
+        }
 
         // points: required int
         cleanAnswer['points'] = (answer['points'] as num?)?.toInt() ?? 0;
@@ -1329,8 +1334,16 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         'image_url': '',
         'link_url': '',
         'answers': [
-          {'text': '', 'is_correct': false, 'points': 0},
-          {'text': '', 'is_correct': false, 'points': 0},
+          {
+            'text': '',
+            'is_correct': type == 'text',
+            'points': type == 'text' ? 1 : 0
+          },
+          {
+            'text': '',
+            'is_correct': type == 'text',
+            'points': type == 'text' ? 1 : 0
+          },
         ],
       });
     });
@@ -2851,10 +2864,11 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
       final answers = List<Map<String, dynamic>>.from(
         _blocks[blockIndex]['answers'] ?? [],
       );
+      final blockType = _blocks[blockIndex]['type'] ?? 'single';
       answers.add({
         'text': '',
-        'is_correct': false,
-        'points': _defaultIncorrectPoints,
+        'is_correct': blockType == 'text',
+        'points': blockType == 'text' ? 1 : _defaultIncorrectPoints,
       });
       _blocks[blockIndex]['answers'] = answers;
     });
@@ -4039,7 +4053,18 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                         }).toList(),
                         onChanged: (value) {
                           if (value != null) {
-                            setState(() => _blocks[index]['type'] = value);
+                            setState(() {
+                              _blocks[index]['type'] = value;
+                              // If changing to 'text', ensure all answers are marked as correct
+                              if (value == 'text') {
+                                if (_blocks[index]['answers'] != null) {
+                                  for (var a in _blocks[index]['answers']) {
+                                    a['is_correct'] = true;
+                                    if (a['points'] == 0) a['points'] = 1;
+                                  }
+                                }
+                              }
+                            });
                           }
                         },
                       ),
