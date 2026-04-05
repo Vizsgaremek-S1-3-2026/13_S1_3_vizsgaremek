@@ -20,6 +20,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'student_tests_page.dart';
 import 'statistics_page.dart';
+import 'widgets/group_card.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -63,6 +64,7 @@ class _HomePageState extends State<HomePage>
   bool _showStudentTests = false;
   bool _showStatistics = false;
   int _projectsRefreshKey = 0;
+  List<Map<String, dynamic>>? _preFetchedProjects;
 
   Timer? _refreshTimer;
 
@@ -131,26 +133,45 @@ class _HomePageState extends State<HomePage>
     if (mounted) {
       try {
         setState(() {
-          final initialGroups = groupsData.map((json) {
-            try {
-              final isAdmin = json['rank'] == 'ADMIN';
-              return Group(
-                id: json['id'],
-                title: json['name'] ?? 'Névtelen csoport',
-                ownerName: json['owner_name'] ?? (isAdmin ? 'Én' : 'Admin'),
-                subtitle: json['owner_name'] ?? (isAdmin ? '' : 'Admin'),
-                color: _parseGroupColor(json['color']),
-                inviteCode: json['invite_code'],
-                inviteCodeFormatted: json['invite_code_formatted'],
-                rank: json['rank'] ?? 'MEMBER',
-                hasNotification: false,
-                anticheat: json['anticheat'] ?? false,
-                kiosk: json['kiosk'] ?? false,
-              );
-            } catch (_) {
-              return null;
-            }
-          }).whereType<Group>().toList();
+          final allExisting = [..._myGroups, ..._otherGroups];
+          final initialGroups = groupsData
+              .map((json) {
+                try {
+                  final isAdmin = json['rank'] == 'ADMIN';
+                  final groupId = json['id'];
+
+                  // Carry over existing state to prevent flickering
+                  Group? existing;
+                  try {
+                    existing = allExisting.firstWhere((g) => g.id == groupId);
+                  } catch (_) {}
+
+                  return Group(
+                    id: groupId,
+                    title: json['name'] ?? 'Névtelen csoport',
+                    ownerName: json['owner_name'] ?? (isAdmin ? 'Én' : 'Admin'),
+                    subtitle: json['owner_name'] ?? (isAdmin ? '' : 'Admin'),
+                    color: _parseGroupColor(json['color']),
+                    inviteCode: json['invite_code'],
+                    inviteCodeFormatted: json['invite_code_formatted'],
+                    rank: json['rank'] ?? 'MEMBER',
+                    hasNotification: existing?.hasNotification ?? false,
+                    testExpiryDate: existing?.testExpiryDate,
+                    activeTestTitle: existing?.activeTestTitle,
+                    activeTestDescription: existing?.activeTestDescription,
+                    instructorFirstName: existing?.instructorFirstName ?? '',
+                    instructorLastName: existing?.instructorLastName ?? '',
+                    activeQuizData: existing?.activeQuizData,
+                    allActiveQuizzes: existing?.allActiveQuizzes ?? [],
+                    anticheat: json['anticheat'] ?? false,
+                    kiosk: json['kiosk'] ?? false,
+                  );
+                } catch (_) {
+                  return null;
+                }
+              })
+              .whereType<Group>()
+              .toList();
 
           _updateGroupsState(initialGroups);
           _isLoading = false;
@@ -249,17 +270,41 @@ class _HomePageState extends State<HomePage>
             start.toLocal().isBefore(now);
       }).toList();
 
+      activeQuizzes.sort(
+        (a, b) => DateTime.parse(
+          a['date_end'] ?? '',
+        ).compareTo(DateTime.parse(b['date_end'] ?? '')),
+      );
+
       if (mounted) {
+        // Optimization: check if data changed before calling setState
+        Group? current;
+        try {
+          current = [..._myGroups, ..._otherGroups].firstWhere((g) => g.id == groupId);
+        } catch (_) {}
+
+        if (current != null) {
+          final bool sameNotif = current.hasNotification == activeQuizzes.isNotEmpty;
+          
+          bool sameQuizzes = current.allActiveQuizzes.length == activeQuizzes.length;
+          if (sameQuizzes) {
+            for (int i = 0; i < activeQuizzes.length; i++) {
+              if (current.allActiveQuizzes[i]['id'] != activeQuizzes[i]['id'] ||
+                  current.allActiveQuizzes[i]['date_end'] != activeQuizzes[i]['date_end']) {
+                sameQuizzes = false;
+                break;
+              }
+            }
+          }
+
+          if (sameNotif && sameQuizzes) return; // No change, skip update
+        }
+
         setState(() {
           _updateGroupInLists(groupId, (g) {
             if (activeQuizzes.isEmpty)
               return g.copyWith(hasNotification: false, allActiveQuizzes: []);
 
-            activeQuizzes.sort(
-              (a, b) => DateTime.parse(
-                a['date_end'],
-              ).compareTo(DateTime.parse(b['date_end'])),
-            );
             final primary = activeQuizzes.first;
 
             return g.copyWith(
@@ -353,15 +398,38 @@ class _HomePageState extends State<HomePage>
   void _selectGroup(Group group) {
     setState(() {
       _selectedGroup = group;
+      _preFetchedProjects = null; // Reset for new selection
     });
     _fetchGroups();
+    if (group.rank == 'ADMIN') {
+      _preFetchProjects();
+    }
   }
 
   void _unselectGroup() {
     setState(() {
       _selectedGroup = null;
       _isMemberPanelOpen = false;
+      _preFetchedProjects = null;
     });
+  }
+
+  Future<void> _preFetchProjects() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final api = ApiService();
+    try {
+      final projects = await api.getProjects(token);
+      if (mounted) {
+        setState(() {
+          _preFetchedProjects = projects;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error pre-fetching projects: $e');
+    }
   }
 
   Future<void> _showJoinGroupDialog() async {
@@ -963,8 +1031,10 @@ class _HomePageState extends State<HomePage>
                   if (_selectedGroup != null && _selectedGroup!.id != null) {
                     final result = await showDialog<bool>(
                       context: context,
-                      builder: (context) =>
-                          CreateQuizDialog(groupId: _selectedGroup!.id!),
+                      builder: (context) => CreateQuizDialog(
+                        groupId: _selectedGroup!.id!,
+                        initialProjects: _preFetchedProjects,
+                      ),
                     );
                     if (result == true) {
                       _fetchGroups();
@@ -1757,7 +1827,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                                   );
                                   quizData['group_obj'] = widget.item.group;
 
-                                  Navigator.pushAndRemoveUntil(
+                                  Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => TestTakingPage(
@@ -1767,7 +1837,6 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                                         kiosk: widget.item.group.kiosk,
                                       ),
                                     ),
-                                    (route) => false,
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -2148,94 +2217,6 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
         color: _currentPage == index ? Colors.white : Colors.white54,
         borderRadius: BorderRadius.circular(5),
       ),
-    );
-  }
-}
-
-class GroupCard extends StatelessWidget {
-  final Group group;
-  final Function(Group) onGroupSelected;
-
-  const GroupCard({
-    super.key,
-    required this.group,
-    required this.onGroupSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isMobile = constraints.maxWidth < 600;
-
-        return Stack(
-          alignment: Alignment.centerLeft,
-          children: [
-            Container(
-              constraints: const BoxConstraints(),
-              margin: EdgeInsets.only(
-                bottom: isMobile ? 12.0 : 16.0,
-                left: isMobile ? 12.0 : 16.0,
-                right: isMobile ? 12.0 : 16.0,
-              ),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: group.getGradient(context),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => onGroupSelected(group),
-                  borderRadius: BorderRadius.circular(5),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isMobile ? 20.0 : 40.0,
-                      vertical: isMobile ? 14.0 : 20.0,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          group.title,
-                          style: TextStyle(
-                            color: group.getTextColor(context),
-                            fontSize: isMobile ? 18 : 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: isMobile ? 2 : 4),
-                        Text(
-                          group.subtitle,
-                          style: TextStyle(
-                            color: group.getTextColor(context).withOpacity(0.8),
-                            fontSize: isMobile ? 12 : 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (group.hasNotification)
-              Positioned(
-                right: isMobile ? 20 : 25,
-                bottom: isMobile ? 20 : 25,
-                child: Container(
-                  width: 18,
-                  height: 18,
-                  decoration: const BoxDecoration(
-                    color: Color(0xfffdd835),
-                    shape: BoxShape.rectangle,
-                    borderRadius: BorderRadius.all(Radius.circular(5)),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
     );
   }
 }

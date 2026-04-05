@@ -5,6 +5,7 @@ import 'group_page.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'api_service.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+import 'widgets/group_card.dart';
 
 class CreateGroupPage extends StatefulWidget {
   final bool tutorialMode;
@@ -894,71 +895,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Group Card Preview matching home_page.dart GroupCard
-          Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              Container(
-                constraints: const BoxConstraints(),
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  gradient: previewGroup.getGradient(context),
-                  borderRadius: BorderRadius.circular(5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _selectedColor.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {}, // Preview only
-                    borderRadius: BorderRadius.circular(5),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40.0,
-                        vertical: 20.0,
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            previewGroup.title,
-                            style: TextStyle(
-                              color: previewGroup.getTextColor(context),
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            previewGroup.subtitle,
-                            style: TextStyle(
-                              color: previewGroup
-                                  .getTextColor(context)
-                                  .withOpacity(0.8),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Kiosk mode indicator if enabled (keeping consistent with home page style if it had one,
-              // but home page uses a yellow square for notifications.
-              // Here we might want to show kiosk mode differently or just in the badges below.
-              // The user asked for "exactly the same", so maybe I should NOT add the kiosk icon ON the card
-              // if the home page card doesn't have it (it only has notification dot).
-              // However, the previous preview had it. I'll stick to the badges below for extra info
-              // and keep the card clean like home page.)
-            ],
+          GroupCard(
+            group: previewGroup,
+            onGroupSelected: (_) {}, // Preview only
           ),
           const SizedBox(height: 16),
           // Info badges

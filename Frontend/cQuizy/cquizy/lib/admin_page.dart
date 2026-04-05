@@ -1676,7 +1676,7 @@ class _AdminPageState extends State<AdminPage> {
                           ),
                         ),
 
-                        if (member['grade'] != null && member['grade'] == "2")
+                      if (member['grade'] != null && member['grade'] == "2")
                         Text(
                           'Jegy:  ${member['grade']}',
                           style: const TextStyle(
@@ -1686,7 +1686,7 @@ class _AdminPageState extends State<AdminPage> {
                           ),
                         ),
 
-                        if (member['grade'] != null && member['grade'] == "3")
+                      if (member['grade'] != null && member['grade'] == "3")
                         Text(
                           'Jegy:  ${member['grade']}',
                           style: const TextStyle(
@@ -1696,17 +1696,17 @@ class _AdminPageState extends State<AdminPage> {
                           ),
                         ),
 
-                        if (member['grade'] != null && member['grade'] == "4")
+                      if (member['grade'] != null && member['grade'] == "4")
                         Text(
                           'Jegy:  ${member['grade']}',
                           style: const TextStyle(
-                            fontSize: 16, 
+                            fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF8BC34A),
                           ),
                         ),
 
-                        if (member['grade'] != null && member['grade'] == "5")
+                      if (member['grade'] != null && member['grade'] == "5")
                         Text(
                           'Jegy:  ${member['grade']}',
                           style: const TextStyle(
@@ -1714,9 +1714,6 @@ class _AdminPageState extends State<AdminPage> {
                             color: Color(0xFF4CAF50),
                           ),
                         ),
-
-
-
                     ],
                   ),
                   const SizedBox(width: 8),

@@ -451,7 +451,7 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                                       ? (group['kiosk'] ?? false)
                                       : false;
 
-                                  Navigator.pushAndRemoveUntil(
+                                  Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => TestTakingPage(
@@ -461,7 +461,6 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                                         kiosk: kiosk,
                                       ),
                                     ),
-                                    (route) => false,
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(

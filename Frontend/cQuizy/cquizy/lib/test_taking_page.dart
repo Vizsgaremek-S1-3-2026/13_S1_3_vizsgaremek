@@ -1,27 +1,26 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'api_service.dart';
 import 'package:kiosk_mode/kiosk_mode.dart';
 import 'utils/web_protections.dart';
-import 'home_page.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:screen_protector/screen_protector.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:volume_controller/volume_controller.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_windows/webview_windows.dart';
 import 'package:scribble/scribble.dart';
 
 import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
+import 'auth_gate.dart';
 
 class TestTakingPage extends StatefulWidget {
   final Map<String, dynamic> quiz;
@@ -72,11 +71,9 @@ class _TestTakingPageState extends State<TestTakingPage>
   static const double _notepadMaxSize = 600.0;
 
   // --- Notepad Tabs ---
-  int _notepadTabIndex = 0; // 0 = Jegyzet, 1 = Web, 2 = Kép
-  String? _selectedWebUrl;
+  int _notepadTabIndex = 0; // 0 = Jegyzet, 1 = Kép
   String? _selectedImageUrl;
-  WebViewController? _webViewController;
-  WebviewController? _windowsWebViewController;
+  String? _selectedImageText;
 
   // --- Drawing State ---
   bool _isDrawingMode = false;
@@ -85,72 +82,22 @@ class _TestTakingPageState extends State<TestTakingPage>
   // --- Question Marking State ---
   final Set<int> _markedQuestions = {};
 
-  // Extract allowed URLs from questions
-  List<String> get _allowedUrls {
-    final urls = <String>[];
-    for (final q in _questions) {
-      final url = q['link_url']?.toString();
-      if (url != null && url.isNotEmpty) {
-        if (!urls.contains(url)) {
-          urls.add(url);
-        }
+  /// Minimizes all other windows on Windows using PowerShell
+  Future<void> _minimizeOtherWindows() async {
+    if (!kIsWeb && Platform.isWindows) {
+      try {
+        // This PowerShell command minimizes all windows except our app
+        // (New-Object -ComObject shell.application).minimizeall()
+        await Process.run('powershell', [
+          '-Command',
+          '(New-Object -ComObject shell.application).minimizeall()',
+        ]);
+        // After minimizing all, we need to ensure our app is restored/focused
+        await windowManager.show();
+        await windowManager.focus();
+      } catch (e) {
+        debugPrint('Hiba az ablakok letételekor: $e');
       }
-    }
-    // Fallback/Default for testing
-    if (urls.isEmpty) {
-      urls.add('https://szbi-pg.hu');
-    }
-    return urls;
-  }
-
-  void _initializeWebView() {
-    if (kIsWeb) {
-      // WebView nem támogatott weben ebben a formában (külön iframe implementáció kéne)
-      return;
-    }
-
-    if (Platform.isWindows) {
-      final urls = _allowedUrls;
-      if (urls.isNotEmpty) {
-        _selectedWebUrl = urls.first;
-      }
-      _initializeWindowsWebView();
-      return;
-    }
-
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (int progress) {},
-          onPageStarted: (String url) {},
-          onPageFinished: (String url) {},
-          onWebResourceError: (WebResourceError error) {},
-          onNavigationRequest: (NavigationRequest request) {
-            return NavigationDecision.navigate;
-          },
-        ),
-      );
-
-    final urls = _allowedUrls;
-    if (urls.isNotEmpty) {
-      _selectedWebUrl = urls.first;
-      _webViewController!.loadRequest(Uri.parse(_selectedWebUrl!));
-    }
-  }
-
-  Future<void> _initializeWindowsWebView() async {
-    _windowsWebViewController = WebviewController();
-    try {
-      await _windowsWebViewController!.initialize();
-      await _windowsWebViewController!.setBackgroundColor(Colors.transparent);
-      if (_selectedWebUrl != null) {
-        await _windowsWebViewController!.loadUrl(_selectedWebUrl!);
-      }
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('Windows WebView hiba: $e');
     }
   }
 
@@ -162,25 +109,37 @@ class _TestTakingPageState extends State<TestTakingPage>
     // Initial API Load
     _loadQuiz();
 
-    // Only enable focus monitoring on desktop platforms
-    if (widget.anticheat &&
-        !kIsWeb &&
-        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      windowManager.addListener(this);
-    }
-    if (widget.kiosk) {
-      _enterFullscreen();
-    }
-    _initializeWebView();
-    if (kIsWeb && widget.anticheat) {
-      _setupWebProtections();
-    }
-    if (widget.anticheat) {
-      _setupAdvancedProtections();
-    } else {
-      _initPersistentTimer();
-    }
-    _initStatusPolling();
+    // Use post-frame callback for stable window initialization on desktop
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      // Only enable focus monitoring on desktop platforms
+      if (widget.anticheat &&
+          !kIsWeb &&
+          (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+        windowManager.addListener(this);
+      }
+
+      if (widget.kiosk) {
+        // On Windows, first minimize other apps if in Kiosk/Zárolt mode
+        if (Platform.isWindows) {
+          await _minimizeOtherWindows();
+          // Give OS a moment to settle
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        _enterFullscreen();
+      }
+
+      if (kIsWeb && widget.anticheat) {
+        _setupWebProtections();
+      }
+      if (widget.anticheat) {
+        _setupAdvancedProtections();
+      } else {
+        _initPersistentTimer();
+      }
+      _initStatusPolling();
+    });
   }
 
   Future<void> _loadQuiz() async {
@@ -236,7 +195,7 @@ class _TestTakingPageState extends State<TestTakingPage>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Hiba a teszt betöltésekor: Üres válasz'),
+              content: Text('Hiba a teszt betöltésekor: Ăśres válasz'),
             ),
           );
           Navigator.pop(context);
@@ -572,11 +531,11 @@ class _TestTakingPageState extends State<TestTakingPage>
     );
 
     if (isClosed) {
-      // Tanár lezárta → automatikus beadás
+      // Tanár lezárta â†’ automatikus beadás
       _statusPollingTimer?.cancel();
       _submitTest(forced: true);
     } else if (isLocked) {
-      // Tanár letiltotta → felület zárolása (ha még nincs zárolva)
+      // Tanár letiltotta â†’ felület zárolása (ha még nincs zárolva)
       if (!_isBlacklisted) {
         setState(() {
           _isBlacklisted = true;
@@ -584,7 +543,7 @@ class _TestTakingPageState extends State<TestTakingPage>
         _reportEvent('STUDENT_CHEAT', 'Tanár általi letiltás.');
       }
     } else if (!isLocked && _isBlacklisted) {
-      // Tanár feloldotta → folytatás
+      // Tanár feloldotta â†’ folytatás
       setState(() {
         _isBlacklisted = false;
       });
@@ -600,9 +559,15 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   @override
   void dispose() {
-    try { _countdownTimer?.cancel(); } catch (_) {}
-    try { _statusPollingTimer?.cancel(); } catch (_) {}
-    try { WidgetsBinding.instance.removeObserver(this); } catch (_) {}
+    try {
+      _countdownTimer?.cancel();
+    } catch (_) {}
+    try {
+      _statusPollingTimer?.cancel();
+    } catch (_) {}
+    try {
+      WidgetsBinding.instance.removeObserver(this);
+    } catch (_) {}
 
     // Cleanup drawings
     try {
@@ -615,16 +580,23 @@ class _TestTakingPageState extends State<TestTakingPage>
     // Cleanup protections silently
     try {
       if (widget.anticheat) {
-        if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+        if (!kIsWeb &&
+            (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
           windowManager.removeListener(this);
         }
         _disableScreenshotProtection();
         if (!kIsWeb) WakelockPlus.disable();
         if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-          try { _restoreVolume(); } catch (_) {}
+          try {
+            _restoreVolume();
+          } catch (_) {}
         }
-        try { _cleanupDesktopKeyboardProtection(); } catch (_) {}
-        try { _cleanupDesktopScreenProtection(); } catch (_) {}
+        try {
+          _cleanupDesktopKeyboardProtection();
+        } catch (_) {}
+        try {
+          _cleanupDesktopScreenProtection();
+        } catch (_) {}
       }
     } catch (_) {}
 
@@ -646,14 +618,20 @@ class _TestTakingPageState extends State<TestTakingPage>
 
       // Desktop enhancement - Windows
       if (!kIsWeb && Platform.isWindows) {
+        // Sequence windowManager calls to avoid race conditions on Windows 10
         await windowManager.setPreventClose(true);
         await windowManager.setAlwaysOnTop(true);
 
-        // Hide title bar for true fullscreen
-        await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-
+        // Try to show/focus again after potential minimizeall() call
         await windowManager.show();
         await windowManager.focus();
+
+        // setFullScreen also hides the title bar automatically in most cases
+        // Only set TitleBarStyle if absolutely needed, as it can be glitchy
+        try {
+          await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+        } catch (_) {}
+
         await windowManager.setFullScreen(true);
       }
 
@@ -735,7 +713,6 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Only trigger anti-cheat if protection is enabled (Védett or Zárolt mode)
     if (widget.anticheat) {
       if (state == AppLifecycleState.inactive ||
           state == AppLifecycleState.paused) {
@@ -792,7 +769,11 @@ class _TestTakingPageState extends State<TestTakingPage>
     // If margins are large enough (desktop), use standard padding.
     // If margins are small (mobile), force left padding.
     final horizontalMargin = (screenWidth - _maxContentWidth) / 2;
-    final needsExtraLeftPadding = horizontalMargin < 60;
+    // On mobile/narrow screens, use symmetric padding for better centering
+    // For wider screens, use asymmetric padding for the hanging question number
+    final isNarrow = screenWidth < 1000;
+    final needsExtraLeftPadding = !isNarrow && horizontalMargin < 60;
+    final horizontalPadding = isNarrow ? 20.0 : 0.0;
 
     return PopScope(
       canPop: _isSubmitting, // Prevent back button unless submitting
@@ -860,8 +841,10 @@ class _TestTakingPageState extends State<TestTakingPage>
                                 padding: EdgeInsets.only(
                                   top: 140, // Space for fixed header
                                   bottom: 100, // Space for bottom padding
-                                  left: needsExtraLeftPadding ? 60 : 20,
-                                  right: 20,
+                                  left: isNarrow
+                                      ? horizontalPadding
+                                      : (needsExtraLeftPadding ? 60 : 20),
+                                  right: isNarrow ? horizontalPadding : 20,
                                 ),
                                 itemCount: _questions.length,
                                 itemBuilder: (context, index) {
@@ -884,8 +867,10 @@ class _TestTakingPageState extends State<TestTakingPage>
                               alignment: Alignment.topCenter,
                               child: Padding(
                                 padding: EdgeInsets.only(
-                                  left: needsExtraLeftPadding ? 60 : 20,
-                                  right: 20,
+                                  left: isNarrow
+                                      ? horizontalPadding
+                                      : (needsExtraLeftPadding ? 60 : 20),
+                                  right: isNarrow ? horizontalPadding : 20,
                                 ),
                                 child: ConstrainedBox(
                                   constraints: const BoxConstraints(
@@ -1196,8 +1181,6 @@ class _TestTakingPageState extends State<TestTakingPage>
                 Row(
                   children: [
                     _buildNotepadTab(0, 'Jegyzet', Icons.notes, theme),
-                    if (!widget.anticheat)
-                      _buildNotepadTab(1, 'Web', Icons.language, theme),
                     if (_selectedImageUrl != null)
                       _buildNotepadTab(2, 'Kép', Icons.image, theme),
                   ],
@@ -1216,8 +1199,6 @@ class _TestTakingPageState extends State<TestTakingPage>
     switch (_notepadTabIndex) {
       case 0:
         return _buildNotepadTextField(theme);
-      case 1:
-        return _buildWebView(theme);
       case 2:
         return _buildImageViewer(theme);
       default:
@@ -1309,6 +1290,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                 onPressed: () {
                   setState(() {
                     _selectedImageUrl = null;
+                    _selectedImageText = null;
                     _isDrawingMode = false;
                     if (_notepadTabIndex == 2) _notepadTabIndex = 0;
                   });
@@ -1399,6 +1381,46 @@ class _TestTakingPageState extends State<TestTakingPage>
                   ),
                 ),
         ),
+        if (_selectedImageText != null && _selectedImageText!.isNotEmpty)
+          ClipRRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.cardColor.withOpacity(0.7),
+                  border: Border(
+                    top: BorderSide(color: theme.dividerColor.withOpacity(0.2)),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(0.4),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SelectableText(
+                        _selectedImageText!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.1,
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         // Drawing toolbar (only visible in drawing mode)
         if (_isDrawingMode)
           Container(
@@ -1503,89 +1525,6 @@ class _TestTakingPageState extends State<TestTakingPage>
     );
   }
 
-  Widget _buildWebView(ThemeData theme) {
-    final urls = _allowedUrls;
-    return Column(
-      children: [
-        if (urls.length > 1)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.dividerColor.withOpacity(0.05),
-              border: Border(
-                bottom: BorderSide(color: theme.dividerColor.withOpacity(0.5)),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.link, size: 14),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButton<String>(
-                    value: _selectedWebUrl,
-                    isExpanded: true,
-                    underline: const SizedBox(),
-                    items: urls.map((url) {
-                      return DropdownMenuItem<String>(
-                        value: url,
-                        child: Text(
-                          url,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() {
-                          _selectedWebUrl = val;
-                          if (!kIsWeb && Platform.isWindows) {
-                            _windowsWebViewController?.loadUrl(val);
-                          } else {
-                            _webViewController?.loadRequest(Uri.parse(val));
-                          }
-                        });
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        Expanded(
-          child: kIsWeb
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.web_asset_off,
-                        size: 48,
-                        color: theme.hintColor,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'A webes tartalmak megjelenítése a böngészős verzióban nem támogatott.\nKérjük, használd az alkalmazást ezen feladatok megtekintéséhez.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: theme.hintColor),
-                      ),
-                    ],
-                  ),
-                )
-              : (_webViewController != null || _windowsWebViewController != null
-                    ? (Platform.isWindows
-                          ? (_windowsWebViewController?.value.isInitialized ??
-                                    false
-                                ? Webview(_windowsWebViewController!)
-                                : const Center(
-                                    child: CircularProgressIndicator(),
-                                  ))
-                          : WebViewWidget(controller: _webViewController!))
-                    : const Center(child: CircularProgressIndicator())),
-        ),
-      ],
-    );
-  }
 
   Widget _buildExpandedNotepadHorizontal(ThemeData theme) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1633,8 +1572,6 @@ class _TestTakingPageState extends State<TestTakingPage>
           child: Row(
             children: [
               _buildNotepadTab(0, 'Jegyzet', Icons.notes, theme),
-              if (!widget.anticheat)
-                _buildNotepadTab(1, 'Web', Icons.language, theme),
               if (_selectedImageUrl != null)
                 _buildNotepadTab(2, 'Kép', Icons.image, theme),
             ],
@@ -2238,18 +2175,30 @@ class _TestTakingPageState extends State<TestTakingPage>
     setState(() {
       _isSubmitting = true;
     });
-    try { _countdownTimer?.cancel(); } catch (_) {}
-    try { _statusPollingTimer?.cancel(); } catch (_) {}
+    try {
+      _countdownTimer?.cancel();
+    } catch (_) {}
+    try {
+      _statusPollingTimer?.cancel();
+    } catch (_) {}
 
     // 1. Safe cleanup - ignoring all errors, sequentializing to prevent Win32 hang
     try {
       if (widget.anticheat) {
-        try { _disableScreenshotProtection(); } catch (_) {}
+        try {
+          _disableScreenshotProtection();
+        } catch (_) {}
         if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-          try { _restoreVolume(); } catch (_) {}
+          try {
+            _restoreVolume();
+          } catch (_) {}
         }
-        try { _cleanupDesktopKeyboardProtection(); } catch (_) {}
-        try { _cleanupDesktopScreenProtection(); } catch (_) {}
+        try {
+          _cleanupDesktopKeyboardProtection();
+        } catch (_) {}
+        try {
+          _cleanupDesktopScreenProtection();
+        } catch (_) {}
       }
       if (widget.kiosk) {
         _exitFullscreen().catchError((_) => null);
@@ -2320,7 +2269,9 @@ class _TestTakingPageState extends State<TestTakingPage>
               final gapsMap = (value as Map);
               final sortedKeys = gapsMap.keys.toList()
                 ..sort(
-                  (a, b) => int.parse(a.toString()).compareTo(int.parse(b.toString())),
+                  (a, b) => int.parse(
+                    a.toString(),
+                  ).compareTo(int.parse(b.toString())),
                 );
               for (var key in sortedKeys) {
                 formattedAnswers.add({
@@ -2332,7 +2283,10 @@ class _TestTakingPageState extends State<TestTakingPage>
             } else if (type == 'sentence_ordering') {
               final words = (value as List).cast<String>();
               for (var word in words) {
-                formattedAnswers.add({'block_id': blockId, 'answer_text': word});
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'answer_text': word,
+                });
               }
             }
           } catch (_) {}
@@ -2348,17 +2302,11 @@ class _TestTakingPageState extends State<TestTakingPage>
       }
     } catch (_) {}
 
-    // 3. FORCE Guaranteed Navigation to HomePage
+    // 3. FORCE Guaranteed Navigation to AuthGate
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (c) => HomePage(
-            onLogout: () {
-              try { Provider.of<UserProvider>(c, listen: false).logout(); } catch (_) {}
-            },
-          ),
-        ),
+        MaterialPageRoute(builder: (c) => const AuthGate()),
         (route) => false,
       );
     });
@@ -2366,6 +2314,7 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   Widget _buildQuestionCard(Map<String, dynamic> question, int index) {
     final theme = Theme.of(context);
+    final screenWidth = MediaQuery.of(context).size.width;
     final primaryColor = theme.primaryColor;
     final type = question['type'];
 
@@ -2484,26 +2433,156 @@ class _TestTakingPageState extends State<TestTakingPage>
                     ),
                     if (question['image_url'] != null) ...[
                       const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _selectedImageUrl = question['image_url'];
-                            _notepadTabIndex = 2; // Kép tab
-                            _isNotepadExpanded = true;
-                          });
-                        },
-                        icon: const Icon(Icons.image_outlined, size: 18),
-                        label: const Text('Kép megjelenítése'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: primaryColor,
-                          side: BorderSide(
-                            color: primaryColor.withOpacity(0.5),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                      if (screenWidth < 1000)
+                        // MOBILE: Show inline with InteractiveViewer
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Csatolt kép:',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                             GestureDetector(
+                               onTap: () => _showFullScreenImage(
+                                 question['image_url'],
+                                 question['subtext']?.toString(),
+                               ),
+                               child: ClipRRect(
+                                 borderRadius: BorderRadius.circular(12),
+                                 child: Container(
+                                   constraints: const BoxConstraints(
+                                     maxHeight: 300,
+                                   ),
+                                   decoration: BoxDecoration(
+                                     color: theme.dividerColor.withOpacity(0.05),
+                                     border: Border.all(
+                                       color: theme.dividerColor.withOpacity(0.2),
+                                     ),
+                                   ),
+                                   child: Stack(
+                                     children: [
+                                       InteractiveViewer(
+                                         minScale: 1.0,
+                                         maxScale: 4.0,
+                                         child: Image.network(
+                                           question['image_url'],
+                                           fit: BoxFit.contain,
+                                           loadingBuilder: (context, child, loadingProgress) {
+                                             if (loadingProgress == null) return child;
+                                             return SizedBox(
+                                               height: 100,
+                                               width: double.infinity,
+                                               child: Center(
+                                                 child: CircularProgressIndicator(
+                                                   value:
+                                                       loadingProgress
+                                                               .expectedTotalBytes !=
+                                                           null
+                                                       ? loadingProgress
+                                                                 .cumulativeBytesLoaded /
+                                                             loadingProgress
+                                                                 .expectedTotalBytes!
+                                                       : null,
+                                                 ),
+                                               ),
+                                             );
+                                           },
+                                           errorBuilder:
+                                               (context, error, stackTrace) =>
+                                                   const Center(
+                                                     child: Icon(Icons.error_outline),
+                                                   ),
+                                         ),
+                                       ),
+                                       Positioned(
+                                         right: 8,
+                                         bottom: 8,
+                                         child: Container(
+                                           padding: const EdgeInsets.all(4),
+                                           decoration: BoxDecoration(
+                                             color: Colors.black.withOpacity(0.5),
+                                             shape: BoxShape.circle,
+                                           ),
+                                           child: const Icon(
+                                             Icons.fullscreen,
+                                             color: Colors.white,
+                                             size: 20,
+                                           ),
+                                         ),
+                                       ),
+                                     ],
+                                   ),
+                                 ),
+                               ),
+                             ),
+                            const Text(
+                              'Kattints a nagyításhoz, használd a kétujjas nagyítást.',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            if (question['subtext'] != null && question['subtext'].toString().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: theme.dividerColor.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.info_outline, size: 14, color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5)),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          question['subtext'].toString(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        )
+                      else
+                        // DESKTOP/LARGE: Keep the original Notepad display button
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _selectedImageUrl = question['image_url'];
+                              _selectedImageText = question['subtext']?.toString();
+                              _notepadTabIndex = 2; // Kép tab
+                              _isNotepadExpanded = true;
+                            });
+                          },
+                          icon: const Icon(Icons.image_outlined, size: 18),
+                          label: const Text('Kép megjelenítése'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: primaryColor,
+                            side: BorderSide(
+                              color: primaryColor.withOpacity(0.5),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                     const SizedBox(height: 24),
 
@@ -2676,6 +2755,10 @@ class _TestTakingPageState extends State<TestTakingPage>
       decoration: InputDecoration(
         hintText: 'Írd ide a választ...',
         hintStyle: TextStyle(color: Theme.of(context).hintColor),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 20,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Theme.of(context).dividerColor),
@@ -2688,7 +2771,7 @@ class _TestTakingPageState extends State<TestTakingPage>
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
             color: Theme.of(context).primaryColor,
-            width: 2,
+            width: 2.5,
           ),
         ),
         filled: true,
@@ -2743,20 +2826,21 @@ class _TestTakingPageState extends State<TestTakingPage>
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
             color: Theme.of(context).primaryColor,
-            width: 2,
+            width: 2.5,
           ),
         ),
         filled: true,
         fillColor: Theme.of(context).cardColor,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
+          horizontal: 20,
+          vertical: 20,
         ),
       ),
     );
   }
 
   Widget _buildMatching(Map<String, dynamic> question) {
+    final screenWidth = MediaQuery.of(context).size.width;
     // Read from 'answers' (as backend sends answers, not pairs)
     final List pairs = (question['answers'] as List?) ?? [];
 
@@ -2777,16 +2861,19 @@ class _TestTakingPageState extends State<TestTakingPage>
           child: Row(
             children: [
               Expanded(
-                flex: 1,
+                flex: screenWidth < 600 ? 1 : 1,
                 child: Text(
                   leftTxt,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
                 ),
               ),
-              const Icon(Icons.arrow_right_alt, color: Colors.grey),
-              const SizedBox(width: 8),
+              const Icon(Icons.arrow_right_alt, color: Colors.grey, size: 24),
+              const SizedBox(width: 12),
               Expanded(
-                flex: 1,
+                flex: screenWidth < 600 ? 2 : 1,
                 child: TextField(
                   controller: TextEditingController(text: selectedRight)
                     ..selection = TextSelection.fromPosition(
@@ -2886,16 +2973,17 @@ class _TestTakingPageState extends State<TestTakingPage>
             key: ValueKey(currentOrder[i]['id']),
             index: i,
             child: Card(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              elevation: 2,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              elevation: 3,
+              shadowColor: Colors.black26,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               color: Theme.of(context).cardColor,
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8, // More padding for touch targets
+                  horizontal: 20,
+                  vertical: 12, // More padding for touch targets
                 ),
                 leading: Icon(
                   Icons.drag_indicator,
@@ -3023,7 +3111,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                                 height: 60,
                                 alignment: Alignment.center,
                                 child: Text(
-                                  'Üres',
+                                  'Ăśres',
                                   style: TextStyle(
                                     color: theme.hintColor,
                                     fontStyle: FontStyle.italic,
@@ -3237,9 +3325,22 @@ class _TestTakingPageState extends State<TestTakingPage>
           constraints: const BoxConstraints(minHeight: 60),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Theme.of(context).dividerColor),
+            border: Border.all(
+              color: constructed.isEmpty
+                  ? Theme.of(context).dividerColor
+                  : Theme.of(context).primaryColor.withOpacity(0.3),
+              width: 1.5,
+            ),
             borderRadius: BorderRadius.circular(12),
-            color: Theme.of(context).cardColor.withOpacity(0.5),
+            color: Theme.of(context).cardColor.withOpacity(0.8),
+            boxShadow: [
+              if (constructed.isNotEmpty)
+                BoxShadow(
+                  color: Theme.of(context).primaryColor.withOpacity(0.05),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+            ],
           ),
           child: constructed.isEmpty
               ? Center(
@@ -3252,8 +3353,8 @@ class _TestTakingPageState extends State<TestTakingPage>
                   ),
                 )
               : Wrap(
-                  spacing: 0,
-                  runSpacing: 8,
+                  spacing: 4,
+                  runSpacing: 10,
                   children: [
                     // Each word is draggable and is also a drop target for reordering
                     for (int i = 0; i < constructed.length; i++)
@@ -3357,12 +3458,18 @@ class _TestTakingPageState extends State<TestTakingPage>
         const SizedBox(height: 24),
         // Word Bank
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 12,
+          runSpacing: 12,
           children: available.map((word) {
             return ActionChip(
               label: Text(word),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              labelStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
               backgroundColor: Theme.of(context).cardColor,
+              elevation: 1,
               side: BorderSide(color: Theme.of(context).dividerColor),
               onPressed: () {
                 setState(() {
@@ -3410,7 +3517,7 @@ class _TestTakingPageState extends State<TestTakingPage>
 
       parts.add(
         SizedBox(
-          width: 120, // Fixed width for inline input
+          width: 140, // Increased width for better visibility
           child: TextField(
             controller: TextEditingController(text: currentAnswer)
               ..selection = TextSelection.fromPosition(
@@ -3474,5 +3581,110 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildWatermarkOverlay() {
     // Watermark disabled
     return const SizedBox.shrink();
+  }
+
+  void _showFullScreenImage(String imageUrl, [String? optionalText]) {
+    showGeneralDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      barrierDismissible: true,
+      barrierLabel: 'Bezárás',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, a1, a2) {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 10.0,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            value:
+                                loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Center(
+                            child: Icon(Icons.error_outline,
+                                color: Colors.white, size: 48),
+                          ),
+                    ),
+                  ),
+                ),
+              ),
+              if (optionalText != null && optionalText.isNotEmpty)
+                ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 20,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        border: const Border(
+                          top: BorderSide(color: Colors.white24),
+                        ),
+                      ),
+                      child: SafeArea(
+                        top: false,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: Color.fromARGB(255, 255, 0, 0),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: SelectableText(
+                                optionalText,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  height: 1.5,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 0.2,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
