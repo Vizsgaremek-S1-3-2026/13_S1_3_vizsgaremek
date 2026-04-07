@@ -198,6 +198,8 @@ class SubmittedAnswerDetailSchema(Schema):
     block_question: str
     student_answer: str
     points_awarded: int
+    max_points: int = 0
+    correct_answer: Optional[str] = None
 
     @staticmethod
     def resolve_block_question(obj):
@@ -215,6 +217,59 @@ class SubmittedAnswerDetailSchema(Schema):
     def resolve_block_order(obj):
         return obj.block.order
 
+    @staticmethod
+    def resolve_max_points(obj):
+        block = obj.block
+        block_answers_db = list(block.answers.all())
+
+        if block.type == 'multiple_choice':
+            return sum(a.points for a in block_answers_db if a.is_correct and a.points > 0)
+        elif block.type in ['single_choice', 'text_input', 'range']:
+            return max((a.points for a in block_answers_db), default=1) if block_answers_db else 1
+        else:
+            return sum(a.points for a in block_answers_db)
+
+    @staticmethod
+    def resolve_correct_answer(obj):
+        block = obj.block
+        block_answers_db = list(block.answers.all())
+        
+        if block.type in ['single_choice', 'multiple_choice']:
+            corrects = [a.text for a in block_answers_db if a.is_correct and a.text]
+            return ", ".join(corrects) if corrects else None
+
+        elif block.type == 'text_input':
+            corrects = [a.text for a in block_answers_db if a.is_correct and a.text]
+            return " OR ".join(corrects) if corrects else None
+
+        elif block.type == 'range':
+            if block_answers_db and block_answers_db[0].numeric_value is not None:
+                db_ans = block_answers_db[0]
+                val = db_ans.numeric_value
+                tol = db_ans.tolerance or 0.0
+                if tol > 0:
+                    return f"{val} (±{tol})"
+                return str(val)
+            return None
+
+        elif block.type == 'matching':
+            pairs = [f"{a.text}: {a.match_text}" for a in block_answers_db if a.text and a.match_text]
+            return ", ".join(pairs) if pairs else None
+
+        elif block.type == 'ordering':
+            sorted_db_answers = sorted(block_answers_db, key=lambda x: x.order)
+            return " → ".join([a.text for a in sorted_db_answers if a.text])
+
+        elif block.type == 'gap_fill':
+            sorted_db_gaps = sorted(block_answers_db, key=lambda x: x.gap_index or 0)
+            return ", ".join([a.text for a in sorted_db_gaps if a.text])
+
+        elif block.type == 'sentence_ordering':
+            sorted_db_words = sorted(block_answers_db, key=lambda x: x.order)
+            return " → ".join([a.text for a in sorted_db_words if a.text])
+
+        return None
+
 class SubmissionDetailSchema(Schema):
     id: int
     student_name: str
@@ -229,7 +284,7 @@ class SubmissionDetailSchema(Schema):
     
     @staticmethod
     def resolve_answers(obj):
-        return obj.answers.all().select_related('block').order_by('block__order')
+        return obj.answers.all().select_related('block').prefetch_related('block__answers').order_by('block__order')
 
     @staticmethod
     def resolve_grade_value(obj):
