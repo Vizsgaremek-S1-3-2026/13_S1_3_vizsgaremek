@@ -207,11 +207,11 @@ class _GradingViewState extends State<GradingView> {
 
       setState(() {
         _submissions = answers.map((a) {
-          // Directly use max_points from API response
+          // --- 1. Point Calculation (Prioritize API, Fallback to quizBlocks) ---
           int maxPoints = 0;
           final rawMax = a['max_points'];
-          if (rawMax != null) {
-            maxPoints = (rawMax as num).toInt();
+          if (rawMax is num && rawMax.toInt() > 0) {
+            maxPoints = rawMax.toInt();
           }
 
           int awardedPoints = 0;
@@ -220,7 +220,7 @@ class _GradingViewState extends State<GradingView> {
             awardedPoints = (rawAwarded as num).toInt();
           }
 
-          // If max_points not in API response, try finding in quizBlocks
+          // Fallback for max_points if 0 from API
           if (maxPoints == 0 && widget.quizBlocks != null) {
             final blockId = a['block_id'];
             try {
@@ -241,13 +241,14 @@ class _GradingViewState extends State<GradingView> {
             } catch (_) {}
           }
 
-          // Fallback: if still 0, use awarded points (at least shows something)
+          // Ultimate fallback (ensure no zero-division)
           if (maxPoints == 0) maxPoints = awardedPoints > 0 ? awardedPoints : 1;
 
-          // Build correct answer string from block data
-          String correctAnswer = '';
+          // --- 2. Correct Answer (Prioritize API, Fallback to quizBlocks) ---
+          String correctAnswer = a['correct_answer']?.toString() ?? '';
           List<String>? alternativeAnswers;
-          if (widget.quizBlocks != null) {
+
+          if (correctAnswer.isEmpty && widget.quizBlocks != null) {
             final blockId = a['block_id'];
             try {
               final block = widget.quizBlocks!.firstWhere(
@@ -270,13 +271,14 @@ class _GradingViewState extends State<GradingView> {
             } catch (_) {}
           }
 
-          // Format student_answer: API may return string, list, bool, or JSON-encoded string
+          // --- 3. Format Student Answer ---
           String userAnswer;
           final raw =
               a['student_answer'] ??
               a['answer_text'] ??
               a['answer'] ??
               a['submitted_answer'];
+
           if (raw == null) {
             userAnswer = '(Nem válaszolt)';
           } else if (raw is bool) {
@@ -284,7 +286,6 @@ class _GradingViewState extends State<GradingView> {
           } else if (raw is List) {
             userAnswer = raw.map((e) => e.toString()).join(', ');
           } else {
-            // Might be a JSON-encoded list string like '["answer"]'
             final str = raw.toString();
             if (str.isEmpty) {
               userAnswer = '(Nem válaszolt)';
@@ -606,6 +607,7 @@ class _GradingViewState extends State<GradingView> {
                                       itemBuilder: (context, index) {
                                         return _buildQuestionCard(
                                           _submissions[index],
+                                          index,
                                         );
                                       },
                                     ),
@@ -642,6 +644,7 @@ class _GradingViewState extends State<GradingView> {
                                   itemBuilder: (context, index) {
                                     return _buildQuestionCard(
                                       _submissions[index],
+                                      index,
                                     );
                                   },
                                 ),
@@ -661,7 +664,7 @@ class _GradingViewState extends State<GradingView> {
     );
   }
 
-  Widget _buildQuestionCard(GradingSubmission submission) {
+  Widget _buildQuestionCard(GradingSubmission submission, int index) {
     final theme = Theme.of(context);
     final isCorrect = submission.awardedPoints == submission.maxPoints;
     final isPartial =
@@ -705,7 +708,7 @@ class _GradingViewState extends State<GradingView> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            '#${submission.id}',
+                            '#${index + 1}',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -738,8 +741,8 @@ class _GradingViewState extends State<GradingView> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: theme.textTheme.bodyMedium?.color?.withOpacity(
-                          0.7,
+                        color: theme.textTheme.bodyMedium?.color?.withValues(
+                          alpha: 0.7,
                         ),
                       ),
                     ),
@@ -748,9 +751,13 @@ class _GradingViewState extends State<GradingView> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: theme.scaffoldBackgroundColor,
+                        color: theme.brightness == Brightness.light
+                            ? Colors.grey.withValues(alpha: 0.05)
+                            : Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: statusColor.withOpacity(0.3)),
+                        border: Border.all(
+                          color: statusColor.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: submission.userAnswer == '(Nem válaszolt)'
                           ? Text(
@@ -770,20 +777,44 @@ class _GradingViewState extends State<GradingView> {
                             ),
                     ),
                     if (submission.correctAnswer.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       Text(
                         'Helyes válasz:',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: statusColor,
+                          color: Colors.green,
                         ),
                       ),
                       const SizedBox(height: 4),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.green.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Text(
+                          submission.correctAnswer,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (submission.alternativeAnswers != null &&
+                        submission.alternativeAnswers!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
                       Text(
-                        submission.correctAnswer,
-                        style: const TextStyle(
-                          fontSize: 14,
+                        'További elfogadható válaszok: ${submission.alternativeAnswers!.join(", ")}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.hintColor,
                           fontStyle: FontStyle.italic,
                         ),
                       ),
@@ -818,9 +849,7 @@ class _GradingViewState extends State<GradingView> {
               ),
               onChanged: (value) {
                 final newValue = int.tryParse(value);
-                if (newValue != null &&
-                    newValue >= 0 &&
-                    newValue <= submission.maxPoints) {
+                if (newValue != null && newValue >= 0) {
                   setState(() {
                     submission.awardedPoints = newValue;
                     _hasUnsavedChanges = true;

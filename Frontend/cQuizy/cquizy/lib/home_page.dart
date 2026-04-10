@@ -5,6 +5,7 @@ import 'group_page.dart';
 import 'settings_page.dart';
 import 'test_taking_page.dart';
 import 'utils/web_protections.dart';
+import 'utils/version_manager.dart';
 
 import 'create_group_page.dart';
 import 'api_service.dart';
@@ -65,6 +66,7 @@ class _HomePageState extends State<HomePage>
   bool _showStatistics = false;
   int _projectsRefreshKey = 0;
   List<Map<String, dynamic>>? _preFetchedProjects;
+  bool _isUpdateAvailable = false;
 
   Timer? _refreshTimer;
 
@@ -72,6 +74,7 @@ class _HomePageState extends State<HomePage>
   void initState() {
     super.initState();
     _initializeGroups();
+    _checkVersion();
     // Refresh every 30 seconds to catch starting tests
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
@@ -111,6 +114,15 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  Future<void> _checkVersion() async {
+    final hasUpdate = await VersionManager.isUpdateAvailable();
+    if (hasUpdate && mounted) {
+      setState(() {
+        _isUpdateAvailable = true;
+      });
+    }
+  }
+
   Future<void> _fetchGroups() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
@@ -146,15 +158,7 @@ class _HomePageState extends State<HomePage>
                     existing = allExisting.firstWhere((g) => g.id == groupId);
                   } catch (_) {}
 
-                  return Group(
-                    id: groupId,
-                    title: json['name'] ?? 'Névtelen csoport',
-                    ownerName: json['owner_name'] ?? (isAdmin ? 'Én' : 'Admin'),
-                    subtitle: json['owner_name'] ?? (isAdmin ? '' : 'Admin'),
-                    color: _parseGroupColor(json['color']),
-                    inviteCode: json['invite_code'],
-                    inviteCodeFormatted: json['invite_code_formatted'],
-                    rank: json['rank'] ?? 'MEMBER',
+                  return Group.fromJson(json).copyWith(
                     hasNotification: existing?.hasNotification ?? false,
                     testExpiryDate: existing?.testExpiryDate,
                     activeTestTitle: existing?.activeTestTitle,
@@ -163,8 +167,6 @@ class _HomePageState extends State<HomePage>
                     instructorLastName: existing?.instructorLastName ?? '',
                     activeQuizData: existing?.activeQuizData,
                     allActiveQuizzes: existing?.allActiveQuizzes ?? [],
-                    anticheat: json['anticheat'] ?? false,
-                    kiosk: json['kiosk'] ?? false,
                   );
                 } catch (_) {
                   return null;
@@ -333,21 +335,6 @@ class _HomePageState extends State<HomePage>
     _activeTests = _getActiveTests();
   }
 
-  Color _parseGroupColor(dynamic colorData) {
-    Color groupColor = Colors.blue;
-    if (colorData != null) {
-      try {
-        String colorStr = colorData.toString();
-        if (colorStr.startsWith('#')) colorStr = colorStr.substring(1);
-        if (colorStr.length == 6) {
-          groupColor = Color(int.parse('FF$colorStr', radix: 16));
-        }
-      } catch (e) {
-        debugPrint('Color parse error: $e');
-      }
-    }
-    return groupColor;
-  }
 
   void _cleanupExpiredNotifications() {
     final now = DateTime.now();
@@ -738,7 +725,14 @@ class _HomePageState extends State<HomePage>
             : _showProjects
             ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
             : _showStudentTests
-            ? const StudentTestsPage()
+            ? StudentTestsPage(
+                onGroupSelected: (group) {
+                  setState(() {
+                    _showStudentTests = false;
+                  });
+                  _selectGroup(group);
+                },
+              )
             : _showStatistics
             ? const StatisticsPage()
             : _buildGroupList(),
@@ -1441,7 +1435,7 @@ class _HomePageState extends State<HomePage>
           Consumer<UserProvider>(
             builder: (context, userProvider, child) {
               final user = userProvider.user;
-              final pfpUrl = user?.pfpUrl;
+              final pfpUrl = user?.effectivePfpUrl;
 
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -1498,18 +1492,22 @@ class _HomePageState extends State<HomePage>
                             ),
                             child: CircleAvatar(
                               radius: 20,
-                              backgroundColor: theme.primaryColor,
-                              backgroundImage:
-                                  pfpUrl != null && pfpUrl.isNotEmpty
-                                  ? NetworkImage(pfpUrl)
-                                  : null,
-                              child: pfpUrl == null || pfpUrl.isEmpty
+                              backgroundColor: Colors.white,
+                              child: (pfpUrl == null || pfpUrl.isEmpty)
                                   ? const Icon(
                                       Icons.person,
                                       color: Colors.white,
                                       size: 20,
                                     )
-                                  : null,
+                                  : ClipOval(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4.0),
+                                        child: Image.network(
+                                          pfpUrl,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1553,7 +1551,34 @@ class _HomePageState extends State<HomePage>
               );
             },
           ),
-
+          if (_isUpdateAvailable) ...[
+            const SizedBox(height: 12),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.system_update_alt, color: Colors.red, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '! Új verzió érhető el',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
         ],
       ),

@@ -12,7 +12,12 @@ class QuizStudentResult extends StatefulWidget {
   final String quizTitle;
   final int? submissionId;
 
-  const QuizStudentResult({super.key, required this.quizId, required this.quizTitle, this.submissionId});
+  const QuizStudentResult({
+    super.key,
+    required this.quizId,
+    required this.quizTitle,
+    this.submissionId,
+  });
 
   @override
   State<QuizStudentResult> createState() => _QuizStudentResultState();
@@ -21,7 +26,7 @@ class QuizStudentResult extends StatefulWidget {
 class _QuizStudentResultState extends State<QuizStudentResult> {
   final ApiService _api = ApiService();
   bool _isLoading = true;
-  
+
   Map<String, dynamic>? _submissionDetail;
   QuizStatsSchema? _quizStats;
 
@@ -39,7 +44,10 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
     try {
       int? subId = widget.submissionId;
       final results = await Future.wait([
-        if (subId != null) _api.getSubmissionDetails(token, subId) else Future.value(null),
+        if (subId != null)
+          _api.getSubmissionDetails(token, subId)
+        else
+          Future.value(null),
         _api.getQuizStatsModel(token, widget.quizId),
       ]);
 
@@ -78,10 +86,16 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
           _buildComparisonScale(theme),
           const SizedBox(height: 32),
         ],
-        if (_submissionDetail != null && _submissionDetail!['answers'] != null) ...[
-          const Text('Kérdések értékelése', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        if (_submissionDetail != null &&
+            _submissionDetail!['answers'] != null) ...[
+          const Text(
+            'Kérdések értékelése',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 16),
-          ...(_submissionDetail!['answers'] as List).map((ans) => _buildQuestionTile(theme, ans)),
+          ...(_submissionDetail!['answers'] as List).map(
+            (ans) => _buildQuestionTile(theme, ans),
+          ),
           const SizedBox(height: 32),
         ],
         const SizedBox(height: 80),
@@ -109,23 +123,37 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
               aspectRatio: 1,
               child: Stack(
                 children: [
-                   PieChart(
-                     PieChartData(
-                       sections: [
-                         PieChartSectionData(value: pct, color: color, radius: 10, showTitle: false),
-                         PieChartSectionData(value: 100 - pct, color: color.withValues(alpha: 0.1), radius: 8, showTitle: false),
-                       ],
-                       startDegreeOffset: 270,
-                       sectionsSpace: 0,
-                       centerSpaceRadius: 35,
-                     ),
-                   ),
-                   Center(
-                     child: Text(
-                       '${pct.toStringAsFixed(0)}%',
-                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color),
-                     ),
-                   ),
+                  PieChart(
+                    PieChartData(
+                      sections: [
+                        PieChartSectionData(
+                          value: pct,
+                          color: color,
+                          radius: 10,
+                          showTitle: false,
+                        ),
+                        PieChartSectionData(
+                          value: 100 - pct,
+                          color: color.withValues(alpha: 0.1),
+                          radius: 8,
+                          showTitle: false,
+                        ),
+                      ],
+                      startDegreeOffset: 270,
+                      sectionsSpace: 0,
+                      centerSpaceRadius: 35,
+                    ),
+                  ),
+                  Center(
+                    child: Text(
+                      '${pct.toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -136,13 +164,35 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Elért eredmény', style: TextStyle(color: theme.hintColor, fontSize: 12)),
-                Text('${_submissionDetail!['score']} / ${_submissionDetail!['max_score']} pont', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                  'Elért eredmény',
+                  style: TextStyle(color: theme.hintColor, fontSize: 12),
+                ),
+                Text(
+                  '${_submissionDetail!['score']} / ${_submissionDetail!['max_score']} pont',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
-                  child: Text('Jegy: $grade', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Jegy: $grade',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -160,7 +210,10 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Helyezés az osztályban', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          'Helyezés az osztályban',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 48), // Space for top labels
         SizedBox(
           height: 60,
@@ -169,8 +222,15 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
             children: [
               Positioned(
                 bottom: 25,
-                left: 0, right: 0,
-                child: Container(height: 6, decoration: BoxDecoration(color: theme.dividerColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(3))),
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
               ),
               _buildMarker(avg, Colors.grey, 'Átlag', true),
               _buildMarker(best, Colors.green, 'Legjobb', true),
@@ -184,20 +244,42 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
 
   Widget _buildMarker(double pct, Color color, String label, bool isTop) {
     return Positioned(
-      left: (pct / 100 * (MediaQuery.of(context).size.width - 40)) - 30, // 40 is padding
+      left:
+          (pct / 100 * (MediaQuery.of(context).size.width - 40)) -
+          30, // 40 is padding
       bottom: isTop ? 28 : 0,
       child: SizedBox(
         width: 60,
         child: Column(
           children: [
             if (isTop) ...[
-              Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
-              Text('${pct.toStringAsFixed(0)}%', style: TextStyle(fontSize: 10, color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '${pct.toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 10, color: color),
+              ),
               Container(width: 2, height: 6, color: color),
             ] else ...[
               Container(width: 2, height: 6, color: color),
-              Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
-              Text('${pct.toStringAsFixed(0)}%', style: TextStyle(fontSize: 10, color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '${pct.toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 10, color: color),
+              ),
             ],
           ],
         ),
@@ -206,7 +288,9 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
   }
 
   Widget _buildQuestionTile(ThemeData theme, Map<String, dynamic> ans) {
-    final isCorrect = (ans['points_awarded'] as num? ?? 0) >= (ans['max_points'] as num? ?? 1);
+    final isCorrect =
+        (ans['points_awarded'] as num? ?? 0) >=
+        (ans['max_points'] as num? ?? 1);
     final partial = (ans['points_awarded'] as num? ?? 0) > 0 && !isCorrect;
 
     return Card(
@@ -214,20 +298,36 @@ class _QuizStudentResultState extends State<QuizStudentResult> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ExpansionTile(
         leading: Icon(
-          isCorrect ? Icons.check_circle_rounded : (partial ? Icons.adjust_rounded : Icons.cancel_rounded),
-          color: isCorrect ? Colors.green : (partial ? Colors.orange : Colors.red),
+          isCorrect
+              ? Icons.check_circle_rounded
+              : (partial ? Icons.adjust_rounded : Icons.cancel_rounded),
+          color: isCorrect
+              ? Colors.green
+              : (partial ? Colors.orange : Colors.red),
         ),
-        title: Text(ans['block_question'] ?? 'Kérdés', maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text('Szerzett pont: ${ans['points_awarded']} / ${ans['max_points']}'),
+        title: Text(
+          ans['block_question'] ?? 'Kérdés',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          'Szerzett pont: ${ans['points_awarded']} / ${ans['max_points']}',
+        ),
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Saját válaszed:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const Text(
+                  'Saját válaszed:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
                 const SizedBox(height: 4),
-                Text(ans['student_answer'] ?? '(Üres)', style: TextStyle(color: theme.textTheme.bodyMedium?.color)),
+                Text(
+                  ans['student_answer'] ?? '(Üres)',
+                  style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                ),
               ],
             ),
           ),

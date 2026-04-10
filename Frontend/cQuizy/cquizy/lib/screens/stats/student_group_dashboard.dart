@@ -12,7 +12,11 @@ class StudentGroupDashboard extends StatefulWidget {
   final int groupId;
   final String groupName;
 
-  const StudentGroupDashboard({super.key, required this.groupId, required this.groupName});
+  const StudentGroupDashboard({
+    super.key,
+    required this.groupId,
+    required this.groupName,
+  });
 
   @override
   State<StudentGroupDashboard> createState() => _StudentGroupDashboardState();
@@ -21,7 +25,7 @@ class StudentGroupDashboard extends StatefulWidget {
 class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
   final ApiService _api = ApiService();
   bool _isLoading = true;
-  
+
   List<SubmissionOutSchema> _results = [];
   List<Map<String, dynamic>> _comparisonData = [];
   List<Map<String, dynamic>> _upcomingQuizzes = [];
@@ -43,13 +47,15 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
       final results = await Future.wait([
         _api.getStudentResults(token, widget.groupId),
         _api.getGroupQuizzes(token, widget.groupId),
-        _api.getGroupStatsOverview(token, widget.groupId).catchError((_) => null), // Silent fail if no permission
+        _api
+            .getGroupStatsOverview(token, widget.groupId)
+            .catchError((_) => null), // Silent fail if no permission
       ]);
-      
+
       final submissions = results[0] as List<SubmissionOutSchema>;
       final allQuizzes = results[1] as List<dynamic>;
       _groupOverview = results[2] as AdminGroupOverviewSchema?;
-      
+
       // Filter upcoming
       final now = DateTime.now();
       final upcoming = allQuizzes.where((q) {
@@ -122,15 +128,26 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
     if (_results.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(24), border: Border.all(color: theme.dividerColor)),
-        child: const Text('Még nincsenek eredményeid ebben a csoportban.', textAlign: TextAlign.center),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: theme.dividerColor),
+        ),
+        child: const Text(
+          'Még nincsenek eredményeid ebben a csoportban.',
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
-    final avg = _results.map((r) => r.percentage).reduce((a, b) => a + b) / _results.length;
-    final best = _results.map((r) => r.percentage).reduce((a, b) => a > b ? a : b);
+    final avg =
+        _results.map((r) => r.percentage).reduce((a, b) => a + b) /
+        _results.length;
+    final best = _results
+        .map((r) => r.percentage)
+        .reduce((a, b) => a > b ? a : b);
     final classAvg = _groupOverview?.averagePercentage ?? 0.0;
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -146,8 +163,15 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   const Text('Saját Átlag', style: TextStyle(fontSize: 14)),
-                   Text('${avg.toStringAsFixed(1)}%', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: theme.primaryColor)),
+                  const Text('Saját Átlag', style: TextStyle(fontSize: 14)),
+                  Text(
+                    '${avg.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: theme.primaryColor,
+                    ),
+                  ),
                 ],
               ),
               if (classAvg > 0)
@@ -155,7 +179,14 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     const Text('Osztályátlag', style: TextStyle(fontSize: 12)),
-                    Text('${classAvg.toStringAsFixed(1)}%', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: theme.hintColor)),
+                    Text(
+                      '${classAvg.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: theme.hintColor,
+                      ),
+                    ),
                   ],
                 ),
             ],
@@ -163,10 +194,28 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
           const SizedBox(height: 24),
           Row(
             children: [
-              Expanded(child: _buildSubStat('Legjobb', '${best.toStringAsFixed(0)}%', Colors.green)),
-              Expanded(child: _buildSubStat('Kvízek', '${_results.length}', Colors.blue)),
+              Expanded(
+                child: _buildSubStat(
+                  'Legjobb',
+                  '${best.toStringAsFixed(0)}%',
+                  Colors.green,
+                ),
+              ),
+              Expanded(
+                child: _buildSubStat(
+                  'Kvízek',
+                  '${_results.length}',
+                  Colors.blue,
+                ),
+              ),
               if (classAvg > 0)
-                Expanded(child: _buildSubStat('Különbség', '${(avg - classAvg).toStringAsFixed(1)}%', (avg >= classAvg ? Colors.green : Colors.red))),
+                Expanded(
+                  child: _buildSubStat(
+                    'Különbség',
+                    '${(avg - classAvg).toStringAsFixed(1)}%',
+                    (avg >= classAvg ? Colors.green : Colors.red),
+                  ),
+                ),
             ],
           ),
         ],
@@ -177,7 +226,14 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
   Widget _buildSubStat(String label, String value, Color color) {
     return Column(
       children: [
-        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            color: color,
+          ),
+        ),
         Text(label, style: const TextStyle(fontSize: 12)),
       ],
     );
@@ -185,15 +241,25 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
 
   Widget _buildResultsTimeline(ThemeData theme) {
     final sortedByDate = List<SubmissionOutSchema>.from(_results);
-    sortedByDate.sort((a, b) => (a.submittedAt ?? DateTime(0)).compareTo(b.submittedAt ?? DateTime(0)));
-    
-    final spots = List.generate(sortedByDate.length, (i) => FlSpot(i.toDouble(), sortedByDate[i].percentage));
+    sortedByDate.sort(
+      (a, b) => (a.submittedAt ?? DateTime(0)).compareTo(
+        b.submittedAt ?? DateTime(0),
+      ),
+    );
+
+    final spots = List.generate(
+      sortedByDate.length,
+      (i) => FlSpot(i.toDouble(), sortedByDate[i].percentage),
+    );
     final classAvg = _groupOverview?.averagePercentage ?? 0.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Eredmények alakulása', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          'Eredmények alakulása',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
         AspectRatio(
           aspectRatio: 3.0,
@@ -202,7 +268,16 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
               extraLinesData: ExtraLinesData(
                 horizontalLines: [
                   if (classAvg > 0)
-                    HorizontalLine(y: classAvg, color: Colors.grey.withValues(alpha: 0.3), strokeWidth: 2, dashArray: [5, 5], label: HorizontalLineLabel(show: true, labelResolver: (v) => 'Osztályátlag'))
+                    HorizontalLine(
+                      y: classAvg,
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      strokeWidth: 2,
+                      dashArray: [5, 5],
+                      label: HorizontalLineLabel(
+                        show: true,
+                        labelResolver: (v) => 'Osztályátlag',
+                      ),
+                    ),
                 ],
               ),
               lineBarsData: [
@@ -212,7 +287,10 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
                   barWidth: 4,
                   color: theme.primaryColor,
                   dotData: const FlDotData(show: true),
-                  belowBarData: BarAreaData(show: true, color: theme.primaryColor.withValues(alpha: 0.1)),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: theme.primaryColor.withValues(alpha: 0.1),
+                  ),
                 ),
               ],
               titlesData: const FlTitlesData(show: false),
@@ -229,25 +307,45 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Összehasonlítás az Osztállyal', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          'Összehasonlítás az Osztállyal',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
-        ..._comparisonData.map((data) => Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(data['quiz'], style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(child: _buildCompareBar('Én', data['own'], theme.primaryColor)),
-                  const SizedBox(width: 8),
-                  Expanded(child: _buildCompareBar('Átlag', data['avg'], Colors.grey)),
-                ],
-              ),
-            ],
+        ..._comparisonData.map(
+          (data) => Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data['quiz'],
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildCompareBar(
+                        'Én',
+                        data['own'],
+                        theme.primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildCompareBar(
+                        'Átlag',
+                        data['avg'],
+                        Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        )),
+        ),
       ],
     );
   }
@@ -260,13 +358,21 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(fontSize: 10)),
-            Text('${value.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+            Text(
+              '${value.toStringAsFixed(0)}%',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         const SizedBox(height: 4),
         ClipRRect(
           borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(value: value / 100, color: color, backgroundColor: color.withValues(alpha: 0.1), minHeight: 6),
+          child: LinearProgressIndicator(
+            value: value / 100,
+            color: color,
+            backgroundColor: color.withValues(alpha: 0.1),
+            minHeight: 6,
+          ),
         ),
       ],
     );
@@ -276,17 +382,29 @@ class _StudentGroupDashboardState extends State<StudentGroupDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Közelgő Kvízek', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          'Közelgő Kvízek',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
-        ..._upcomingQuizzes.map((q) => Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            title: Text(q['project_name'] ?? 'Kvíz', style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('Kezdés: ${DateFormat('MM. dd. HH:mm').format(DateTime.parse(q['date_start']))}'),
-            trailing: const Icon(Icons.timer_outlined, color: Colors.blue),
+        ..._upcomingQuizzes.map(
+          (q) => Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              title: Text(
+                q['project_name'] ?? 'Kvíz',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                'Kezdés: ${DateFormat('MM. dd. HH:mm').format(DateTime.parse(q['date_start']))}',
+              ),
+              trailing: const Icon(Icons.timer_outlined, color: Colors.blue),
+            ),
           ),
-        )),
+        ),
       ],
     );
   }

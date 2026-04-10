@@ -63,6 +63,12 @@ class _AdminPageState extends State<AdminPage> {
   bool _exportIncludeWarnings = false;
   String _exportWarningLayout = 'grouped'; // 'grouped' or 'abc'
 
+  // Grade Limits State (mutable for auto-grading)
+  late int _grade2Min;
+  late int _grade3Min;
+  late int _grade4Min;
+  late int _grade5Min;
+
   // --- New Export Options (20+) ---
   // Layout
   String _optOrientation = 'portrait'; // 'portrait', 'landscape'
@@ -99,6 +105,13 @@ class _AdminPageState extends State<AdminPage> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize grade limits from widget props
+    _grade2Min = widget.grade2Limit;
+    _grade3Min = widget.grade3Limit;
+    _grade4Min = widget.grade4Limit;
+    _grade5Min = widget.grade5Limit;
+
     _fetchProjectDetails();
     _fetchData();
     // Poll every 10 seconds
@@ -436,9 +449,19 @@ class _AdminPageState extends State<AdminPage> {
       // Local count is safer if we want consistency with the student list we just built.
       // But let's check stats['submission_count'] if available.
 
+      // Calculate gradedCount: students who have a grade already
+      int gradedCount = 0;
+      for (var s in studentMap.values) {
+        if (s['grade'] != null) {
+          gradedCount++;
+        }
+      }
+
       int missingCount = 0;
       if (totalStudentsCount > 0) {
-        missingCount = totalStudentsCount - submittedCount;
+        // "Hiányzik" -> didn't submit OR wasn't graded yet.
+        // We defined it as (Total - GradedCount)
+        missingCount = totalStudentsCount - gradedCount;
         if (missingCount < 0) missingCount = 0;
       }
 
@@ -446,6 +469,7 @@ class _AdminPageState extends State<AdminPage> {
       final Map<String, dynamic> finalStats = stats ?? {};
       finalStats['missing_count'] = missingCount;
       finalStats['total_students'] = totalStudentsCount;
+      finalStats['graded_count'] = gradedCount;
       finalStats['submission_count'] =
           finalStats['submission_count'] ?? submittedCount;
 
@@ -658,6 +682,284 @@ class _AdminPageState extends State<AdminPage> {
       );
     }
     // No immediate _fetchData() - optimistic UI stays, polling syncs later.
+  }
+
+  Future<void> _autoGradeAll(List<Map<String, dynamic>> submittedGroup) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final confirm = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (context, a1, a2) => Container(),
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: a1, curve: Curves.easeOutBack),
+          child: FadeTransition(
+            opacity: a1,
+            child: StatefulBuilder(
+              builder: (context, setDialogState) {
+                return AlertDialog(
+                  scrollable: true,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.auto_awesome, color: Colors.blue),
+                      SizedBox(width: 12),
+                      Text('Automatikus osztályozás'),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Állítsd be a ponthatárokat a tömeges osztályozás előtt (${submittedGroup.length} dolgozat).',
+                        style: TextStyle(fontSize: 13, color: theme.hintColor),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 2,
+                        value: _grade2Min,
+                        color: Colors.red,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade2Min = val.toInt().clamp(0, 100);
+                            if (_grade2Min >= _grade3Min) {
+                              _grade3Min = (_grade2Min + 1).clamp(0, 100);
+                            }
+                            if (_grade3Min >= _grade4Min) {
+                              _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {}); // Sync with component state
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 3,
+                        value: _grade3Min,
+                        color: Colors.amber,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade3Min = val.toInt().clamp(0, 100);
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min >= _grade4Min) {
+                              _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 4,
+                        value: _grade4Min,
+                        color: Colors.lightGreen,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade4Min = val.toInt().clamp(0, 100);
+                            if (_grade4Min <= _grade3Min) {
+                              _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 5,
+                        value: _grade5Min,
+                        color: Colors.green,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade5Min = val.toInt().clamp(0, 100);
+                            if (_grade5Min <= _grade4Min) {
+                              _grade4Min = (_grade5Min - 1).clamp(0, 100);
+                            }
+                            if (_grade4Min <= _grade3Min) {
+                              _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Mégse'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('Osztályozás indítása'),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: LoadingAnimationWidget.newtonCradle(
+          color: Theme.of(context).primaryColor,
+          size: 80,
+        ),
+      ),
+    );
+
+    final api = ApiService();
+    int successCount = 0;
+    int failCount = 0;
+
+    for (var member in submittedGroup) {
+      final submissionId = member['submission_id'];
+      if (submissionId == null) continue;
+
+      final score = (member['score'] as num?)?.toDouble() ?? 0.0;
+      int grade = 1;
+      if (score >= _grade5Min) {
+        grade = 5;
+      } else if (score >= _grade4Min) {
+        grade = 4;
+      } else if (score >= _grade3Min) {
+        grade = 3;
+      } else if (score >= _grade2Min) {
+        grade = 2;
+      }
+
+      final success = await api.updateSubmissionGrade(
+        token,
+        submissionId,
+        grade,
+      );
+      if (success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    }
+
+    if (mounted) Navigator.pop(context); // Close loading
+    _fetchData();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sikeresen osztályozva: $successCount fő.${failCount > 0 ? " Hiba: $failCount." : ""}',
+          ),
+          backgroundColor: failCount > 0 ? Colors.orange : Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildSliderForGrade({
+    required ThemeData theme,
+    required int grade,
+    required int value,
+    required Color color,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$grade-es (Minimum)',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            Text(
+              '$value%',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: color.withOpacity(0.5),
+            inactiveTrackColor: theme.dividerColor,
+            thumbColor: color,
+            overlayColor: color.withOpacity(0.2),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            trackHeight: 4,
+            valueIndicatorColor: color,
+          ),
+          child: Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            label: '$value%',
+            onChanged: onChanged,
+          ),
+        ),
+        const SizedBox(height: 4),
+      ],
+    );
   }
 
   Future<void> _fetchProjectDetails() async {
@@ -1105,24 +1407,15 @@ class _AdminPageState extends State<AdminPage> {
 
     // Calculate Stats
     final gradeCounts = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-    double totalGradeSum = 0;
 
     for (var m in gradedStudents) {
       final g = int.tryParse(m['grade'].toString()) ?? 0;
       gradeCounts[g] = (gradeCounts[g] ?? 0) + 1;
-      totalGradeSum += g;
     }
 
-    final double average = gradedStudents.isNotEmpty
-        ? totalGradeSum / gradedStudents.length
-        : 0.0;
-
-    // Use accurate missing count from group members calculation
-    final int totalStudents =
-        (_quizStats?['total_students'] as int?) ?? _members.length;
-    final int missingCount =
-        (_quizStats?['missing_count'] as int?) ??
-        (totalStudents - gradedStudents.length);
+    // Use actual count of processed members for consistency
+    final int totalStudents = _members.length;
+    final int ratedCount = gradedStudents.length;
 
     // Determine max frequency for distribution bar
     int maxFreq = 0;
@@ -1169,35 +1462,26 @@ class _AdminPageState extends State<AdminPage> {
                           theme.textTheme.bodyLarge?.color ?? Colors.black,
                         ),
                         const SizedBox(width: 24),
-                        // Display API Average Score if available, else local grade average
-                        if (_quizStats != null &&
-                            _quizStats!['average_score'] != null)
-                          _buildSummaryItem(
-                            context,
-                            'Átlag Pont',
-                            '${(_quizStats!['average_score'] as num).toStringAsFixed(1)} p',
-                            Colors.blue,
-                          )
-                        else
-                          _buildSummaryItem(
-                            context,
-                            'Átlag Jegy',
-                            average.toStringAsFixed(2),
-                            Colors.blue,
-                          ),
+                        // Calculate Average % from members
+                        _buildSummaryItem(
+                          context,
+                          'Átlag %',
+                          '${_calculateAveragePercentage()}%',
+                          Colors.blue,
+                        ),
                         const SizedBox(width: 24),
-                        // Display API Submission Count if available, else local
+                        // Display API Submission Count
                         _buildSummaryItem(
                           context,
                           'Beadta',
-                          '${_quizStats?['submission_count'] ?? gradedStudents.length} db',
+                          '${_quizStats?['submission_count'] ?? 0} db',
                           Colors.green,
                         ),
                         const SizedBox(width: 24),
                         _buildSummaryItem(
                           context,
                           'Hiányzik',
-                          '${_quizStats?['missing_count'] ?? missingCount} fő',
+                          '${totalStudents - ratedCount} fő',
                           Colors.red,
                         ),
                       ],
@@ -1578,35 +1862,7 @@ class _AdminPageState extends State<AdminPage> {
                 width: 250,
                 height: 56, // Match Menu button height
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    final studentToPass = submittedGroup.isNotEmpty
-                        ? submittedGroup.first
-                        : {
-                            'id': 999,
-                            'name': 'Teszt Elek',
-                            'grade': '5',
-                            'cheatingStatus': 'none',
-                          };
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => GradingView(
-                          student: studentToPass,
-                          quizTitle: widget.quiz['project_name'] ?? 'Teszt',
-                          grade2Limit: widget.grade2Limit,
-                          grade3Limit: widget.grade3Limit,
-                          grade4Limit: widget.grade4Limit,
-                          grade5Limit: widget.grade5Limit,
-                          quizBlocks: _fullQuizData != null
-                              ? _fullQuizData!['blocks'] as List<dynamic>?
-                              : null,
-                        ),
-                      ),
-                    ).then((_) {
-                      _fetchData();
-                    });
-                  },
+                  onPressed: () => _autoGradeAll(submittedGroup),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.primaryColor,
                     foregroundColor: Colors.white,
@@ -1616,9 +1872,9 @@ class _AdminPageState extends State<AdminPage> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  icon: const Icon(Icons.edit_note, size: 24),
+                  icon: const Icon(Icons.auto_awesome, size: 24),
                   label: const Text(
-                    'Dolgozatok javítása',
+                    'Automatikus osztályozás',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -1634,6 +1890,7 @@ class _AdminPageState extends State<AdminPage> {
     Map<String, dynamic> member, {
     bool showStatus = true,
   }) {
+    final theme = Theme.of(context);
     final isSubmitted =
         member['status'] == 'submitted' || member['status'] == 'closed';
 
@@ -1666,6 +1923,16 @@ class _AdminPageState extends State<AdminPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      if (member['score'] != null)
+                        Text(
+                          '${member['score']}%',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: theme.textTheme.bodyMedium?.color
+                                ?.withValues(alpha: 0.7),
+                          ),
+                        ),
                       if (member['grade'] != null && member['grade'] == "1")
                         Text(
                           'Jegy:  ${member['grade']}',
@@ -3216,5 +3483,17 @@ class _AdminPageState extends State<AdminPage> {
       default:
         return Icons.construction;
     }
+  }
+
+  String _calculateAveragePercentage() {
+    final gradedOnes = _members
+        .where((m) => m['score'] != null && (m['score'] as num) > 0)
+        .toList();
+    if (gradedOnes.isEmpty) return '0.0';
+    double sum = 0;
+    for (var m in gradedOnes) {
+      sum += (m['score'] as num).toDouble();
+    }
+    return (sum / gradedOnes.length).toStringAsFixed(1);
   }
 }

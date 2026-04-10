@@ -1,3 +1,5 @@
+import '../utils/avatar_manager.dart';
+
 class User {
   final int id;
   final String username;
@@ -10,6 +12,9 @@ class User {
   final DateTime dateJoined;
   final String? nickname;
   final String? pfpUrl;
+
+  /// Returns the actual image URL by resolving avatar IDs (e.g., avatar_1) to PNG links.
+  String? get effectivePfpUrl => AvatarManager.getAvatarUrl(pfpUrl);
 
   User({
     required this.id,

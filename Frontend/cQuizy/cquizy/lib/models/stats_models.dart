@@ -1,6 +1,7 @@
 // lib/models/stats_models.dart
 
 import 'package:intl/intl.dart';
+import '../utils/avatar_manager.dart';
 
 class AdminGroupOverviewSchema {
   final double averagePercentage;
@@ -130,6 +131,9 @@ class MemberOutSchema {
   final String rank;
   final DateTime? dateJoined;
 
+  /// Returns the actual image URL by resolving avatar IDs (e.g., avatar_1) to PNG links.
+  String? get effectivePfpUrl => AvatarManager.getAvatarUrl(pfpUrl);
+
   MemberOutSchema({
     required this.userId,
     required this.username,
@@ -142,10 +146,14 @@ class MemberOutSchema {
     final user = json['user'] as Map<String, dynamic>?;
     return MemberOutSchema(
       userId: user?['id'] as int? ?? 0,
-      username: user?['username']?.toString() ?? (json['username']?.toString() ?? 'Ismeretlen'),
+      username:
+          user?['username']?.toString() ??
+          (json['username']?.toString() ?? 'Ismeretlen'),
       pfpUrl: user?['pfp_url']?.toString(),
       rank: json['rank']?.toString() ?? 'MEMBER',
-      dateJoined: json['date_joined'] != null ? DateTime.tryParse(json['date_joined']) : null,
+      dateJoined: json['date_joined'] != null
+          ? DateTime.tryParse(json['date_joined'])
+          : null,
     );
   }
 }
@@ -197,14 +205,18 @@ class SubmissionOutSchema {
     return SubmissionOutSchema(
       id: json['id'] as int? ?? 0,
       quizId: json['quiz_id'] as int?, // Might be null in some endpoints
-      quizTitle: json['quiz_project']?.toString() ??
+      quizTitle:
+          json['quiz_project']?.toString() ??
           (json['quiz_title']?.toString() ??
               (json['title']?.toString() ?? 'Kvíz')),
       percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
-      gradeValue: json['grade_value']?.toString() ?? json['grade_label']?.toString(),
+      gradeValue:
+          json['grade_value']?.toString() ?? json['grade_label']?.toString(),
       submittedAt: json['date_submitted'] != null
           ? DateTime.tryParse(json['date_submitted'])
-          : (json['submitted_at'] != null ? DateTime.tryParse(json['submitted_at']) : null),
+          : (json['submitted_at'] != null
+                ? DateTime.tryParse(json['submitted_at'])
+                : null),
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:wave/config.dart';
 import 'package:wave/wave.dart';
 import 'api_service.dart'; // Importáljuk az API szolgáltatást
+import 'utils/avatar_manager.dart';
 
 // Jelszóerősség-szintek definiálása
 enum PasswordStrength { none, weak, medium, strong }
@@ -26,92 +27,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   // --- KÖNNYEN SZERKESZTHETŐ KONFIGURÁCIÓ ---
 
   // 1. Avatarok és kategóriák listája
-  static const List<Map<String, dynamic>> _avatars = [
-    {
-      'id': 'avatar_1',
-      'category': 'Figurák',
-      'icon': Icons.person_outline,
-      'color': Colors.blueGrey,
-    },
-    {
-      'id': 'avatar_2',
-      'category': 'Figurák',
-      'icon': Icons.face,
-      'color': Colors.cyan,
-    },
-    {
-      'id': 'avatar_3',
-      'category': 'Figurák',
-      'icon': Icons.smart_toy_outlined,
-      'color': Colors.orangeAccent,
-    },
-    {
-      'id': 'avatar_4',
-      'category': 'Figurák',
-      'icon': Icons.child_care,
-      'color': Colors.pinkAccent,
-    },
-    {
-      'id': 'avatar_5',
-      'category': 'Figurák',
-      'icon': Icons.catching_pokemon,
-      'color': Colors.red,
-    },
-    {
-      'id': 'avatar_6',
-      'category': 'Figurák',
-      'icon': Icons.eco_outlined,
-      'color': Colors.lightGreen,
-    },
-    {
-      'id': 'avatar_7',
-      'category': 'Figurák',
-      'icon': Icons.park_outlined,
-      'color': Colors.green,
-    },
-    {
-      'id': 'avatar_11',
-      'category': 'Szimbólumok',
-      'icon': Icons.science_outlined,
-      'color': Colors.purple,
-    },
-    {
-      'id': 'avatar_12',
-      'category': 'Szimbólumok',
-      'icon': Icons.sports_esports_outlined,
-      'color': Colors.teal,
-    },
-    {
-      'id': 'avatar_13',
-      'category': 'Szimbólumok',
-      'icon': Icons.rocket_launch_outlined,
-      'color': Colors.deepOrange,
-    },
-    {
-      'id': 'avatar_14',
-      'category': 'Szimbólumok',
-      'icon': Icons.music_note_outlined,
-      'color': Colors.lightBlue,
-    },
-    {
-      'id': 'avatar_15',
-      'category': 'Szimbólumok',
-      'icon': Icons.brush_outlined,
-      'color': Colors.deepPurpleAccent,
-    },
-    {
-      'id': 'avatar_16',
-      'category': 'Szimbólumok',
-      'icon': Icons.shield_outlined,
-      'color': Colors.blue,
-    },
-    {
-      'id': 'avatar_17',
-      'category': 'Szimbólumok',
-      'icon': Icons.favorite_border,
-      'color': Colors.redAccent,
-    },
-  ];
+  // 1. Avatarok lekérése a központosított managerből
+  final List<Map<String, dynamic>> _avatars = AvatarManager.getAvatars();
 
   // 2. Színpaletta
   // static const _primaryColor = Color(0xFFED2F5B); // Use Theme.of(context).primaryColor instead
@@ -930,11 +847,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                         ),
                         child: CircleAvatar(
                           radius: 50,
-                          backgroundColor: avatar['color'],
-                          child: Icon(
-                            avatar['icon'],
-                            color: Colors.white,
-                            size: 45,
+                          backgroundColor: Colors.white,
+                          child: ClipOval(
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Image.network(
+                                avatar['url'],
+                                fit: BoxFit.contain,
+                              ),
+                            ),
                           ),
                         ),
                       ),

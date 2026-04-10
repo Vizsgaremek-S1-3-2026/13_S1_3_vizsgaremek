@@ -8,9 +8,12 @@ import 'package:table_calendar/table_calendar.dart';
 import 'utils/web_protections.dart';
 import 'test_taking_page.dart';
 import 'admin_page.dart';
+import 'models/stats_models.dart';
+import 'group_page.dart';
 
 class StudentTestsPage extends StatefulWidget {
-  const StudentTestsPage({super.key});
+  final Function(Group)? onGroupSelected;
+  const StudentTestsPage({super.key, this.onGroupSelected});
 
   @override
   State<StudentTestsPage> createState() => _StudentTestsPageState();
@@ -34,6 +37,9 @@ class _StudentTestsPageState extends State<StudentTestsPage>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _sortBy = 'date_asc'; // Default sort
+
+  // Store quiz results to show grades
+  final Map<int, SubmissionOutSchema> _quizResults = {};
 
   @override
   void initState() {
@@ -83,6 +89,18 @@ class _StudentTestsPageState extends State<StudentTestsPage>
           enhancedQuiz['group_id'] = groupId;
           enhancedQuiz['group_obj'] = group; // Store full group object
           allQuizzes.add(enhancedQuiz);
+        }
+
+        // Fetch user results for this group to show grades
+        try {
+          final results = await api.getStudentResults(token, groupId);
+          for (var res in results) {
+            if (res.quizId != null) {
+              _quizResults[res.quizId!] = res;
+            }
+          }
+        } catch (e) {
+          debugPrint('Error fetching results for group $groupId: $e');
         }
       }
 
@@ -897,10 +915,50 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                 children: [
                   Icon(Icons.group, size: 16, color: theme.hintColor),
                   const SizedBox(width: 4),
-                  Text(
-                    quiz['group_name'] ?? 'Ismeretlen Csoport',
-                    style: TextStyle(color: theme.hintColor),
+                  Expanded(
+                    child: Text(
+                      quiz['group_name'] ?? 'Ismeretlen Csoport',
+                      style: TextStyle(color: theme.hintColor),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  // Group shortcut button
+                  if (quiz['group_obj'] != null)
+                    SizedBox(
+                      height: 28,
+                      child: TextButton(
+                        onPressed: () {
+                          if (widget.onGroupSelected != null) {
+                            widget.onGroupSelected!(
+                              Group.fromJson(quiz['group_obj']),
+                            );
+                          }
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Csoport',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.primaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 14,
+                              color: theme.primaryColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -915,23 +973,38 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                 ],
               ),
               if (isPast) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Divider(),
-                ),
-                // Placeholder for score - requires fetching results
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      'Eredmény: --', // TODO: Fetch grade/score
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: theme.primaryColor,
+                // Only show result if there is a grade
+                if (_quizResults.containsKey(quiz['id']) &&
+                    (_quizResults[quiz['id']]?.gradeValue?.isNotEmpty ??
+                        false)) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Divider(),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Eredmény: ${_quizResults[quiz['id']]!.gradeValue} (${_quizResults[quiz['id']]!.percentage.toStringAsFixed(0)}%)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: theme.primaryColor,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
                 // Teacher Feedback Placeholder
                 if (quiz['feedback'] != null) ...[
                   const SizedBox(height: 8),

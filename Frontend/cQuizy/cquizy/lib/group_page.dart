@@ -1,6 +1,7 @@
 // lib/group_page.dart
 
 import 'package:flutter/material.dart';
+import 'utils/avatar_manager.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
@@ -65,6 +66,42 @@ class Group {
     this.grade4Limit = 70,
     this.grade5Limit = 85,
   });
+
+  factory Group.fromJson(Map<String, dynamic> json) {
+    final isAdmin = json['rank'] == 'ADMIN';
+    return Group(
+      id: json['id'] as int?,
+      title: json['name']?.toString() ?? 'Névtelen csoport',
+      ownerName: json['owner_name']?.toString() ?? (isAdmin ? 'Én' : 'Admin'),
+      subtitle: json['owner_name']?.toString() ?? (isAdmin ? '' : 'Admin'),
+      color: _parseColor(json['color']),
+      inviteCode: json['invite_code']?.toString(),
+      inviteCodeFormatted: json['invite_code_formatted']?.toString(),
+      rank: json['rank']?.toString() ?? 'MEMBER',
+      anticheat: json['anticheat'] == true,
+      kiosk: json['kiosk'] == true,
+      grade2Limit: json['grade2_limit'] as int? ?? 40,
+      grade3Limit: json['grade3_limit'] as int? ?? 55,
+      grade4Limit: json['grade4_limit'] as int? ?? 70,
+      grade5Limit: json['grade5_limit'] as int? ?? 85,
+    );
+  }
+
+  static Color _parseColor(dynamic colorData) {
+    Color groupColor = Colors.blue;
+    if (colorData != null) {
+      try {
+        String colorStr = colorData.toString();
+        if (colorStr.startsWith('#')) colorStr = colorStr.substring(1);
+        if (colorStr.length == 6) {
+          groupColor = Color(int.parse('FF$colorStr', radix: 16));
+        }
+      } catch (e) {
+        debugPrint('Color parse error: $e');
+      }
+    }
+    return groupColor;
+  }
 
   Group copyWith({
     String? title,
@@ -398,16 +435,17 @@ class _GroupPageState extends State<GroupPage> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      // Oktató neve
-                      Text(
-                        'Oktató: ${widget.group.instructorLastName} ${widget.group.instructorFirstName}',
-                        style: TextStyle(
-                          color: widget.group
-                              .getTextColor(context)
-                              .withValues(alpha: 0.9),
-                          fontSize: isMobile ? 13 : 18,
+                      // Oktató neve (csak ha nem én vagyok az admin)
+                      if (widget.group.rank != 'ADMIN')
+                        Text(
+                          'Oktató: ${widget.group.instructorLastName} ${widget.group.instructorFirstName}',
+                          style: TextStyle(
+                            color: widget.group
+                                .getTextColor(context)
+                                .withValues(alpha: 0.9),
+                            fontSize: isMobile ? 13 : 18,
+                          ),
                         ),
-                      ),
                       SizedBox(height: isMobile ? 12 : 16),
                       // Gombok
                       if (isMobile)
@@ -3646,18 +3684,22 @@ class _GroupPageState extends State<GroupPage> {
                   }
                 : null,
             leading: CircleAvatar(
-              backgroundColor: isAdmin
-                  ? const Color(0xFFed2f5b)
-                  : theme.primaryColor,
-              backgroundImage: pfpUrl != null && pfpUrl.isNotEmpty
-                  ? NetworkImage(pfpUrl)
-                  : null,
-              child: pfpUrl == null || pfpUrl.isEmpty
+              backgroundColor: Colors.white,
+              child: (AvatarManager.getAvatarUrl(pfpUrl) == null ||
+                      AvatarManager.getAvatarUrl(pfpUrl)!.isEmpty)
                   ? Icon(
                       isAdmin ? Icons.star : Icons.person,
                       color: Colors.white,
                     )
-                  : null,
+                  : ClipOval(
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Image.network(
+                          AvatarManager.getAvatarUrl(pfpUrl)!,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
             ),
             title: Text(
               displayName,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../../models/stats_models.dart';
+import '../../../utils/avatar_manager.dart';
 
 class PersonalSummaryCard extends StatelessWidget {
   final Map<String, dynamic> user;
@@ -26,7 +27,8 @@ class PersonalSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final pfpUrl = user['pfp_url']?.toString();
+    final rawPfpUrl = user['pfp_url']?.toString();
+    final pfpUrl = AvatarManager.getAvatarUrl(rawPfpUrl);
     final name = '${user['last_name'] ?? ''} ${user['first_name'] ?? ''}'.trim();
     final username = user['username']?.toString() ?? 'N/A';
     final dateJoined = user['date_joined'] != null 
@@ -57,10 +59,17 @@ class PersonalSummaryCard extends StatelessWidget {
               CircleAvatar(
                 radius: 35,
                 backgroundColor: Colors.white24,
-                backgroundImage: pfpUrl != null ? CachedNetworkImageProvider(pfpUrl) : null,
-                child: pfpUrl == null 
-                    ? const Icon(Icons.person, color: Colors.white, size: 40) 
-                    : null,
+                child: pfpUrl == null
+                    ? const Icon(Icons.person, color: Colors.white, size: 40)
+                    : ClipOval(
+                        child: Padding(
+                          padding: const EdgeInsets.all(6.0),
+                          child: CachedNetworkImage(
+                            imageUrl: pfpUrl,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
               ),
               const SizedBox(width: 16),
               Expanded(
