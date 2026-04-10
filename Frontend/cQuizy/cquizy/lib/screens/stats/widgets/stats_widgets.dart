@@ -111,9 +111,15 @@ class PersonalSummaryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildBadge('Admin: $adminGroups', Icons.admin_panel_settings),
-              const SizedBox(width: 12),
-              _buildBadge('Tag: $memberGroups', Icons.group),
+              if (adminGroups > 0)
+                _buildBadge(
+                  'Admin $adminGroups csoportban',
+                  Icons.admin_panel_settings,
+                ),
+              if (adminGroups > 0 && memberGroups > 0)
+                const SizedBox(width: 12),
+              if (memberGroups > 0)
+                _buildBadge('Tag $memberGroups csoportban', Icons.group),
             ],
           ),
         ],

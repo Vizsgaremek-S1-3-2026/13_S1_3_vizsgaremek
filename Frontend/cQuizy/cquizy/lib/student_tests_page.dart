@@ -292,22 +292,63 @@ class _StudentTestsPageState extends State<StudentTestsPage>
               ),
             ),
             const SizedBox(height: 8),
-            _buildTestList(
-              _events[DateTime(
-                        _selectedDay!.year,
-                        _selectedDay!.month,
-                        _selectedDay!.day,
-                      )]
-                      ?.map((e) => Map<String, dynamic>.from(e))
-                      .toList() ??
-                  [],
-              // We don't know strict status here without checking dates, but list handles it ok-ish
-              // Or we can determine generic status. For now reusing list builder.
-            ),
+            ..._buildCalendarDayCards(),
           ],
         ],
       ),
     );
+  }
+
+  List<Widget> _buildCalendarDayCards() {
+    final tests = _events[DateTime(
+              _selectedDay!.year,
+              _selectedDay!.month,
+              _selectedDay!.day,
+            )]
+                ?.map((e) => Map<String, dynamic>.from(e))
+                .toList() ??
+            [];
+
+    if (tests.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(Icons.assignment_outlined, size: 48, color: Colors.grey),
+                const SizedBox(height: 12),
+                Text(
+                  'Nincs teszt ezen a napon',
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    }
+
+    final now = DateTime.now();
+    return tests.map((quiz) {
+      final startDate =
+          DateTime.tryParse(quiz['date_start'] ?? '')?.toLocal();
+      final endDate =
+          DateTime.tryParse(quiz['date_end'] ?? '')?.toLocal();
+
+      bool isPast = false;
+      bool isActive = false;
+
+      if (startDate != null && endDate != null) {
+        if (endDate.isBefore(now)) {
+          isPast = true;
+        } else if (startDate.isBefore(now) && endDate.isAfter(now)) {
+          isActive = true;
+        }
+      }
+
+      return _buildTestCard(quiz, isPast, isActive);
+    }).toList();
   }
 
   void _showStartTestConfirmation(
@@ -773,8 +814,9 @@ class _StudentTestsPageState extends State<StudentTestsPage>
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         final title = (test['title'] ?? '').toString().toLowerCase();
+        final projectName = (test['project_name'] ?? '').toString().toLowerCase();
         final group = (test['group_name'] ?? '').toString().toLowerCase();
-        if (!title.contains(query) && !group.contains(query)) {
+        if (!title.contains(query) && !projectName.contains(query) && !group.contains(query)) {
           return false;
         }
       }
