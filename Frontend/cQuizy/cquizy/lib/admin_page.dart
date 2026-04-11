@@ -1223,8 +1223,6 @@ class _AdminPageState extends State<AdminPage> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () {
-            final themeProvider = ThemeInherited.of(context);
-            themeProvider.triggerHaptic();
             if (onTap != null) {
               onTap();
             } else {

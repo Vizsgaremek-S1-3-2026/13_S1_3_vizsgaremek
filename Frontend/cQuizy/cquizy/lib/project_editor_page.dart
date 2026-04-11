@@ -531,8 +531,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _undo() {
     if (_undoStack.isEmpty) return;
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       // Save current state to redo
@@ -555,8 +553,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _redo() {
     if (_redoStack.isEmpty) return;
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       // Save current to undo
@@ -652,8 +648,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
   void _addQuestionFromBank(Map<String, dynamic> bankItem) {
     if (!mounted) return;
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       final newBlock = Map<String, dynamic>.from(bankItem);
@@ -1115,8 +1109,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _applySettingsToAll() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       for (var block in _blocks) {
@@ -1323,8 +1315,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addQuestionBlock(String type) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1351,8 +1341,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addTrueFalseQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1371,8 +1359,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addMatchingQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1391,8 +1377,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addOrderingQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1412,8 +1396,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addGapFillQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1435,8 +1417,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addRangeQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1459,8 +1439,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addSentenceOrderingQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1480,8 +1458,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addTextBlock() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1494,8 +1470,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addDividerBlock() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -2846,8 +2820,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _removeQuestion(int index) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.removeAt(index);
       for (int i = 0; i < _blocks.length; i++) {
@@ -2858,8 +2830,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addAnswer(int blockIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       final answers = List<Map<String, dynamic>>.from(
         _blocks[blockIndex]['answers'] ?? [],
@@ -2876,8 +2846,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _removeAnswer(int blockIndex, int answerIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       final answers = List<Map<String, dynamic>>.from(
         _blocks[blockIndex]['answers'] ?? [],
@@ -2891,8 +2859,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _onReorderQuestions(int oldIndex, int newIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       if (newIndex > oldIndex) newIndex--;
       final item = _blocks.removeAt(oldIndex);
@@ -2905,8 +2871,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _onReorderAnswers(int blockIndex, int oldIndex, int newIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       if (newIndex > oldIndex) newIndex--;
       final answers = List<Map<String, dynamic>>.from(
@@ -3229,7 +3193,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                             elevation: 4,
                             child: InkWell(
                               onTap: () {
-                                ThemeInherited.of(context).triggerHaptic();
                                 setState(
                                   () => _isToolsMenuOpen = !_isToolsMenuOpen,
                                 );
@@ -5675,7 +5638,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
           elevation: 2,
           child: InkWell(
             onTap: () {
-              ThemeInherited.of(context).triggerHaptic();
               onTap();
             },
             borderRadius: BorderRadius.circular(12),

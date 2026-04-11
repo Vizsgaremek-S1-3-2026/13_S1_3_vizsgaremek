@@ -470,7 +470,6 @@ class _SettingsPageState extends State<SettingsPage>
         child: InkWell(
           onTap: () {
             final themeProvider = ThemeInherited.of(context);
-            themeProvider.triggerHaptic();
             if (onTap != null) {
               onTap();
             } else {
@@ -1211,79 +1210,6 @@ class _SettingsPageState extends State<SettingsPage>
             trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
           ),
         ),
-        const SizedBox(height: 32),
-        // Feedback Section
-        Padding(
-          padding: const EdgeInsets.only(left: 8.0),
-          child: Text(
-            'VISSZAJELZÉSEK',
-            style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildSettingsCard(
-          context,
-          title: 'Haptikus visszajelzés',
-          subtitle: 'Rezgés a gombok és műveletek használatakor',
-          trailing: Switch(
-            value: themeProvider.hapticEnabled,
-            activeColor: theme.primaryColor,
-            onChanged: (val) {
-              if (val) themeProvider.triggerHaptic();
-              themeProvider.setHapticEnabled(val);
-            },
-            thumbColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return Colors.white;
-              }
-              return theme.colorScheme.outline;
-            }),
-            trackColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return theme.primaryColor;
-              }
-              return theme.colorScheme.surfaceContainerHighest;
-            }),
-            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildSettingsCard(
-          context,
-          title: 'Hangjelzések',
-          subtitle: 'Hangeffektek',
-          trailing: Switch(
-            value: false,
-            activeColor: theme.primaryColor,
-            onChanged: (val) {},
-            thumbColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return Colors.white;
-              }
-              return theme.colorScheme.outline;
-            }),
-            trackColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return theme.primaryColor;
-              }
-              return theme.colorScheme.surfaceContainerHighest;
-            }),
-            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-          ),
-        ),
       ],
     );
   }
@@ -1539,7 +1465,6 @@ class _SettingsPageState extends State<SettingsPage>
             value: themeProvider.highContrast,
             activeColor: theme.primaryColor,
             onChanged: (val) {
-              themeProvider.triggerHaptic();
               themeProvider.setHighContrast(val);
             },
             thumbColor: WidgetStateProperty.resolveWith<Color>((
@@ -2826,7 +2751,6 @@ class _SettingsPageState extends State<SettingsPage>
       ),
       child: ListTile(
         onTap: () {
-          themeProvider.triggerHaptic();
           onTap?.call();
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

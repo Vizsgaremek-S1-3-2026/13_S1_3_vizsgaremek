@@ -557,7 +557,6 @@ class _HomePageState extends State<HomePage>
   }
 
   void _toggleSpeedDial() {
-    ThemeInherited.of(context).triggerHaptic();
     setState(() {
       _isSpeedDialOpen = !_isSpeedDialOpen;
     });
@@ -799,9 +798,6 @@ class _HomePageState extends State<HomePage>
                                   message: 'Projekt importálása fájlból',
                                   child: InkWell(
                                     onTap: () {
-                                      ThemeInherited.of(
-                                        context,
-                                      ).triggerHaptic();
                                       setState(() {
                                         _isSpeedDialOpen = false;
                                       });
@@ -855,9 +851,6 @@ class _HomePageState extends State<HomePage>
                                   child: InkWell(
                                     // Removed createProjectButtonKey
                                     onTap: () async {
-                                      ThemeInherited.of(
-                                        context,
-                                      ).triggerHaptic();
                                       setState(() {
                                         _isSpeedDialOpen = false;
                                       });
@@ -1088,7 +1081,6 @@ class _HomePageState extends State<HomePage>
                                 message: 'Csatlakozás csoporthoz',
                                 child: InkWell(
                                   onTap: () {
-                                    ThemeInherited.of(context).triggerHaptic();
                                     setState(() {
                                       _isSpeedDialOpen = false;
                                     });
@@ -1139,7 +1131,6 @@ class _HomePageState extends State<HomePage>
                                 child: InkWell(
                                   // Removed createGroupButtonKey
                                   onTap: () async {
-                                    ThemeInherited.of(context).triggerHaptic();
                                     setState(() {
                                       _isSpeedDialOpen = false;
                                     });
@@ -1230,7 +1221,6 @@ class _HomePageState extends State<HomePage>
         message: tooltip,
         child: InkWell(
           onTap: () {
-            ThemeInherited.of(context).triggerHaptic();
             onPressed();
           },
           customBorder: RoundedRectangleBorder(
