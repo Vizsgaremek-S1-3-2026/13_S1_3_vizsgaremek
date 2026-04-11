@@ -1,6 +1,7 @@
 // lib/group_page.dart
 
 import 'package:flutter/material.dart';
+import 'utils/avatar_manager.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:flutter/services.dart'; // A vágólaphoz szükséges
 import 'dart:async';
@@ -13,6 +14,8 @@ import 'providers/user_provider.dart';
 import 'admin_page.dart';
 import 'create_quiz_dialog.dart';
 import 'package:flutter/foundation.dart';
+import 'widgets/texture_painter.dart';
+import 'widgets/simple_web_view.dart';
 
 // --- MEOSZTOTT MODELL ---
 class Group {
@@ -63,6 +66,42 @@ class Group {
     this.grade4Limit = 70,
     this.grade5Limit = 85,
   });
+
+  factory Group.fromJson(Map<String, dynamic> json) {
+    final isAdmin = json['rank'] == 'ADMIN';
+    return Group(
+      id: json['id'] as int?,
+      title: json['name']?.toString() ?? 'Névtelen csoport',
+      ownerName: json['owner_name']?.toString() ?? (isAdmin ? 'Én' : 'Admin'),
+      subtitle: json['owner_name']?.toString() ?? (isAdmin ? '' : 'Admin'),
+      color: _parseColor(json['color']),
+      inviteCode: json['invite_code']?.toString(),
+      inviteCodeFormatted: json['invite_code_formatted']?.toString(),
+      rank: json['rank']?.toString() ?? 'MEMBER',
+      anticheat: json['anticheat'] == true,
+      kiosk: json['kiosk'] == true,
+      grade2Limit: json['grade2_limit'] as int? ?? 40,
+      grade3Limit: json['grade3_limit'] as int? ?? 55,
+      grade4Limit: json['grade4_limit'] as int? ?? 70,
+      grade5Limit: json['grade5_limit'] as int? ?? 85,
+    );
+  }
+
+  static Color _parseColor(dynamic colorData) {
+    Color groupColor = Colors.blue;
+    if (colorData != null) {
+      try {
+        String colorStr = colorData.toString();
+        if (colorStr.startsWith('#')) colorStr = colorStr.substring(1);
+        if (colorStr.length == 6) {
+          groupColor = Color(int.parse('FF$colorStr', radix: 16));
+        }
+      } catch (e) {
+        debugPrint('Color parse error: $e');
+      }
+    }
+    return groupColor;
+  }
 
   Group copyWith({
     String? title,
@@ -121,13 +160,13 @@ class Group {
       // Sötét módban: jobb alsó világosabb -> bal felső sötétebb
       endColor = color; // Jobb alsó
       startColor = hsl
-          .withLightness((hsl.lightness - 0.15).clamp(0.0, 1.0))
+          .withLightness((hsl.lightness - 0.30).clamp(0.01, 1.0))
           .toColor(); // Bal felső (sötétebb)
     } else {
       // Világos módban: jobb alsó sötétebb -> bal felső világosabb
       endColor = color; // Jobb alsó
       startColor = hsl
-          .withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0))
+          .withLightness((hsl.lightness + 0.30).clamp(0.0, 0.99))
           .toColor(); // Bal felső (világosabb)
     }
 
@@ -184,13 +223,6 @@ class _GroupPageState extends State<GroupPage> {
   // Protection level: 0 = Nyitott, 1 = Védett, 2 = Zárolt
   int _protectionLevel = 1; // Default to Védett
 
-  // Grading State
-  int _grade2 = 40;
-  int _grade3 = 55;
-  int _grade4 = 70;
-  int _grade5 = 85;
-
-  // HSL Color State
   double _hue = 0.0;
   double _saturation = 0.7;
   double _lightness = 0.6;
@@ -205,6 +237,7 @@ class _GroupPageState extends State<GroupPage> {
 
   List<Map<String, dynamic>> _quizzes = [];
   bool _isLoadingQuizzes = false;
+  Map<int, List<String>> _quizLinks = {};
 
   @override
   void initState() {
@@ -222,12 +255,6 @@ class _GroupPageState extends State<GroupPage> {
     _saturation = hsl.saturation;
     _lightness = hsl.lightness;
 
-    // Init grading state
-    _grade2 = widget.group.grade2Limit;
-    _grade3 = widget.group.grade3Limit;
-    _grade4 = widget.group.grade4Limit;
-    _grade5 = widget.group.grade5Limit;
-
     // Initialize invite code
     _currentInviteCode =
         widget.group.inviteCodeFormatted ?? widget.group.inviteCode;
@@ -241,12 +268,35 @@ class _GroupPageState extends State<GroupPage> {
     } else {
       _protectionLevel = 0; // Nyitott
     }
+    
+    if (widget.group.rank == 'ADMIN') {
+      _fetchProjectsToPreload();
+    }
   }
 
   @override
   void dispose() {
     _groupNameController.dispose();
     super.dispose();
+  }
+
+  List<Map<String, dynamic>>? _preFetchedProjects;
+  
+  Future<void> _fetchProjectsToPreload() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+    final apiService = ApiService();
+    try {
+      final projects = await apiService.getProjects(token);
+      if (mounted) {
+        setState(() {
+          _preFetchedProjects = projects;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error pre-fetching projects in GroupPage: $e');
+    }
   }
 
   Future<void> _fetchMembers() async {
@@ -343,207 +393,223 @@ class _GroupPageState extends State<GroupPage> {
           decoration: BoxDecoration(
             gradient: widget.group.getGradient(context),
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                isMobile ? 16 : 24,
-                isMobile ? 12 : 16,
-                isMobile ? 16 : 24,
-                isMobile ? 16 : 24,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: SubtleTexturePainter(
+                    color: widget.group.getTextColor(context),
+                    opacity: 0.05,
+                  ),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Csoport neve
-                  Text(
-                    widget.group.title,
-                    style: TextStyle(
-                      color: widget.group.getTextColor(context),
-                      fontSize: isMobile ? 22 : 32,
-                      fontWeight: FontWeight.bold,
-                      shadows: [
-                        Shadow(
-                          blurRadius: 2,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.black38
-                              : Colors.white38,
-                          offset: const Offset(1, 1),
-                        ),
-                      ],
-                    ),
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    isMobile ? 16 : 24,
+                    isMobile ? 12 : 16,
+                    isMobile ? 16 : 24,
+                    isMobile ? 16 : 24,
                   ),
-                  const SizedBox(height: 4),
-                  // Oktató neve
-                  Text(
-                    'Oktató: ${widget.group.instructorLastName} ${widget.group.instructorFirstName}',
-                    style: TextStyle(
-                      color: widget.group
-                          .getTextColor(context)
-                          .withValues(alpha: 0.9),
-                      fontSize: isMobile ? 13 : 18,
-                    ),
-                  ),
-                  SizedBox(height: isMobile ? 12 : 16),
-                  // Gombok
-                  if (isMobile)
-                    // Mobil nézet: ikonok felirattal
-                    Row(
-                      children: [
-                        if (widget.group.rank == 'ADMIN')
-                          _buildHeaderButton(
-                            context,
-                            icon: Icons.settings,
-                            label: 'Beállítások',
-                            onPressed: () {
-                              setState(() {
-                                _isCustomizePanelVisible =
-                                    !_isCustomizePanelVisible;
-                                if (_isCustomizePanelVisible) {
-                                  _isMembersPanelVisible = false;
-                                }
-                              });
-                              widget.onMemberPanelToggle?.call(
-                                _isCustomizePanelVisible ||
-                                    _isMembersPanelVisible,
-                              );
-                            },
-                          )
-                        else
-                          _buildHeaderButton(
-                            context,
-                            icon: Icons.exit_to_app,
-                            label: 'Kilépés',
-                            onPressed: () =>
-                                _showLeaveGroupConfirmation(context),
-                          ),
-                        const SizedBox(width: 8),
-                        _buildHeaderButton(
-                          context,
-                          icon: Icons.people_outline,
-                          label: 'Tagok',
-                          onPressed: () {
-                            setState(() {
-                              _isMembersPanelVisible = !_isMembersPanelVisible;
-                              if (_isMembersPanelVisible) {
-                                _isCustomizePanelVisible = false;
-                              }
-                            });
-                            widget.onMemberPanelToggle?.call(
-                              _isMembersPanelVisible ||
-                                  _isCustomizePanelVisible,
-                            );
-                          },
-                        ),
-                      ],
-                    )
-                  else
-                    // Desktop nézet: teljes gombok
-                    Row(
-                      children: [
-                        if (widget.group.rank == 'ADMIN') ...[
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _isCustomizePanelVisible =
-                                    !_isCustomizePanelVisible;
-                                if (_isCustomizePanelVisible) {
-                                  _isMembersPanelVisible = false;
-                                }
-                              });
-                              widget.onMemberPanelToggle?.call(
-                                _isCustomizePanelVisible ||
-                                    _isMembersPanelVisible,
-                              );
-                            },
-                            icon: Icon(
-                              Icons.settings,
-                              color: widget.group.getTextColor(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Csoport neve
+                      Text(
+                        widget.group.title,
+                        style: TextStyle(
+                          color: widget.group.getTextColor(context),
+                          fontSize: isMobile ? 22 : 32,
+                          fontWeight: FontWeight.bold,
+                          shadows: [
+                            Shadow(
+                              blurRadius: 2,
+                              color:
+                                  Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.black38
+                                      : Colors.white38,
+                              offset: const Offset(1, 1),
                             ),
-                            label: Text(
-                              'Beállítások',
-                              style: TextStyle(
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // Oktató neve (csak ha nem én vagyok az admin)
+                      if (widget.group.rank != 'ADMIN')
+                        Text(
+                          'Oktató: ${widget.group.instructorLastName} ${widget.group.instructorFirstName}',
+                          style: TextStyle(
+                            color: widget.group
+                                .getTextColor(context)
+                                .withValues(alpha: 0.9),
+                            fontSize: isMobile ? 13 : 18,
+                          ),
+                        ),
+                      SizedBox(height: isMobile ? 12 : 16),
+                      // Gombok
+                      if (isMobile)
+                        // Mobil nézet: ikonok felirattal
+                        Row(
+                          children: [
+                            if (widget.group.rank == 'ADMIN')
+                              _buildHeaderButton(
+                                context,
+                                icon: Icons.settings,
+                                label: 'Beállítások',
+                                onPressed: () {
+                                  setState(() {
+                                    _isCustomizePanelVisible =
+                                        !_isCustomizePanelVisible;
+                                    if (_isCustomizePanelVisible) {
+                                      _isMembersPanelVisible = false;
+                                    }
+                                  });
+                                  widget.onMemberPanelToggle?.call(
+                                    _isCustomizePanelVisible ||
+                                        _isMembersPanelVisible,
+                                  );
+                                },
+                              )
+                            else
+                              _buildHeaderButton(
+                                context,
+                                icon: Icons.exit_to_app,
+                                label: 'Kilépés',
+                                onPressed: () =>
+                                    _showLeaveGroupConfirmation(context),
+                              ),
+                            const SizedBox(width: 8),
+                            _buildHeaderButton(
+                              context,
+                              icon: Icons.people_outline,
+                              label: 'Tagok',
+                              onPressed: () {
+                                setState(() {
+                                  _isMembersPanelVisible =
+                                      !_isMembersPanelVisible;
+                                  if (_isMembersPanelVisible) {
+                                    _isCustomizePanelVisible = false;
+                                  }
+                                });
+                                widget.onMemberPanelToggle?.call(
+                                  _isMembersPanelVisible ||
+                                      _isCustomizePanelVisible,
+                                );
+                              },
+                            ),
+                          ],
+                        )
+                      else
+                        // Desktop nézet: teljes gombok
+                        Row(
+                          children: [
+                            if (widget.group.rank == 'ADMIN') ...[
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _isCustomizePanelVisible =
+                                        !_isCustomizePanelVisible;
+                                    if (_isCustomizePanelVisible) {
+                                      _isMembersPanelVisible = false;
+                                    }
+                                  });
+                                  widget.onMemberPanelToggle?.call(
+                                    _isCustomizePanelVisible ||
+                                        _isMembersPanelVisible,
+                                  );
+                                },
+                                icon: Icon(
+                                  Icons.settings,
+                                  color: widget.group.getTextColor(context),
+                                ),
+                                label: Text(
+                                  'Beállítások',
+                                  style: TextStyle(
+                                    color: widget.group.getTextColor(context),
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(
+                                    color: widget.group
+                                        .getTextColor(context)
+                                        .withValues(alpha: 0.7),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ] else ...[
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    _showLeaveGroupConfirmation(context),
+                                icon: Icon(
+                                  Icons.exit_to_app,
+                                  color: widget.group.getTextColor(context),
+                                ),
+                                label: Text(
+                                  'Csoport elhagyása',
+                                  style: TextStyle(
+                                    color: widget.group.getTextColor(context),
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(
+                                    color: widget.group
+                                        .getTextColor(context)
+                                        .withValues(alpha: 0.7),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _isMembersPanelVisible =
+                                      !_isMembersPanelVisible;
+                                  if (_isMembersPanelVisible) {
+                                    _isCustomizePanelVisible = false;
+                                  }
+                                });
+                                widget.onMemberPanelToggle?.call(
+                                  _isMembersPanelVisible ||
+                                      _isCustomizePanelVisible,
+                                );
+                              },
+                              icon: Icon(
+                                Icons.people_outline,
                                 color: widget.group.getTextColor(context),
                               ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(
-                                color: widget.group
-                                    .getTextColor(context)
-                                    .withValues(alpha: 0.7),
+                              label: Text(
+                                'Tagok',
+                                style: TextStyle(
+                                  color: widget.group.getTextColor(context),
+                                ),
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ] else ...[
-                          OutlinedButton.icon(
-                            onPressed: () =>
-                                _showLeaveGroupConfirmation(context),
-                            icon: Icon(
-                              Icons.exit_to_app,
-                              color: widget.group.getTextColor(context),
-                            ),
-                            label: Text(
-                              'Csoport elhagyása',
-                              style: TextStyle(
-                                color: widget.group.getTextColor(context),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: widget.group
+                                      .getTextColor(context)
+                                      .withValues(alpha: 0.7),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                               ),
                             ),
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(
-                                color: widget.group
-                                    .getTextColor(context)
-                                    .withValues(alpha: 0.7),
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _isMembersPanelVisible = !_isMembersPanelVisible;
-                              if (_isMembersPanelVisible) {
-                                _isCustomizePanelVisible = false;
-                              }
-                            });
-                            widget.onMemberPanelToggle?.call(
-                              _isMembersPanelVisible ||
-                                  _isCustomizePanelVisible,
-                            );
-                          },
-                          icon: Icon(
-                            Icons.people_outline,
-                            color: widget.group.getTextColor(context),
-                          ),
-                          label: Text(
-                            'Tagok',
-                            style: TextStyle(
-                              color: widget.group.getTextColor(context),
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: widget.group
-                                  .getTextColor(context)
-                                  .withValues(alpha: 0.7),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                ],
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         );
       },
@@ -604,24 +670,7 @@ class _GroupPageState extends State<GroupPage> {
 
     final isAdmin = widget.group.rank == 'ADMIN';
 
-    void openAdmin() {
-      if (isAdmin) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AdminPage(
-              quiz: quiz,
-              groupId: widget.group.id!,
-              groupName: widget.group.title,
-              grade2Limit: widget.group.grade2Limit,
-              grade3Limit: widget.group.grade3Limit,
-              grade4Limit: widget.group.grade4Limit,
-              grade5Limit: widget.group.grade5Limit,
-            ),
-          ),
-        );
-      }
-    }
+    void openAdmin() => _openAdmin(quiz);
 
     return GestureDetector(
       onLongPress: openAdmin,
@@ -734,6 +783,23 @@ class _GroupPageState extends State<GroupPage> {
             _SpectacularProgressBar(start: start, end: end),
 
             const SizedBox(height: 24),
+            if (quiz['id'] != null && _quizLinks[quiz['id']] != null && _quizLinks[quiz['id']]!.isNotEmpty) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showQuizLinks(quiz['id'], quiz['project_name'] ?? 'Teszt'),
+                  icon: const Icon(Icons.link, size: 18),
+                  label: Text('Links (${_quizLinks[quiz['id']]!.length})'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.primaryColor,
+                    side: BorderSide(color: theme.primaryColor.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -753,12 +819,25 @@ class _GroupPageState extends State<GroupPage> {
                   ),
                   elevation: 0,
                 ),
-                child: Text(
-                  isAdmin ? 'Admin felület megnyitása' : 'Teszt kitöltése',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Builder(
+                  builder: (context) {
+                    if (isAdmin) return const Text('Admin felület megnyitása', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
+                    
+                    final quizId = quiz['id'];
+                    final projectName = quiz['project_name'];
+                    final result = _userResults.firstWhere(
+                      (r) => r['quiz_id'] == quizId || r['quiz_project'] == projectName,
+                      orElse: () => <String, dynamic>{},
+                    );
+                    if (result.isNotEmpty) {
+                      final grade = result['grade_value']?.toString();
+                      return Text(
+                        grade != null ? 'Teszt indítása' : 'Teszt indítása',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      );
+                    }
+                    return const Text('Teszt kitöltése', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
+                  },
                 ),
               ),
             ),
@@ -861,35 +940,50 @@ class _GroupPageState extends State<GroupPage> {
           ),
           const SizedBox(height: 24),
         ],
-        if (past.isNotEmpty) ...[
+        if (past.isNotEmpty || _userResults.isNotEmpty) ...[
           const HeaderWithDivider(title: 'Múltbeli tesztek'),
           const SizedBox(height: 16),
-          ...past.map(
-            (q) => _buildTestCard(
-              quiz: q,
-              title: q['project_name'] ?? 'Névtelen',
-              detail: 'Lezárult: ${_formatDate(q['date_end'])}',
-              isGrade: false,
+          // 1. First, show all items from _userResults (Submissions)
+          ..._userResults.map((res) {
+            final grade = res['grade_value']?.toString();
+            final dateStr = res['date_submitted'] ?? res['submitted_at'];
+            final formattedDate = _formatDate(dateStr);
+
+            return _buildTestCard(
+              quiz: res, // Could be the submission result itself
+              title: res['quiz_project'] ?? res['quiz_title'] ?? 'Névtelen',
+              detail: grade ?? 'Leadva',
+              subDetail: formattedDate.isNotEmpty ? 'Lezárult: $formattedDate' : null,
+              isGrade: grade != null,
               onTap: () {
                 if (widget.group.rank == 'ADMIN') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AdminPage(
-                        quiz: q,
-                        groupId: widget.group.id!,
-                        groupName: widget.group.title,
-                        grade2Limit: widget.group.grade2Limit,
-                        grade3Limit: widget.group.grade3Limit,
-                        grade4Limit: widget.group.grade4Limit,
-                        grade5Limit: widget.group.grade5Limit,
-                      ),
-                    ),
+                  // Find the full quiz object for this result
+                  final quizId = res['quiz_id'];
+                  final quiz = _quizzes.firstWhere(
+                    (q) => q['id'] == quizId,
+                    orElse: () => <String, dynamic>{},
                   );
+                  if (quiz.isNotEmpty) {
+                    _openAdmin(quiz);
+                  }
+                } else {
+                  // For students, this could lead to their detailed result view
                 }
               },
-            ),
-          ),
+            );
+          }),
+          // 2. Then, show any past quizzes that are NOT in _userResults (Missed)
+          ...past.where((q) {
+            final quizId = q['id'];
+            final projectName = q['project_name'];
+            return !_userResults.any((r) => r['quiz_id'] == quizId || r['quiz_project'] == projectName);
+          }).map((q) => _buildTestCard(
+            quiz: q,
+            title: q['project_name'] ?? 'Névtelen',
+            detail: 'Lezárult: ${_formatDate(q['date_end'])}',
+            isGrade: false,
+            onTap: widget.group.rank == 'ADMIN' ? () => _openAdmin(q) : null,
+          )),
           const SizedBox(height: 24),
         ],
       ],
@@ -985,7 +1079,142 @@ class _GroupPageState extends State<GroupPage> {
         _quizzes = quizzes;
         if (!silent) _isLoadingQuizzes = false;
       });
+      // After fetching quizzes, check for active ones and fetch their links
+      _fetchLinksForActiveQuizzes(quizzes);
     }
+  }
+
+  Future<void> _fetchLinksForActiveQuizzes(List<Map<String, dynamic>> quizzes) async {
+    final now = DateTime.now();
+    final activeQuizIds = <int>[];
+    
+    for (var quiz in quizzes) {
+      final start = DateTime.tryParse(quiz['date_start'] ?? '');
+      final end = DateTime.tryParse(quiz['date_end'] ?? '');
+      final id = quiz['id'];
+      
+      if (id != null && start != null && end != null) {
+        if (!now.isBefore(start) && !now.isAfter(end)) {
+          activeQuizIds.add(id);
+        }
+      }
+    }
+
+    if (activeQuizIds.isEmpty) return;
+
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final apiService = ApiService();
+    
+    for (var quizId in activeQuizIds) {
+      if (_quizLinks.containsKey(quizId)) continue; // Already fetched
+
+      try {
+        final data = await apiService.startQuiz(token, quizId);
+        if (data != null && data['blocks'] != null) {
+          final List<dynamic> blocks = data['blocks'];
+          final links = <String>[];
+          for (var block in blocks) {
+            final url = block['link_url']?.toString();
+            if (url != null && url.isNotEmpty && !links.contains(url)) {
+              links.add(url);
+            }
+          }
+          if (mounted) {
+            setState(() {
+              _quizLinks[quizId] = links;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Error fetching links for quiz $quizId: $e');
+      }
+    }
+  }
+
+  void _showQuizLinks(int quizId, String quizTitle) {
+    final links = _quizLinks[quizId] ?? [];
+    if (links.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                   const Icon(Icons.link, color: Colors.orange),
+                   const SizedBox(width: 12),
+                   Expanded(
+                     child: Text(
+                       'Links: $quizTitle',
+                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                       overflow: TextOverflow.ellipsis,
+                     ),
+                   ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Az alábbi segédletek érhetőek el ehhez a teszthez:',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: links.length,
+                  itemBuilder: (context, index) {
+                    final url = links[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      elevation: 0,
+                      color: theme.dividerColor.withOpacity(0.05),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        leading: const Icon(Icons.open_in_new, size: 20),
+                        title: Text(
+                          url,
+                          style: const TextStyle(fontSize: 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _openWebUrl(url);
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openWebUrl(String url) {
+     Navigator.push(
+       context,
+       MaterialPageRoute(
+         builder: (context) => SimpleWebViewPage(url: url),
+       ),
+     );
   }
 
   String _formatDate(String? iso) {
@@ -998,11 +1227,31 @@ class _GroupPageState extends State<GroupPage> {
     }
   }
 
+  void _openAdmin(Map<String, dynamic> quiz) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AdminPage(
+          quiz: quiz,
+          groupId: widget.group.id!,
+          groupName: widget.group.title,
+          grade2Limit: widget.group.grade2Limit,
+          grade3Limit: widget.group.grade3Limit,
+          grade4Limit: widget.group.grade4Limit,
+          grade5Limit: widget.group.grade5Limit,
+        ),
+      ),
+    );
+  }
+
   void _showEditQuiz(Map<String, dynamic> quiz) async {
     await showDialog(
       context: context,
-      builder: (context) =>
-          CreateQuizDialog(groupId: widget.group.id!, existingQuiz: quiz),
+      builder: (context) => CreateQuizDialog(
+        groupId: widget.group.id!,
+        existingQuiz: quiz,
+        initialProjects: _preFetchedProjects,
+      ),
     );
     _fetchQuizzes();
   }
@@ -1298,7 +1547,7 @@ class _GroupPageState extends State<GroupPage> {
                                   );
                                   quizData['group_obj'] = widget.group;
 
-                                  Navigator.pushAndRemoveUntil(
+                                  Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => TestTakingPage(
@@ -1308,7 +1557,6 @@ class _GroupPageState extends State<GroupPage> {
                                         kiosk: widget.group.kiosk,
                                       ),
                                     ),
-                                    (route) => false,
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -2766,10 +3014,6 @@ class _GroupPageState extends State<GroupPage> {
       color: '#$colorHex',
       anticheat: _protectionLevel >= 1, // Védett or Zárolt
       kiosk: _protectionLevel >= 2, // Only Zárolt
-      grade2Limit: _grade2,
-      grade3Limit: _grade3,
-      grade4Limit: _grade4,
-      grade5Limit: _grade5,
     );
 
     if (!mounted) return;
@@ -2884,8 +3128,6 @@ class _GroupPageState extends State<GroupPage> {
                   _buildSectionLabel('BEÁLLÍTÁSOK', theme),
                   const SizedBox(height: 16),
                   _buildProtectionSlider(theme),
-                  const SizedBox(height: 24),
-                  _buildGradingSection(theme),
                   const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
@@ -3301,162 +3543,6 @@ class _GroupPageState extends State<GroupPage> {
     );
   }
 
-  Widget _buildGradingSection(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.grade_outlined, color: theme.primaryColor, size: 24),
-              const SizedBox(width: 12),
-              Text(
-                'Értékelési rendszer',
-                style: TextStyle(
-                  color: theme.textTheme.bodyLarge?.color,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Állítsd be a százalékos határokat az osztályzatokhoz (Minimum %).',
-            style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 2,
-            value: _grade2,
-            color: Colors.redAccent,
-            onChanged: (val) {
-              setState(() {
-                _grade2 = val.round().clamp(0, 100);
-                if (_grade2 >= _grade3) _grade3 = (_grade2 + 1).clamp(0, 100);
-                if (_grade3 >= _grade4) _grade4 = (_grade3 + 1).clamp(0, 100);
-                if (_grade4 >= _grade5) _grade5 = (_grade4 + 1).clamp(0, 100);
-              });
-            },
-          ),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 3,
-            value: _grade3,
-            color: Colors.orangeAccent,
-            onChanged: (val) {
-              setState(() {
-                _grade3 = val.round().clamp(0, 100);
-                if (_grade3 <= _grade2) _grade2 = (_grade3 - 1).clamp(0, 100);
-                if (_grade3 >= _grade4) _grade4 = (_grade3 + 1).clamp(0, 100);
-                if (_grade4 >= _grade5) _grade5 = (_grade4 + 1).clamp(0, 100);
-              });
-            },
-          ),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 4,
-            value: _grade4,
-            color: Colors.lightGreen,
-            onChanged: (val) {
-              setState(() {
-                _grade4 = val.round().clamp(0, 100);
-                if (_grade4 <= _grade3) _grade3 = (_grade4 - 1).clamp(0, 100);
-                if (_grade3 <= _grade2) _grade2 = (_grade3 - 1).clamp(0, 100);
-                if (_grade4 >= _grade5) _grade5 = (_grade4 + 1).clamp(0, 100);
-              });
-            },
-          ),
-          _buildSliderForGrade(
-            theme: theme,
-            grade: 5,
-            value: _grade5,
-            color: Colors.green,
-            onChanged: (val) {
-              setState(() {
-                _grade5 = val.round().clamp(0, 100);
-                if (_grade5 <= _grade4) _grade4 = (_grade5 - 1).clamp(0, 100);
-                if (_grade4 <= _grade3) _grade3 = (_grade4 - 1).clamp(0, 100);
-                if (_grade3 <= _grade2) _grade2 = (_grade3 - 1).clamp(0, 100);
-              });
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSliderForGrade({
-    required ThemeData theme,
-    required int grade,
-    required int value,
-    required Color color,
-    required ValueChanged<double> onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '$grade-es (Minimum)',
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            Text(
-              '$value%',
-              style: TextStyle(
-                color: theme.textTheme.bodyLarge?.color,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            activeTrackColor: color.withValues(alpha: 0.5),
-            inactiveTrackColor: theme.dividerColor,
-            thumbColor: color,
-            overlayColor: color.withValues(alpha: 0.2),
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-            trackHeight: 4,
-            valueIndicatorColor: color,
-          ),
-          child: Slider(
-            value: value.toDouble(),
-            min: 0,
-            max: 100,
-            divisions: 100,
-            label: '$value%',
-            onChanged: onChanged,
-          ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
 
   Widget _buildMembersPanel() {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -3598,18 +3684,22 @@ class _GroupPageState extends State<GroupPage> {
                   }
                 : null,
             leading: CircleAvatar(
-              backgroundColor: isAdmin
-                  ? const Color(0xFFed2f5b)
-                  : theme.primaryColor,
-              backgroundImage: pfpUrl != null && pfpUrl.isNotEmpty
-                  ? NetworkImage(pfpUrl)
-                  : null,
-              child: pfpUrl == null || pfpUrl.isEmpty
+              backgroundColor: Colors.white,
+              child: (AvatarManager.getAvatarUrl(pfpUrl) == null ||
+                      AvatarManager.getAvatarUrl(pfpUrl)!.isEmpty)
                   ? Icon(
                       isAdmin ? Icons.star : Icons.person,
                       color: Colors.white,
                     )
-                  : null,
+                  : ClipOval(
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Image.network(
+                          AvatarManager.getAvatarUrl(pfpUrl)!,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
             ),
             title: Text(
               displayName,

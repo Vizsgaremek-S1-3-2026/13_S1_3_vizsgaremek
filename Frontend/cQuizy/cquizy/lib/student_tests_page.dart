@@ -8,9 +8,12 @@ import 'package:table_calendar/table_calendar.dart';
 import 'utils/web_protections.dart';
 import 'test_taking_page.dart';
 import 'admin_page.dart';
+import 'models/stats_models.dart';
+import 'group_page.dart';
 
 class StudentTestsPage extends StatefulWidget {
-  const StudentTestsPage({super.key});
+  final Function(Group)? onGroupSelected;
+  const StudentTestsPage({super.key, this.onGroupSelected});
 
   @override
   State<StudentTestsPage> createState() => _StudentTestsPageState();
@@ -34,6 +37,9 @@ class _StudentTestsPageState extends State<StudentTestsPage>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _sortBy = 'date_asc'; // Default sort
+
+  // Store quiz results to show grades
+  final Map<int, SubmissionOutSchema> _quizResults = {};
 
   @override
   void initState() {
@@ -83,6 +89,18 @@ class _StudentTestsPageState extends State<StudentTestsPage>
           enhancedQuiz['group_id'] = groupId;
           enhancedQuiz['group_obj'] = group; // Store full group object
           allQuizzes.add(enhancedQuiz);
+        }
+
+        // Fetch user results for this group to show grades
+        try {
+          final results = await api.getStudentResults(token, groupId);
+          for (var res in results) {
+            if (res.quizId != null) {
+              _quizResults[res.quizId!] = res;
+            }
+          }
+        } catch (e) {
+          debugPrint('Error fetching results for group $groupId: $e');
         }
       }
 
@@ -274,22 +292,63 @@ class _StudentTestsPageState extends State<StudentTestsPage>
               ),
             ),
             const SizedBox(height: 8),
-            _buildTestList(
-              _events[DateTime(
-                        _selectedDay!.year,
-                        _selectedDay!.month,
-                        _selectedDay!.day,
-                      )]
-                      ?.map((e) => Map<String, dynamic>.from(e))
-                      .toList() ??
-                  [],
-              // We don't know strict status here without checking dates, but list handles it ok-ish
-              // Or we can determine generic status. For now reusing list builder.
-            ),
+            ..._buildCalendarDayCards(),
           ],
         ],
       ),
     );
+  }
+
+  List<Widget> _buildCalendarDayCards() {
+    final tests = _events[DateTime(
+              _selectedDay!.year,
+              _selectedDay!.month,
+              _selectedDay!.day,
+            )]
+                ?.map((e) => Map<String, dynamic>.from(e))
+                .toList() ??
+            [];
+
+    if (tests.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(Icons.assignment_outlined, size: 48, color: Colors.grey),
+                const SizedBox(height: 12),
+                Text(
+                  'Nincs teszt ezen a napon',
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    }
+
+    final now = DateTime.now();
+    return tests.map((quiz) {
+      final startDate =
+          DateTime.tryParse(quiz['date_start'] ?? '')?.toLocal();
+      final endDate =
+          DateTime.tryParse(quiz['date_end'] ?? '')?.toLocal();
+
+      bool isPast = false;
+      bool isActive = false;
+
+      if (startDate != null && endDate != null) {
+        if (endDate.isBefore(now)) {
+          isPast = true;
+        } else if (startDate.isBefore(now) && endDate.isAfter(now)) {
+          isActive = true;
+        }
+      }
+
+      return _buildTestCard(quiz, isPast, isActive);
+    }).toList();
   }
 
   void _showStartTestConfirmation(
@@ -451,7 +510,7 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                                       ? (group['kiosk'] ?? false)
                                       : false;
 
-                                  Navigator.pushAndRemoveUntil(
+                                  Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => TestTakingPage(
@@ -461,7 +520,6 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                                         kiosk: kiosk,
                                       ),
                                     ),
-                                    (route) => false,
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -756,8 +814,9 @@ class _StudentTestsPageState extends State<StudentTestsPage>
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         final title = (test['title'] ?? '').toString().toLowerCase();
+        final projectName = (test['project_name'] ?? '').toString().toLowerCase();
         final group = (test['group_name'] ?? '').toString().toLowerCase();
-        if (!title.contains(query) && !group.contains(query)) {
+        if (!title.contains(query) && !projectName.contains(query) && !group.contains(query)) {
           return false;
         }
       }
@@ -898,10 +957,50 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                 children: [
                   Icon(Icons.group, size: 16, color: theme.hintColor),
                   const SizedBox(width: 4),
-                  Text(
-                    quiz['group_name'] ?? 'Ismeretlen Csoport',
-                    style: TextStyle(color: theme.hintColor),
+                  Expanded(
+                    child: Text(
+                      quiz['group_name'] ?? 'Ismeretlen Csoport',
+                      style: TextStyle(color: theme.hintColor),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  // Group shortcut button
+                  if (quiz['group_obj'] != null)
+                    SizedBox(
+                      height: 28,
+                      child: TextButton(
+                        onPressed: () {
+                          if (widget.onGroupSelected != null) {
+                            widget.onGroupSelected!(
+                              Group.fromJson(quiz['group_obj']),
+                            );
+                          }
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Csoport',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.primaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 14,
+                              color: theme.primaryColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -916,23 +1015,38 @@ class _StudentTestsPageState extends State<StudentTestsPage>
                 ],
               ),
               if (isPast) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Divider(),
-                ),
-                // Placeholder for score - requires fetching results
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      'Eredmény: --', // TODO: Fetch grade/score
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: theme.primaryColor,
+                // Only show result if there is a grade
+                if (_quizResults.containsKey(quiz['id']) &&
+                    (_quizResults[quiz['id']]?.gradeValue?.isNotEmpty ??
+                        false)) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Divider(),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Eredmény: ${_quizResults[quiz['id']]!.gradeValue} (${_quizResults[quiz['id']]!.percentage.toStringAsFixed(0)}%)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: theme.primaryColor,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
                 // Teacher Feedback Placeholder
                 if (quiz['feedback'] != null) ...[
                   const SizedBox(height: 8),

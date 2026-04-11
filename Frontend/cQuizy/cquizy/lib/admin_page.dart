@@ -63,6 +63,12 @@ class _AdminPageState extends State<AdminPage> {
   bool _exportIncludeWarnings = false;
   String _exportWarningLayout = 'grouped'; // 'grouped' or 'abc'
 
+  // Grade Limits State (mutable for auto-grading)
+  late int _grade2Min;
+  late int _grade3Min;
+  late int _grade4Min;
+  late int _grade5Min;
+
   // --- New Export Options (20+) ---
   // Layout
   String _optOrientation = 'portrait'; // 'portrait', 'landscape'
@@ -99,6 +105,13 @@ class _AdminPageState extends State<AdminPage> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize grade limits from widget props
+    _grade2Min = widget.grade2Limit;
+    _grade3Min = widget.grade3Limit;
+    _grade4Min = widget.grade4Limit;
+    _grade5Min = widget.grade5Limit;
+
     _fetchProjectDetails();
     _fetchData();
     // Poll every 10 seconds
@@ -154,7 +167,37 @@ class _AdminPageState extends State<AdminPage> {
 
       // Process submissions
       for (var sub in submissions) {
-        final userId = sub['user_id'].toString(); // Assuming user_id exists
+        // Find matching user from targetStudents by name if user_id is missing
+        String? inferredUserId = sub['user_id']?.toString();
+
+        if (inferredUserId == null || inferredUserId == 'null') {
+          final studentName =
+              sub['student_name'] ??
+              sub['user_name'] ??
+              sub['name'] ??
+              sub['nickname'] ??
+              '';
+          for (var s in targetStudents) {
+            final u = s['user'];
+            if (u == null) continue;
+            final fullName = '${u['last_name'] ?? ''} ${u['first_name'] ?? ''}'
+                .trim();
+            final username = u['username'] ?? '';
+            final nickname = u['nickname'] ?? '';
+
+            if (studentName.isNotEmpty &&
+                (studentName == fullName ||
+                    studentName == username ||
+                    studentName == nickname)) {
+              inferredUserId = u['id']?.toString();
+              break;
+            }
+          }
+        }
+
+        final userId =
+            inferredUserId ??
+            'unmatched_${sub['id']}'; // Prevent "null" key collapsing
         // Normalize status
         String rawStatus = (sub['status'] ?? '').toString().toLowerCase();
         String status = 'writing';
@@ -178,9 +221,12 @@ class _AdminPageState extends State<AdminPage> {
               'Ismeretlen tanuló',
           'status': status,
           'wasBlocked': false, // Default
-          'score': sub['score'] ?? 0,
+          'score':
+              num.tryParse(sub['percentage']?.toString() ?? '') ??
+              num.tryParse(sub['score']?.toString() ?? '') ??
+              0,
           'maxScore': 100, // Should come from quiz details
-          'grade': sub['grade'],
+          'grade': sub['grade_value']?.toString() ?? sub['grade']?.toString(),
           'profilePicture':
               sub['user_avatar'] ?? 'https://i.pravatar.cc/150?u=$userId',
           'submission_id': sub['id'],
@@ -311,6 +357,79 @@ class _AdminPageState extends State<AdminPage> {
         }
       }
 
+      // === RECONCILE: Merge submission_id from unmatched submissions into real students ===
+      // The submissions API returns student_name but NOT user_id,
+      // so submissions end up as 'unmatched_*' entries while real students have numeric IDs.
+      // We need to match them by name and copy over submission_id + score + grade.
+      final unmatchedKeys = studentMap.keys
+          .where((k) => k.startsWith('unmatched_'))
+          .toList();
+      for (var unmatchedKey in unmatchedKeys) {
+        final unmatchedEntry = studentMap[unmatchedKey]!;
+        final unmatchedName =
+            (unmatchedEntry['name'] as String?)?.toLowerCase() ?? '';
+
+        // Find a real student entry (numeric key) with the same name
+        for (var realKey in studentMap.keys.toList()) {
+          if (realKey.startsWith('unmatched_')) continue;
+          final realEntry = studentMap[realKey]!;
+          final realName = (realEntry['name'] as String?)?.toLowerCase() ?? '';
+
+          if (unmatchedName.isNotEmpty && unmatchedName == realName) {
+            // Merge the submission data into the real student entry
+            realEntry['submission_id'] = unmatchedEntry['submission_id'];
+            if (unmatchedEntry['score'] != null &&
+                unmatchedEntry['score'] != 0) {
+              realEntry['score'] = unmatchedEntry['score'];
+            }
+            if (unmatchedEntry['grade'] != null) {
+              realEntry['grade'] = unmatchedEntry['grade'];
+            }
+            // Mark as submitted if they have a submission
+            if (realEntry['status'] == 'idle' ||
+                realEntry['status'] == 'writing') {
+              realEntry['status'] = 'submitted';
+            }
+            // Remove the unmatched entry
+            studentMap.remove(unmatchedKey);
+            debugPrint(
+              'Reconciled submission_id ${unmatchedEntry['submission_id']} -> student "$realName" (key: $realKey)',
+            );
+            break;
+          }
+        }
+      }
+
+      // Also: for submitted students who STILL don't have submission_id,
+      // try to find their submission from the original submissions list by name
+      for (var entry in studentMap.values) {
+        if (entry['submission_id'] == null &&
+            (entry['status'] == 'submitted' || entry['status'] == 'closed')) {
+          final entryName = (entry['name'] as String?)?.toLowerCase() ?? '';
+          for (var sub in submissions) {
+            final subName =
+                (sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? '')
+                    .toString()
+                    .toLowerCase();
+            if (entryName.isNotEmpty && entryName == subName) {
+              entry['score'] =
+                  num.tryParse(sub['percentage']?.toString() ?? '') ?? 0;
+              entry['grade'] = (sub['grade_value'] ?? sub['grade'])?.toString();
+              debugPrint(
+                'Direct match: submission_id ${sub['id']} -> student "$entryName"',
+              );
+              break;
+            }
+          }
+        }
+      }
+      debugPrint('=== Final studentMap keys: ${studentMap.keys.toList()}');
+      for (var e in studentMap.entries) {
+        debugPrint(
+          '  ${e.key}: name=${e.value['name']}, status=${e.value['status']}, submission_id=${e.value['submission_id']}',
+        );
+      }
+
       // Fetch Quiz Stats
       final stats = await api.getQuizStats(token, quizId);
 
@@ -330,9 +449,19 @@ class _AdminPageState extends State<AdminPage> {
       // Local count is safer if we want consistency with the student list we just built.
       // But let's check stats['submission_count'] if available.
 
+      // Calculate gradedCount: students who have a grade already
+      int gradedCount = 0;
+      for (var s in studentMap.values) {
+        if (s['grade'] != null) {
+          gradedCount++;
+        }
+      }
+
       int missingCount = 0;
       if (totalStudentsCount > 0) {
-        missingCount = totalStudentsCount - submittedCount;
+        // "Hiányzik" -> didn't submit OR wasn't graded yet.
+        // We defined it as (Total - GradedCount)
+        missingCount = totalStudentsCount - gradedCount;
         if (missingCount < 0) missingCount = 0;
       }
 
@@ -340,6 +469,7 @@ class _AdminPageState extends State<AdminPage> {
       final Map<String, dynamic> finalStats = stats ?? {};
       finalStats['missing_count'] = missingCount;
       finalStats['total_students'] = totalStudentsCount;
+      finalStats['graded_count'] = gradedCount;
       finalStats['submission_count'] =
           finalStats['submission_count'] ?? submittedCount;
 
@@ -361,6 +491,15 @@ class _AdminPageState extends State<AdminPage> {
       debugPrint('Error loading admin data: $e');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _manualRefresh() async {
+    setState(() {
+      _isLoading = true;
+    });
+    // Kényszerített lokális állapotok törlése a szerver tényleges adatainak lekéréséhez
+    _closedStudentIds.clear();
+    await _fetchData();
   }
 
   Future<void> _unlockStudent(Map<String, dynamic> member) async {
@@ -400,7 +539,9 @@ class _AdminPageState extends State<AdminPage> {
     final quizId = widget.quiz['id'];
     if (quizId == null) return;
 
-    final blockedMembers = _members.where((m) => m['status'] == 'blocked').toList();
+    final blockedMembers = _members
+        .where((m) => m['status'] == 'blocked')
+        .toList();
     if (blockedMembers.isEmpty) return;
 
     final api = ApiService();
@@ -492,7 +633,9 @@ class _AdminPageState extends State<AdminPage> {
       final body = result['body'] ?? '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Nem sikerült lezárni a diák tesztjét. ($statusCode: $body)'),
+          content: Text(
+            'Nem sikerült lezárni a diák tesztjét. ($statusCode: $body)',
+          ),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 5),
         ),
@@ -512,9 +655,9 @@ class _AdminPageState extends State<AdminPage> {
     final quizId = widget.quiz['id'];
     if (quizId == null) return;
 
-    final activeMembers = _members.where((m) =>
-      m['status'] == 'writing' || m['status'] == 'blocked'
-    ).toList();
+    final activeMembers = _members
+        .where((m) => m['status'] == 'writing' || m['status'] == 'blocked')
+        .toList();
     if (activeMembers.isEmpty) return;
 
     final api = ApiService();
@@ -550,19 +693,304 @@ class _AdminPageState extends State<AdminPage> {
     // No immediate _fetchData() - optimistic UI stays, polling syncs later.
   }
 
+  Future<void> _autoGradeAll(List<Map<String, dynamic>> submittedGroup) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final confirm = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (context, a1, a2) => Container(),
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: a1, curve: Curves.easeOutBack),
+          child: FadeTransition(
+            opacity: a1,
+            child: StatefulBuilder(
+              builder: (context, setDialogState) {
+                return AlertDialog(
+                  scrollable: true,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.auto_awesome, color: Colors.blue),
+                      SizedBox(width: 12),
+                      Text('Automatikus osztályozás'),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Állítsd be a ponthatárokat a tömeges osztályozás előtt (${submittedGroup.length} dolgozat).',
+                        style: TextStyle(fontSize: 13, color: theme.hintColor),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 2,
+                        value: _grade2Min,
+                        color: Colors.red,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade2Min = val.toInt().clamp(0, 100);
+                            if (_grade2Min >= _grade3Min) {
+                              _grade3Min = (_grade2Min + 1).clamp(0, 100);
+                            }
+                            if (_grade3Min >= _grade4Min) {
+                              _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {}); // Sync with component state
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 3,
+                        value: _grade3Min,
+                        color: Colors.amber,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade3Min = val.toInt().clamp(0, 100);
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min >= _grade4Min) {
+                              _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 4,
+                        value: _grade4Min,
+                        color: Colors.lightGreen,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade4Min = val.toInt().clamp(0, 100);
+                            if (_grade4Min <= _grade3Min) {
+                              _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 5,
+                        value: _grade5Min,
+                        color: Colors.green,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade5Min = val.toInt().clamp(0, 100);
+                            if (_grade5Min <= _grade4Min) {
+                              _grade4Min = (_grade5Min - 1).clamp(0, 100);
+                            }
+                            if (_grade4Min <= _grade3Min) {
+                              _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Mégse'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('Osztályozás indítása'),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: LoadingAnimationWidget.newtonCradle(
+          color: Theme.of(context).primaryColor,
+          size: 80,
+        ),
+      ),
+    );
+
+    final api = ApiService();
+    int successCount = 0;
+    int failCount = 0;
+
+    for (var member in submittedGroup) {
+      final submissionId = member['submission_id'];
+      if (submissionId == null) continue;
+
+      final score = (member['score'] as num?)?.toDouble() ?? 0.0;
+      int grade = 1;
+      if (score >= _grade5Min) {
+        grade = 5;
+      } else if (score >= _grade4Min) {
+        grade = 4;
+      } else if (score >= _grade3Min) {
+        grade = 3;
+      } else if (score >= _grade2Min) {
+        grade = 2;
+      }
+
+      final success = await api.updateSubmissionGrade(
+        token,
+        submissionId,
+        grade,
+      );
+      if (success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    }
+
+    if (mounted) Navigator.pop(context); // Close loading
+    _fetchData();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sikeresen osztályozva: $successCount fő.${failCount > 0 ? " Hiba: $failCount." : ""}',
+          ),
+          backgroundColor: failCount > 0 ? Colors.orange : Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildSliderForGrade({
+    required ThemeData theme,
+    required int grade,
+    required int value,
+    required Color color,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$grade-es (Minimum)',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            Text(
+              '$value%',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: color.withOpacity(0.5),
+            inactiveTrackColor: theme.dividerColor,
+            thumbColor: color,
+            overlayColor: color.withOpacity(0.2),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            trackHeight: 4,
+            valueIndicatorColor: color,
+          ),
+          child: Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            label: '$value%',
+            onChanged: onChanged,
+          ),
+        ),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
   Future<void> _fetchProjectDetails() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
     if (token == null) return;
 
     final api = ApiService();
-    // Assuming widget.quiz['id'] or widget.quiz['project_id'] exists
-    final projectId = widget.quiz['id'] ?? widget.quiz['project_id'];
+    debugPrint('=== _fetchProjectDetails ===');
+    debugPrint('Quiz keys: ${widget.quiz.keys.toList()}');
+    debugPrint('Quiz data: ${widget.quiz}');
+
+    final projectId = widget.quiz['project_id'] ?? widget.quiz['blueprint_id'];
     if (projectId == null) {
+      debugPrint(
+        'No project_id found in quiz object, skipping project details fetch.',
+      );
       setState(() => _isLoadingDetails = false);
       return;
     }
 
+    debugPrint('Fetching project details for projectId: $projectId');
     try {
       final data = await api.getProjectDetails(token, projectId);
       if (mounted) {
@@ -795,8 +1223,6 @@ class _AdminPageState extends State<AdminPage> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () {
-            final themeProvider = ThemeInherited.of(context);
-            themeProvider.triggerHaptic();
             if (onTap != null) {
               onTap();
             } else {
@@ -988,24 +1414,15 @@ class _AdminPageState extends State<AdminPage> {
 
     // Calculate Stats
     final gradeCounts = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-    double totalGradeSum = 0;
 
     for (var m in gradedStudents) {
-      final g = m['grade'] as int;
+      final g = int.tryParse(m['grade'].toString()) ?? 0;
       gradeCounts[g] = (gradeCounts[g] ?? 0) + 1;
-      totalGradeSum += g;
     }
 
-    final double average = gradedStudents.isNotEmpty
-        ? totalGradeSum / gradedStudents.length
-        : 0.0;
-
-    // Use accurate missing count from group members calculation
-    final int totalStudents =
-        (_quizStats?['total_students'] as int?) ?? _members.length;
-    final int missingCount =
-        (_quizStats?['missing_count'] as int?) ??
-        (totalStudents - gradedStudents.length);
+    // Use actual count of processed members for consistency
+    final int totalStudents = _members.length;
+    final int ratedCount = gradedStudents.length;
 
     // Determine max frequency for distribution bar
     int maxFreq = 0;
@@ -1052,35 +1469,26 @@ class _AdminPageState extends State<AdminPage> {
                           theme.textTheme.bodyLarge?.color ?? Colors.black,
                         ),
                         const SizedBox(width: 24),
-                        // Display API Average Score if available, else local grade average
-                        if (_quizStats != null &&
-                            _quizStats!['average_score'] != null)
-                          _buildSummaryItem(
-                            context,
-                            'Átlag Pont',
-                            '${(_quizStats!['average_score'] as num).toStringAsFixed(1)} p',
-                            Colors.blue,
-                          )
-                        else
-                          _buildSummaryItem(
-                            context,
-                            'Átlag Jegy',
-                            average.toStringAsFixed(2),
-                            Colors.blue,
-                          ),
+                        // Calculate Average % from members
+                        _buildSummaryItem(
+                          context,
+                          'Átlag %',
+                          '${_calculateAveragePercentage()}%',
+                          Colors.blue,
+                        ),
                         const SizedBox(width: 24),
-                        // Display API Submission Count if available, else local
+                        // Display API Submission Count
                         _buildSummaryItem(
                           context,
                           'Beadta',
-                          '${_quizStats?['submission_count'] ?? gradedStudents.length} db',
+                          '${_quizStats?['submission_count'] ?? 0} db',
                           Colors.green,
                         ),
                         const SizedBox(width: 24),
                         _buildSummaryItem(
                           context,
                           'Hiányzik',
-                          '${_quizStats?['missing_count'] ?? missingCount} fő',
+                          '${totalStudents - ratedCount} fő',
                           Colors.red,
                         ),
                       ],
@@ -1140,12 +1548,12 @@ class _AdminPageState extends State<AdminPage> {
             itemCount: _members.length,
             itemBuilder: (context, index) {
               final member = _members[index];
-              final grade = member['grade'] as int?;
-              final score = member['score'] as int? ?? 0;
-              final maxScore = member['maxScore'] as int? ?? 100;
-              final percent = maxScore > 0
-                  ? (score / maxScore * 100).round()
-                  : 0;
+              // API returns: percentage (number), grade_value (string)
+              final grade = member['grade']
+                  ?.toString(); // mapped from grade_value
+              final percentage =
+                  (member['score'] as num?)?.toInt() ??
+                  0; // mapped from percentage
               final profilePic = member['profilePicture'] as String?;
 
               return Card(
@@ -1174,17 +1582,14 @@ class _AdminPageState extends State<AdminPage> {
                     member['name'],
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: grade != null
-                      ? Text('$score / $maxScore pont ($percent%)')
-                      : const Text(
-                          'Nincs osztályozva',
-                          style: TextStyle(color: Colors.grey),
-                        ),
+                  subtitle: Text(
+                    grade != null ? '$percentage%' : 'Nincs osztályozva',
+                    style: TextStyle(color: grade != null ? null : Colors.grey),
+                  ),
                   trailing: grade != null
                       ? Text(
-                          grade.toString(),
-                          style: TextStyle(
-                            color: _getGradeColor(grade),
+                          grade,
+                          style: const TextStyle(
                             fontWeight: FontWeight.w900,
                             fontSize: 24,
                           ),
@@ -1464,33 +1869,7 @@ class _AdminPageState extends State<AdminPage> {
                 width: 250,
                 height: 56, // Match Menu button height
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    final studentToPass = submittedGroup.isNotEmpty
-                        ? submittedGroup.first
-                        : {
-                            'id': 999,
-                            'name': 'Teszt Elek',
-                            'grade': 5,
-                            'cheatingStatus': 'none',
-                          };
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => GradingView(
-                          student: studentToPass,
-                          quizTitle: widget.quiz['project_name'] ?? 'Teszt',
-                          grade2Limit: widget.grade2Limit,
-                          grade3Limit: widget.grade3Limit,
-                          grade4Limit: widget.grade4Limit,
-                          grade5Limit: widget.grade5Limit,
-                          quizBlocks: _fullQuizData != null
-                              ? _fullQuizData!['blocks'] as List<dynamic>?
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
+                  onPressed: () => _autoGradeAll(submittedGroup),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.primaryColor,
                     foregroundColor: Colors.white,
@@ -1500,9 +1879,9 @@ class _AdminPageState extends State<AdminPage> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  icon: const Icon(Icons.edit_note, size: 24),
+                  icon: const Icon(Icons.auto_awesome, size: 24),
                   label: const Text(
-                    'Dolgozatok javítása',
+                    'Automatikus osztályozás',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -1518,6 +1897,10 @@ class _AdminPageState extends State<AdminPage> {
     Map<String, dynamic> member, {
     bool showStatus = true,
   }) {
+    final theme = Theme.of(context);
+    final isSubmitted =
+        member['status'] == 'submitted' || member['status'] == 'closed';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
@@ -1539,24 +1922,104 @@ class _AdminPageState extends State<AdminPage> {
                 style: TextStyle(color: _getStatusColor(member['status'])),
               )
             : null,
-        trailing:
-            (member['status'] == 'submitted' || member['status'] == 'closed')
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: isSubmitted
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    '${member['score']} / ${member['maxScore']} pont',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (member['submission_id'] == null)
+                        const Tooltip(
+                          message: "Nincs beadott feladat",
+                          child: Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                        )
+                      else if (member['score'] != null)
+                        Text(
+                          '${member['score']}%',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: theme.textTheme.bodyMedium?.color
+                                ?.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      if (member['grade'] != null && member['grade'] == "1")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF44336),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "2")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFF5722),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "3")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFFC107),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "4")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF8BC34A),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "5")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF4CAF50),
+                          ),
+                        ),
+                    ],
                   ),
-                  const Text(
-                    'Jegy: 4',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.chevron_right, color: Colors.grey.shade400),
                 ],
               )
             : null,
-        onTap: null, // Disabled click as requested
+        onTap: isSubmitted
+            ? () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GradingView(
+                      student: member,
+                      quizTitle: widget.quiz['project_name'] ?? 'Teszt',
+                      grade2Limit: widget.grade2Limit,
+                      grade3Limit: widget.grade3Limit,
+                      grade4Limit: widget.grade4Limit,
+                      grade5Limit: widget.grade5Limit,
+                      quizBlocks: _fullQuizData != null
+                          ? _fullQuizData!['blocks'] as List<dynamic>?
+                          : null,
+                    ),
+                  ),
+                );
+              }
+            : null,
       ),
     );
   }
@@ -1947,51 +2410,7 @@ class _AdminPageState extends State<AdminPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Actions wrapped (Unblock/Close all)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _unlockAllBlocked(),
-                            icon: const Icon(Icons.lock_open, size: 22),
-                            label: const Text(
-                              "Feloldás", // Shortened label for mobile
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber.withValues(
-                                alpha: 0.1,
-                              ),
-                              foregroundColor: Colors.amber.shade800,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _closeAll(),
-                            icon: const Icon(
-                              Icons.stop_circle_outlined,
-                              size: 22,
-                            ),
-                            label: const Text(
-                              "Lezárás", // Shortened label for mobile
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red.withValues(
-                                alpha: 0.1,
-                              ),
-                              foregroundColor: Colors.red,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+
                   ],
                 );
               }
@@ -2011,35 +2430,10 @@ class _AdminPageState extends State<AdminPage> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Unblock All
-        ElevatedButton.icon(
-          onPressed: () => _unlockAllBlocked(),
-          icon: const Icon(Icons.lock_open, size: 22),
-          label: const Text("Összes feloldása", style: TextStyle(fontSize: 16)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.amber.withValues(alpha: 0.1),
-            foregroundColor: Colors.amber.shade800,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Close All
-        ElevatedButton.icon(
-          onPressed: () => _closeAll(),
-          icon: const Icon(Icons.stop_circle_outlined, size: 22),
-          label: const Text("Összes lezárása", style: TextStyle(fontSize: 16)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.withValues(alpha: 0.1),
-            foregroundColor: Colors.red,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          ),
-        ),
-        const SizedBox(width: 12),
+
         // Refresh
         IconButton(
-          onPressed: _fetchData,
+          onPressed: _manualRefresh,
           icon: const Icon(Icons.refresh, size: 28),
           tooltip: "Frissítés",
         ),
@@ -2386,13 +2780,38 @@ class _AdminPageState extends State<AdminPage> {
         ),
       );
     } else if (isFinished) {
-      return Text(
-        '${member['score']} / ${member['maxScore']} pont',
-        style: TextStyle(
-          color: theme.textTheme.bodyLarge?.color,
-          fontSize: 15,
-          fontWeight: FontWeight.bold,
-        ),
+      // Show percentage and grade_value from API directly
+      final percentage = (member['score'] as num?)?.toInt() ?? 0;
+      final grade = member['grade']?.toString();
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (member['submission_id'] == null)
+            const Tooltip(
+              message: "Nincs beadott feladat",
+              child: Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+            )
+          else
+            Text(
+              '$percentage%',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          if (grade != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              grade,
+              style: TextStyle(
+                color: theme.primaryColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ],
       );
     }
 
@@ -2458,16 +2877,19 @@ class _AdminPageState extends State<AdminPage> {
 
     double average = 0;
     if (rated > 0) {
-      final sum = _members
-          .where((m) => m['grade'] != null)
-          .fold(0, (prev, m) => prev + (m['grade'] as int));
+      double sum = 0;
+      for (var m in _members) {
+        if (m['grade'] != null) {
+          sum += double.tryParse(m['grade'].toString()) ?? 0;
+        }
+      }
       average = sum / rated;
     }
 
     Map<int, int> distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
     for (var m in _members) {
       if (m['grade'] != null) {
-        int g = m['grade'];
+        int g = int.tryParse(m['grade'].toString()) ?? 0;
         distribution[g] = (distribution[g] ?? 0) + 1;
       }
     }
@@ -2488,57 +2910,10 @@ class _AdminPageState extends State<AdminPage> {
   void _updatePreviewCallback() {
     final quizTitle =
         widget.quiz['project_name'] ?? widget.quiz['name'] ?? 'Teszt neve';
-    final groupName = widget.groupName ?? '10.A osztály';
-    final mockStudents = [
-      {
-        'name': 'Kovács Anna',
-        'grade': 5,
-        'score': 92,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Nagy Péter',
-        'grade': 4,
-        'score': 78,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Szabó Eszter',
-        'grade': 3,
-        'score': 61,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Tóth Bence',
-        'grade': 2,
-        'score': 45,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Horváth Réka',
-        'grade': 5,
-        'score': 95,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-      {
-        'name': 'Kiss Dávid',
-        'grade': 1,
-        'score': 28,
-        'maxScore': 100,
-        'status': 'submitted',
-      },
-    ];
-    final mockStats = {
-      'average': 66.5,
-      'submitted': 6,
-      'total': 8,
-      'distribution': {1: 1, 2: 1, 3: 1, 4: 1, 5: 2},
-    };
+    final groupName = widget.groupName ?? '';
+    // Use real live data – same as _exportPdf
+    final liveStudents = _members;
+    final liveStats = _calculateStats();
     final options = {
       'orientation': _optOrientation,
       'compactMode': _optCompactMode,
@@ -2565,13 +2940,13 @@ class _AdminPageState extends State<AdminPage> {
     _cachedPdfBuilder = (format) => PdfService.generateGradesReport(
       quizTitle: quizTitle,
       groupName: groupName,
-      students: mockStudents,
-      stats: mockStats,
-      quizData: null,
+      students: liveStudents,
+      stats: liveStats,
+      quizData: _fullQuizData,
       includeStats: _exportIncludeStats,
       includeStudentList: _exportIncludeStudentList,
-      includeStudentDetails: false,
-      includeQuestions: false,
+      includeStudentDetails: _exportIncludeStudentDetails,
+      includeQuestions: _exportIncludeQuestions,
       includeWarnings: _exportIncludeWarnings,
       warningLayout: _exportWarningLayout,
       options: options,
@@ -2820,17 +3195,6 @@ class _AdminPageState extends State<AdminPage> {
                   (value) => setState(() => _exportIncludeStudentList = value),
                 ),
                 _buildExportToggle(
-                  'Tanulói részletek (válaszok, idő)',
-                  _exportIncludeStudentDetails,
-                  (value) =>
-                      setState(() => _exportIncludeStudentDetails = value),
-                ),
-                _buildExportToggle(
-                  'Kérdések és helyes válaszok',
-                  _exportIncludeQuestions,
-                  (value) => setState(() => _exportIncludeQuestions = value),
-                ),
-                _buildExportToggle(
                   'Tanulói Státuszok (pl. Leadta, Letiltva)',
                   _exportIncludeWarnings,
                   (value) => setState(() => _exportIncludeWarnings = value),
@@ -2908,16 +3272,6 @@ class _AdminPageState extends State<AdminPage> {
                     'Névtelenítés',
                     _optAnonymize,
                     (v) => setState(() => _optAnonymize = v),
-                  ),
-                  _buildSettingsGroupToggle(
-                    'Pass/Fail kiemelés',
-                    _optPassFail,
-                    (v) => setState(() => _optPassFail = v),
-                  ),
-                  _buildSettingsGroupToggle(
-                    'Tanuló ID mutatása',
-                    _optShowStudentId,
-                    (v) => setState(() => _optShowStudentId = v),
                   ),
                 ]),
                 const Divider(),
@@ -3078,5 +3432,17 @@ class _AdminPageState extends State<AdminPage> {
       default:
         return Icons.construction;
     }
+  }
+
+  String _calculateAveragePercentage() {
+    final gradedOnes = _members
+        .where((m) => m['score'] != null && (m['score'] as num) > 0)
+        .toList();
+    if (gradedOnes.isEmpty) return '0.0';
+    double sum = 0;
+    for (var m in gradedOnes) {
+      sum += (m['score'] as num).toDouble();
+    }
+    return (sum / gradedOnes.length).toStringAsFixed(1);
   }
 }

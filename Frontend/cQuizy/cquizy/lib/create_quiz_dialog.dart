@@ -7,8 +7,14 @@ import 'providers/user_provider.dart';
 class CreateQuizDialog extends StatefulWidget {
   final int groupId;
   final Map<String, dynamic>? existingQuiz;
+  final List<Map<String, dynamic>>? initialProjects;
 
-  const CreateQuizDialog({super.key, required this.groupId, this.existingQuiz});
+  const CreateQuizDialog({
+    super.key,
+    required this.groupId,
+    this.existingQuiz,
+    this.initialProjects,
+  });
 
   @override
   State<CreateQuizDialog> createState() => _CreateQuizDialogState();
@@ -39,7 +45,16 @@ class _CreateQuizDialogState extends State<CreateQuizDialog> {
       final now = DateTime.now();
       _startDate = now;
       _endDate = now.add(const Duration(minutes: 45)); // Default 45 mins
-      _fetchProjects();
+      
+      if (widget.initialProjects != null && widget.initialProjects!.isNotEmpty) {
+        _projects = widget.initialProjects!;
+        // Pre-select if only one
+        if (_projects.length == 1) {
+          _selectedProject = _projects.first;
+        }
+      } else {
+        _fetchProjects();
+      }
     }
   }
 

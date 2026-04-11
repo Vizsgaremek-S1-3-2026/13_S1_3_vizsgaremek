@@ -159,7 +159,10 @@ Future<Uint8List> _generatePdfRoot(Map<String, dynamic> params) async {
   PdfColor getGradeColor(dynamic grade) {
     if (grade == null) return PdfColors.black;
     if (grayscale) return PdfColors.black;
-    switch (grade) {
+    // Handle String, int, double grades
+    final g = num.tryParse(grade.toString())?.toInt();
+    if (g == null) return PdfColors.black;
+    switch (g) {
       case 1:
         return PdfColors.red;
       case 2:
@@ -499,12 +502,10 @@ Future<Uint8List> _generatePdfRoot(Map<String, dynamic> params) async {
                   final index = entry.key;
                   final s = entry.value;
                   final grade = s['grade']?.toString() ?? '-';
-                  final score = s['score']?.toString() ?? '0';
-                  final max = s['maxScore']?.toString() ?? '100';
-                  final pct = _calculatePercent(s['score'], s['maxScore']);
-                  final pctVal = int.tryParse(pct) ?? 0;
-
-                  final isPass = pctVal >= 40; // Example pass threshold
+                  // API returns percentage directly in 'score' field
+                  final pctNum = (s['score'] as num?)?.toInt() ?? 0;
+                  final pct = '$pctNum';
+                  final isPass = pctNum >= 40;
                   final rowColor = stripedRows && index % 2 == 1
                       ? (grayscale ? PdfColors.grey100 : PdfColors.grey100)
                       : PdfColors.white;
@@ -525,7 +526,7 @@ Future<Uint8List> _generatePdfRoot(Map<String, dynamic> params) async {
                           ),
                         ),
                       ),
-                      _buildTableCell(showPoints ? '$score / $max' : '- / -'),
+                      _buildTableCell(showPoints ? '$pct%' : '-'),
                       pw.Container(
                         alignment: pw.Alignment.centerLeft,
                         padding: const pw.EdgeInsets.all(5),

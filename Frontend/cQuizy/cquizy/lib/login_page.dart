@@ -7,7 +7,9 @@ import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:wave/config.dart';
 import 'package:wave/wave.dart';
+import 'package:zxcvbn/zxcvbn.dart';
 import 'api_service.dart'; // Importáljuk az API szolgáltatást
+import 'utils/avatar_manager.dart';
 
 // Jelszóerősség-szintek definiálása
 enum PasswordStrength { none, weak, medium, strong }
@@ -26,92 +28,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   // --- KÖNNYEN SZERKESZTHETŐ KONFIGURÁCIÓ ---
 
   // 1. Avatarok és kategóriák listája
-  static const List<Map<String, dynamic>> _avatars = [
-    {
-      'id': 'avatar_1',
-      'category': 'Figurák',
-      'icon': Icons.person_outline,
-      'color': Colors.blueGrey,
-    },
-    {
-      'id': 'avatar_2',
-      'category': 'Figurák',
-      'icon': Icons.face,
-      'color': Colors.cyan,
-    },
-    {
-      'id': 'avatar_3',
-      'category': 'Figurák',
-      'icon': Icons.smart_toy_outlined,
-      'color': Colors.orangeAccent,
-    },
-    {
-      'id': 'avatar_4',
-      'category': 'Figurák',
-      'icon': Icons.child_care,
-      'color': Colors.pinkAccent,
-    },
-    {
-      'id': 'avatar_5',
-      'category': 'Figurák',
-      'icon': Icons.catching_pokemon,
-      'color': Colors.red,
-    },
-    {
-      'id': 'avatar_6',
-      'category': 'Figurák',
-      'icon': Icons.eco_outlined,
-      'color': Colors.lightGreen,
-    },
-    {
-      'id': 'avatar_7',
-      'category': 'Figurák',
-      'icon': Icons.park_outlined,
-      'color': Colors.green,
-    },
-    {
-      'id': 'avatar_11',
-      'category': 'Szimbólumok',
-      'icon': Icons.science_outlined,
-      'color': Colors.purple,
-    },
-    {
-      'id': 'avatar_12',
-      'category': 'Szimbólumok',
-      'icon': Icons.sports_esports_outlined,
-      'color': Colors.teal,
-    },
-    {
-      'id': 'avatar_13',
-      'category': 'Szimbólumok',
-      'icon': Icons.rocket_launch_outlined,
-      'color': Colors.deepOrange,
-    },
-    {
-      'id': 'avatar_14',
-      'category': 'Szimbólumok',
-      'icon': Icons.music_note_outlined,
-      'color': Colors.lightBlue,
-    },
-    {
-      'id': 'avatar_15',
-      'category': 'Szimbólumok',
-      'icon': Icons.brush_outlined,
-      'color': Colors.deepPurpleAccent,
-    },
-    {
-      'id': 'avatar_16',
-      'category': 'Szimbólumok',
-      'icon': Icons.shield_outlined,
-      'color': Colors.blue,
-    },
-    {
-      'id': 'avatar_17',
-      'category': 'Szimbólumok',
-      'icon': Icons.favorite_border,
-      'color': Colors.redAccent,
-    },
-  ];
+  // 1. Avatarok lekérése a központosított managerből
+  final List<Map<String, dynamic>> _avatars = AvatarManager.getAvatars();
 
   // 2. Színpaletta
   // static const _primaryColor = Color(0xFFED2F5B); // Use Theme.of(context).primaryColor instead
@@ -144,6 +62,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   String _currentPassword = '';
 
   final Map<String, dynamic> _registrationData = {};
+  Set<String> _weakPasswords = {};
 
   @override
   void initState() {
@@ -156,6 +75,23 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       length: categories.length,
       vsync: this,
     );
+    _loadWeakPasswords();
+  }
+
+  Future<void> _loadWeakPasswords() async {
+    try {
+      final String fileContent =
+          await rootBundle.loadString('assets/weak_passwords.txt');
+      setState(() {
+        _weakPasswords = fileContent
+            .split('\n')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet();
+      });
+    } catch (e) {
+      debugPrint("Hiba a gyenge jelszavak beolvasásakor: $e");
+    }
   }
 
   @override
@@ -253,20 +189,36 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       setState(() => _passwordStrength = PasswordStrength.none);
       return;
     }
-    double score = 0;
-    if (password.length >= 8) score++;
-    if (RegExp(r'[a-z]').hasMatch(password)) score++;
-    if (RegExp(r'[A-Z]').hasMatch(password)) score++;
-    if (RegExp(r'[0-9]').hasMatch(password)) score++;
-    if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) score++;
+    
+    // Alap feltételek ellenőrzése
+    final hasMinLength = password.length >= 8;
+    final hasUppercase = RegExp(r'[A-Z]').hasMatch(password);
+    final hasLowercase = RegExp(r'[a-z]').hasMatch(password);
+    final hasDigit = RegExp(r'[0-9]').hasMatch(password);
+    final hasSpecial = RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
+    final meetsAllRequirements = hasMinLength && hasUppercase && hasLowercase && hasDigit && hasSpecial;
+
+    // Zxcvbn algoritmus futtatása a személyes adatok kizárásával
+    final zxcvbn = Zxcvbn();
+    final userInputs = [
+      _registrationData['username']?.toString() ?? '',
+      _registrationData['firstName']?.toString() ?? '',
+      _registrationData['lastName']?.toString() ?? '',
+      _registrationData['email']?.toString() ?? '',
+      _registrationData['nickname']?.toString() ?? '',
+    ].where((e) => e.isNotEmpty).toList();
+    
+    final result = zxcvbn.evaluate(password, userInputs: userInputs);
 
     setState(() {
-      if (score < 3)
+      final score = result.score ?? 0;
+      if (score < 2) {
         _passwordStrength = PasswordStrength.weak;
-      else if (score < 5)
+      } else if (score < 3 || !meetsAllRequirements) {
         _passwordStrength = PasswordStrength.medium;
-      else
+      } else {
         _passwordStrength = PasswordStrength.strong;
+      }
       _updateRegisterButtonState();
     });
   }
@@ -276,9 +228,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     if (formState == null) return;
     final password = formState.fields['password']?.value;
     final confirmPassword = formState.fields['confirm_password']?.value;
-    final isStrongEnough =
-        _passwordStrength == PasswordStrength.medium ||
-        _passwordStrength == PasswordStrength.strong;
+    final isStrongEnough = _passwordStrength == PasswordStrength.strong;
     final passwordsMatch =
         password != null && password.isNotEmpty && password == confirmPassword;
     setState(() {
@@ -288,6 +238,17 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   void _nextPage() async {
     if (_isPageTransitioning) return;
+    
+    if (_currentPage == 3 && _weakPasswords.contains(_currentPassword)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('!gyenge jelszó! Ezt a jelszót túl sokan használják.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     final currentForm = _formKeys[_currentPage].currentState;
     if (currentForm != null && currentForm.saveAndValidate()) {
       _registrationData.addAll(currentForm.value);
@@ -302,6 +263,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   void _previousPage() async {
     if (_isPageTransitioning) return;
+    
+    // Mentsük az eddig beírt form adatokat, hogy visszalépéskor ne vesszenek el
+    final currentForm = _formKeys[_currentPage].currentState;
+    if (currentForm != null) {
+      currentForm.save();
+      _registrationData.addAll(currentForm.value);
+    }
+    
     setState(() => _isPageTransitioning = true);
     await _pageController.previousPage(
       duration: const Duration(milliseconds: 400),
@@ -695,6 +664,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             padding: fieldPadding,
             child: FormBuilderTextField(
               name: 'password',
+              initialValue: _registrationData['password']?.toString(),
               style: TextStyle(color: textColor),
               obscureText: _isPasswordObscured,
               onChanged: _checkPasswordStrength,
@@ -723,6 +693,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             padding: fieldPadding,
             child: FormBuilderTextField(
               name: 'confirm_password',
+              initialValue: _registrationData['confirm_password']?.toString(),
               style: TextStyle(color: textColor),
               obscureText: _isConfirmPasswordObscured,
               onChanged: (_) => _updateRegisterButtonState(),
@@ -796,7 +767,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               child: PageView(
                 controller: _pageController,
                 physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (index) => setState(() => _currentPage = index),
+                onPageChanged: (index) {
+                  setState(() => _currentPage = index);
+                  if (index == 3) {
+                    _checkPasswordStrength(_registrationData['password']?.toString());
+                  }
+                },
                 children: pages,
               ),
             ),
@@ -930,11 +906,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                         ),
                         child: CircleAvatar(
                           radius: 50,
-                          backgroundColor: avatar['color'],
-                          child: Icon(
-                            avatar['icon'],
-                            color: Colors.white,
-                            size: 45,
+                          backgroundColor: Colors.white,
+                          child: ClipOval(
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Image.network(
+                                avatar['url'],
+                                fit: BoxFit.contain,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1081,6 +1061,7 @@ class PasswordRequirements extends StatelessWidget {
     final hasUppercase = RegExp(r'[A-Z]').hasMatch(password);
     final hasLowercase = RegExp(r'[a-z]').hasMatch(password);
     final hasDigit = RegExp(r'[0-9]').hasMatch(password);
+    final hasSpecial = RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
 
     return Column(
       children: [
@@ -1088,6 +1069,7 @@ class PasswordRequirements extends StatelessWidget {
         _buildRequirement(hasUppercase, 'Nagybetű'),
         _buildRequirement(hasLowercase, 'Kisbetű'),
         _buildRequirement(hasDigit, 'Szám'),
+        _buildRequirement(hasSpecial, 'Speciális karakter'),
       ],
     );
   }

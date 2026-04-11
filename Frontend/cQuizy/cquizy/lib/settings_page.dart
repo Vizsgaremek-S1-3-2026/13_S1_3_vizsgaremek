@@ -1,5 +1,6 @@
-﻿import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:flutter/material.dart';
+import 'utils/avatar_manager.dart';
 
 import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
@@ -22,92 +23,8 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage>
     with SingleTickerProviderStateMixin {
   // Avatarok listája (megegyezik a login_page.dart-tal)
-  static const List<Map<String, dynamic>> _avatars = [
-    {
-      'id': 'avatar_1',
-      'category': 'Figurák',
-      'icon': Icons.person_outline,
-      'color': Colors.blueGrey,
-    },
-    {
-      'id': 'avatar_2',
-      'category': 'Figurák',
-      'icon': Icons.face,
-      'color': Colors.cyan,
-    },
-    {
-      'id': 'avatar_3',
-      'category': 'Figurák',
-      'icon': Icons.smart_toy_outlined,
-      'color': Colors.orangeAccent,
-    },
-    {
-      'id': 'avatar_4',
-      'category': 'Figurák',
-      'icon': Icons.child_care,
-      'color': Colors.pinkAccent,
-    },
-    {
-      'id': 'avatar_5',
-      'category': 'Figurák',
-      'icon': Icons.catching_pokemon,
-      'color': Colors.red,
-    },
-    {
-      'id': 'avatar_6',
-      'category': 'Figurák',
-      'icon': Icons.eco_outlined,
-      'color': Colors.lightGreen,
-    },
-    {
-      'id': 'avatar_7',
-      'category': 'Figurák',
-      'icon': Icons.park_outlined,
-      'color': Colors.green,
-    },
-    {
-      'id': 'avatar_11',
-      'category': 'Szimbólumok',
-      'icon': Icons.science_outlined,
-      'color': Colors.purple,
-    },
-    {
-      'id': 'avatar_12',
-      'category': 'Szimbólumok',
-      'icon': Icons.sports_esports_outlined,
-      'color': Colors.teal,
-    },
-    {
-      'id': 'avatar_13',
-      'category': 'Szimbólumok',
-      'icon': Icons.rocket_launch_outlined,
-      'color': Colors.deepOrange,
-    },
-    {
-      'id': 'avatar_14',
-      'category': 'Szimbólumok',
-      'icon': Icons.music_note_outlined,
-      'color': Colors.lightBlue,
-    },
-    {
-      'id': 'avatar_15',
-      'category': 'Szimbólumok',
-      'icon': Icons.brush_outlined,
-      'color': Colors.deepPurpleAccent,
-    },
-    {
-      'id': 'avatar_16',
-      'category': 'Szimbólumok',
-      'icon': Icons.shield_outlined,
-      'color': Colors.blue,
-    },
-    {
-      'id': 'avatar_17',
-      'category': 'Szimbólumok',
-      'icon': Icons.favorite_border,
-      'color': Colors.redAccent,
-    },
-  ];
+  // 1. Avatarok lekérése a központosított managerből
+  final List<Map<String, dynamic>> _avatars = AvatarManager.getAvatars();
 
   String _selectedSection = 'Profil';
   late AnimationController _waveController;
@@ -553,7 +470,6 @@ class _SettingsPageState extends State<SettingsPage>
         child: InkWell(
           onTap: () {
             final themeProvider = ThemeInherited.of(context);
-            themeProvider.triggerHaptic();
             if (onTap != null) {
               onTap();
             } else {
@@ -849,12 +765,18 @@ class _SettingsPageState extends State<SettingsPage>
                       backgroundColor: Colors.white,
                       child: CircleAvatar(
                         radius: 50,
-                        backgroundColor: theme.primaryColor,
-                        backgroundImage: user.pfpUrl != null
-                            ? NetworkImage(user.pfpUrl!)
-                            : null,
-                        child: user.pfpUrl == null
-                            ? Text(
+                        backgroundColor: Colors.white,
+                        child: user.effectivePfpUrl != null
+                            ? ClipOval(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Image.network(
+                                    user.effectivePfpUrl!,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              )
+                            : Text(
                                 user.firstName.isNotEmpty
                                     ? user.firstName[0].toUpperCase()
                                     : '?',
@@ -863,8 +785,7 @@ class _SettingsPageState extends State<SettingsPage>
                                   fontSize: 40,
                                   fontWeight: FontWeight.bold,
                                 ),
-                              )
-                            : null,
+                              ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1289,79 +1210,6 @@ class _SettingsPageState extends State<SettingsPage>
             trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
           ),
         ),
-        const SizedBox(height: 32),
-        // Feedback Section
-        Padding(
-          padding: const EdgeInsets.only(left: 8.0),
-          child: Text(
-            'VISSZAJELZÉSEK',
-            style: TextStyle(
-              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildSettingsCard(
-          context,
-          title: 'Haptikus visszajelzés',
-          subtitle: 'Rezgés a gombok és műveletek használatakor',
-          trailing: Switch(
-            value: themeProvider.hapticEnabled,
-            activeColor: theme.primaryColor,
-            onChanged: (val) {
-              if (val) themeProvider.triggerHaptic();
-              themeProvider.setHapticEnabled(val);
-            },
-            thumbColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return Colors.white;
-              }
-              return theme.colorScheme.outline;
-            }),
-            trackColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return theme.primaryColor;
-              }
-              return theme.colorScheme.surfaceContainerHighest;
-            }),
-            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildSettingsCard(
-          context,
-          title: 'Hangjelzések',
-          subtitle: 'Hangeffektek',
-          trailing: Switch(
-            value: false,
-            activeColor: theme.primaryColor,
-            onChanged: (val) {},
-            thumbColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return Colors.white;
-              }
-              return theme.colorScheme.outline;
-            }),
-            trackColor: WidgetStateProperty.resolveWith<Color>((
-              Set<WidgetState> states,
-            ) {
-              if (states.contains(WidgetState.selected)) {
-                return theme.primaryColor;
-              }
-              return theme.colorScheme.surfaceContainerHighest;
-            }),
-            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-          ),
-        ),
       ],
     );
   }
@@ -1617,7 +1465,6 @@ class _SettingsPageState extends State<SettingsPage>
             value: themeProvider.highContrast,
             activeColor: theme.primaryColor,
             onChanged: (val) {
-              themeProvider.triggerHaptic();
               themeProvider.setHighContrast(val);
             },
             thumbColor: WidgetStateProperty.resolveWith<Color>((
@@ -1916,13 +1763,21 @@ class _SettingsPageState extends State<SettingsPage>
                                         });
                                       }
                                     },
-                                    icon: Icon(
-                                      _avatars.firstWhere(
-                                            (a) => a['id'] == selectedAvatarId,
-                                            orElse: () => _avatars.first,
-                                          )['icon']
-                                          as IconData,
-                                      color: theme.primaryColor,
+                                    icon: CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Colors.white,
+                                      child: ClipOval(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(2.0),
+                                          child: Image.network(
+                                            AvatarManager.getAvatarUrl(
+                                                  selectedAvatarId,
+                                                ) ??
+                                                '',
+                                            fit: BoxFit.contain,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                     label: const Text('Profilkép módosítása'),
                                     style: OutlinedButton.styleFrom(
@@ -2178,11 +2033,15 @@ class _SettingsPageState extends State<SettingsPage>
                                     : [],
                               ),
                               child: CircleAvatar(
-                                backgroundColor: avatar['color'] as Color,
-                                child: Icon(
-                                  avatar['icon'] as IconData,
-                                  color: Colors.white,
-                                  size: 28,
+                                backgroundColor: Colors.white,
+                                child: ClipOval(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(1.0),
+                                    child: Image.network(
+                                      avatar['url'] as String,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -2892,7 +2751,6 @@ class _SettingsPageState extends State<SettingsPage>
       ),
       child: ListTile(
         onTap: () {
-          themeProvider.triggerHaptic();
           onTap?.call();
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

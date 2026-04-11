@@ -154,12 +154,10 @@ class ThemeProvider with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   double _fontScale = 1.0;
   bool _highContrast = false;
-  bool _hapticEnabled = true;
 
   static const String _themeModeKey = 'theme_mode';
   static const String _fontScaleKey = 'font_scale';
   static const String _highContrastKey = 'high_contrast';
-  static const String _hapticEnabledKey = 'haptic_enabled';
 
   ThemeProvider() {
     _loadSettings();
@@ -168,7 +166,6 @@ class ThemeProvider with ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   double get fontScale => _fontScale;
   bool get highContrast => _highContrast;
-  bool get hapticEnabled => _hapticEnabled;
 
   bool get isDarkMode => _themeMode == ThemeMode.dark;
   bool get isSystemMode => _themeMode == ThemeMode.system;
@@ -185,7 +182,6 @@ class ThemeProvider with ChangeNotifier {
 
       _fontScale = prefs.getDouble(_fontScaleKey) ?? 1.0;
       _highContrast = prefs.getBool(_highContrastKey) ?? false;
-      _hapticEnabled = prefs.getBool(_hapticEnabledKey) ?? true;
 
       notifyListeners();
     } catch (e) {
@@ -234,16 +230,6 @@ class ThemeProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void setHapticEnabled(bool value) {
-    _hapticEnabled = value;
-    _saveSetting(_hapticEnabledKey, value);
-    notifyListeners();
-  }
-
-  void triggerHaptic() {
-    if (!_hapticEnabled) return;
-    HapticFeedback.mediumImpact();
-  }
 
   // Get the appropriate theme based on high contrast setting
   ThemeData getLightTheme() {
