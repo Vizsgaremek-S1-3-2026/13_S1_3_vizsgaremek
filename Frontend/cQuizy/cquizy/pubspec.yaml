@@ -38,6 +38,7 @@ dependencies:
   fl_chart: ^1.2.0
   shimmer: ^3.0.0
   cached_network_image: ^3.4.1
+  zxcvbn: ^1.0.0
 
 
 dev_dependencies:
@@ -51,6 +52,7 @@ flutter:
 
   assets:
     - assets/logo/logo_2.png
+    - assets/weak_passwords.txt
 
 flutter_launcher_icons:
   android: "launcher_icon"

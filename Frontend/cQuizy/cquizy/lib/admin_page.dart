@@ -493,6 +493,15 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
+  Future<void> _manualRefresh() async {
+    setState(() {
+      _isLoading = true;
+    });
+    // Kényszerített lokális állapotok törlése a szerver tényleges adatainak lekéréséhez
+    _closedStudentIds.clear();
+    await _fetchData();
+  }
+
   Future<void> _unlockStudent(Map<String, dynamic> member) async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
@@ -1923,7 +1932,12 @@ class _AdminPageState extends State<AdminPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      if (member['score'] != null)
+                      if (member['submission_id'] == null)
+                        const Tooltip(
+                          message: "Nincs beadott feladat",
+                          child: Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                        )
+                      else if (member['score'] != null)
                         Text(
                           '${member['score']}%',
                           style: TextStyle(
@@ -2398,51 +2412,7 @@ class _AdminPageState extends State<AdminPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Actions wrapped (Unblock/Close all)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _unlockAllBlocked(),
-                            icon: const Icon(Icons.lock_open, size: 22),
-                            label: const Text(
-                              "Feloldás", // Shortened label for mobile
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber.withValues(
-                                alpha: 0.1,
-                              ),
-                              foregroundColor: Colors.amber.shade800,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _closeAll(),
-                            icon: const Icon(
-                              Icons.stop_circle_outlined,
-                              size: 22,
-                            ),
-                            label: const Text(
-                              "Lezárás", // Shortened label for mobile
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red.withValues(
-                                alpha: 0.1,
-                              ),
-                              foregroundColor: Colors.red,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+
                   ],
                 );
               }
@@ -2462,35 +2432,10 @@ class _AdminPageState extends State<AdminPage> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Unblock All
-        ElevatedButton.icon(
-          onPressed: () => _unlockAllBlocked(),
-          icon: const Icon(Icons.lock_open, size: 22),
-          label: const Text("Összes feloldása", style: TextStyle(fontSize: 16)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.amber.withValues(alpha: 0.1),
-            foregroundColor: Colors.amber.shade800,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Close All
-        ElevatedButton.icon(
-          onPressed: () => _closeAll(),
-          icon: const Icon(Icons.stop_circle_outlined, size: 22),
-          label: const Text("Összes lezárása", style: TextStyle(fontSize: 16)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.withValues(alpha: 0.1),
-            foregroundColor: Colors.red,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          ),
-        ),
-        const SizedBox(width: 12),
+
         // Refresh
         IconButton(
-          onPressed: _fetchData,
+          onPressed: _manualRefresh,
           icon: const Icon(Icons.refresh, size: 28),
           tooltip: "Frissítés",
         ),
@@ -2843,14 +2788,20 @@ class _AdminPageState extends State<AdminPage> {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            '$percentage%',
-            style: TextStyle(
-              color: theme.textTheme.bodyLarge?.color,
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
+          if (member['submission_id'] == null)
+            const Tooltip(
+              message: "Nincs beadott feladat",
+              child: Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+            )
+          else
+            Text(
+              '$percentage%',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
           if (grade != null) ...[
             const SizedBox(width: 8),
             Text(
