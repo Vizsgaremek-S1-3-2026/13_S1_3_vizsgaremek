@@ -358,15 +358,25 @@ class _StudentTestsPageState extends State<StudentTestsPage>
     // Check for web restrictions first
     if (kIsWeb) {
       final group = quiz['group_obj'];
+      // Level 2 is "Zárolt" which corresponds to kiosk: true
       final isLocked = group != null && (group['kiosk'] ?? false);
 
       if (isLocked) {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Nem támogatott platform'),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 12),
+                Text('Alkalmazás szükséges'),
+              ],
+            ),
             content: const Text(
-              'Ez a teszt "Zárolt" módban van, ezért csak az asztali vagy mobil alkalmazásból indítható el.',
+              'Ez a teszt "Zárolt" biztonsági szinten van, ezért böngészőből nem indítható el. A kitöltéshez kérjük, használd a letölthető alkalmazást!',
             ),
             actions: [
               TextButton(
