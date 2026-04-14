@@ -168,7 +168,7 @@ class WebProtections {
       })();
     """;
 
-    globalContext.callMethod('eval'.toJS, jsCode.toJS);
+    window.callMethod('eval'.toJS, jsCode.toJS);
   }
 
   static void enterFullScreen() {
@@ -182,7 +182,7 @@ class WebProtections {
       })();
     """;
 
-    globalContext.callMethod('eval'.toJS, jsCode.toJS);
+    window.callMethod('eval'.toJS, jsCode.toJS);
   }
 
   static void exitFullScreen() {
@@ -196,6 +196,6 @@ class WebProtections {
       })();
     """;
 
-    globalContext.callMethod('eval'.toJS, jsCode.toJS);
+    window.callMethod('eval'.toJS, jsCode.toJS);
   }
 }

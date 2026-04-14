@@ -1317,11 +1317,7 @@ class _GradingViewState extends State<GradingView> {
           _buildBackButton(theme, isNarrow),
           SizedBox(width: isNarrow ? 4 : 8),
 
-          // Menu Button (mobile only - opens drawer)
-          if (isMobile) ...[
-            _buildMenuButton(theme, isNarrow),
-            SizedBox(width: isNarrow ? 4 : 8),
-          ],
+
 
           Spacer(),
 
@@ -1366,27 +1362,7 @@ class _GradingViewState extends State<GradingView> {
     );
   }
 
-  Widget _buildMenuButton(ThemeData theme, bool isNarrow) {
-    final size = isNarrow ? 36.0 : 44.0; // Same size as stats button
-    return InkWell(
-      onTap: () => _scaffoldKey.currentState?.openDrawer(),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: theme.dividerColor),
-        ),
-        child: Icon(
-          _isEditing ? Icons.tune : Icons.people,
-          size: isNarrow ? 18 : 22,
-          color: theme.primaryColor,
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildStatsButton(ThemeData theme, bool isNarrow) {
     final size = isNarrow ? 36.0 : 44.0;

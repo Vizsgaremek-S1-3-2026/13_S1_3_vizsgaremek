@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
@@ -143,6 +143,31 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Future<void> _loadQuiz() async {
+    // Safety guard: Don't allow starting kiosk mode on web
+    if (kIsWeb && widget.kiosk) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Hiba'),
+            content: const Text(
+                'Ez a teszt "Zárolt" módban van, ami webes felületen nem támogatott.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Go back from TestTakingPage
+                },
+                child: const Text('Vissza'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     final quizId = widget.quiz['id'];
     if (quizId == null) {
       if (mounted) {
