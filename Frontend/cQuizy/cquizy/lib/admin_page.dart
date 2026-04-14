@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 
+import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'services/pdf_service.dart';
 import 'theme.dart';
@@ -14,6 +15,7 @@ const double kAdminDesktopBreakpoint = 700.0;
 
 class AdminPage extends StatefulWidget {
   final Map<String, dynamic> quiz;
+  final int groupId;
   final String? groupName;
   final int grade2Limit;
   final int grade3Limit;
@@ -23,6 +25,7 @@ class AdminPage extends StatefulWidget {
   const AdminPage({
     super.key,
     required this.quiz,
+    required this.groupId,
     this.groupName,
     this.grade2Limit = 40,
     this.grade3Limit = 55,
@@ -41,9 +44,15 @@ class _AdminPageState extends State<AdminPage> {
   List<Map<String, dynamic>> _members = [];
   bool _isLoading = true;
   Timer? _pollingTimer;
+  Timer? _countdownTimer;
+
+  // Track students closed by the teacher locally,
+  // so polling doesn't revert their status before the server catches up.
+  final Set<String> _closedStudentIds = {};
 
   // Mock data for monitoring (Legacy, keeping reference if needed but unused)
   Map<String, dynamic>? _fullQuizData;
+  Map<String, dynamic>? _quizStats;
   bool _isLoadingDetails = true;
 
   // Export Configuration State
@@ -53,6 +62,12 @@ class _AdminPageState extends State<AdminPage> {
   bool _exportIncludeQuestions = false;
   bool _exportIncludeWarnings = false;
   String _exportWarningLayout = 'grouped'; // 'grouped' or 'abc'
+
+  // Grade Limits State (mutable for auto-grading)
+  late int _grade2Min;
+  late int _grade3Min;
+  late int _grade4Min;
+  late int _grade5Min;
 
   // --- New Export Options (20+) ---
   // Layout
@@ -90,6 +105,13 @@ class _AdminPageState extends State<AdminPage> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize grade limits from widget props
+    _grade2Min = widget.grade2Limit;
+    _grade3Min = widget.grade3Limit;
+    _grade4Min = widget.grade4Limit;
+    _grade5Min = widget.grade5Limit;
+
     _fetchProjectDetails();
     _fetchData();
     // Poll every 10 seconds
@@ -97,11 +119,16 @@ class _AdminPageState extends State<AdminPage> {
       const Duration(seconds: 10),
       (_) => _fetchData(),
     );
+    // Countdown timer - update every second
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -120,6 +147,17 @@ class _AdminPageState extends State<AdminPage> {
       final submissions = await api.getQuizSubmissions(token, quizId);
       // Fetch events/alerts
       final events = await api.getQuizEvents(token, quizId);
+      // Fetch live status
+      final liveStatus = await api.getQuizStatus(token, quizId);
+
+      // Fetch all group members to calculate accurate "Missing" count
+      final allMembers = await api.getGroupMembers(token, widget.groupId);
+      // Filter out admins/teachers from the target student list
+      final targetStudents = allMembers.where((m) {
+        final rank = m['rank'] as String? ?? 'STUDENT';
+        return rank == 'STUDENT';
+      }).toList();
+      final int totalStudentsCount = targetStudents.length;
 
       // Merge data to create the member list
       // In a real scenario, we should also fetch the Group Members to show those who haven't started.
@@ -129,23 +167,66 @@ class _AdminPageState extends State<AdminPage> {
 
       // Process submissions
       for (var sub in submissions) {
-        final userId = sub['user_id'].toString(); // Assuming user_id exists
-        // Normalize status
-        String status = 'writing';
-        if (sub['finished_at'] != null) status = 'submitted';
+        // Find matching user from targetStudents by name if user_id is missing
+        String? inferredUserId = sub['user_id']?.toString();
 
-        // Calculate score if available
-        // ...
+        if (inferredUserId == null || inferredUserId == 'null') {
+          final studentName =
+              sub['student_name'] ??
+              sub['user_name'] ??
+              sub['name'] ??
+              sub['nickname'] ??
+              '';
+          for (var s in targetStudents) {
+            final u = s['user'];
+            if (u == null) continue;
+            final fullName = '${u['last_name'] ?? ''} ${u['first_name'] ?? ''}'
+                .trim();
+            final username = u['username'] ?? '';
+            final nickname = u['nickname'] ?? '';
+
+            if (studentName.isNotEmpty &&
+                (studentName == fullName ||
+                    studentName == username ||
+                    studentName == nickname)) {
+              inferredUserId = u['id']?.toString();
+              break;
+            }
+          }
+        }
+
+        final userId =
+            inferredUserId ??
+            'unmatched_${sub['id']}'; // Prevent "null" key collapsing
+        // Normalize status
+        String rawStatus = (sub['status'] ?? '').toString().toLowerCase();
+        String status = 'writing';
+
+        if (sub['finished_at'] != null) {
+          status = 'submitted';
+        } else if (rawStatus == 'submitted' ||
+            rawStatus == 'finished' ||
+            rawStatus == 'completed') {
+          status = 'submitted';
+        } else if (rawStatus == 'closed') {
+          status = 'closed';
+        }
 
         studentMap[userId] = {
           'name':
               sub['user_name'] ??
-              'Diák $userId', // Replace with real name if available
+              sub['student_name'] ??
+              sub['name'] ??
+              sub['nickname'] ??
+              'Ismeretlen tanuló',
           'status': status,
           'wasBlocked': false, // Default
-          'score': sub['score'] ?? 0,
+          'score':
+              num.tryParse(sub['percentage']?.toString() ?? '') ??
+              num.tryParse(sub['score']?.toString() ?? '') ??
+              0,
           'maxScore': 100, // Should come from quiz details
-          'grade': sub['grade'],
+          'grade': sub['grade_value']?.toString() ?? sub['grade']?.toString(),
           'profilePicture':
               sub['user_avatar'] ?? 'https://i.pravatar.cc/150?u=$userId',
           'submission_id': sub['id'],
@@ -158,7 +239,9 @@ class _AdminPageState extends State<AdminPage> {
         final userId = event['user_id'].toString();
         if (!studentMap.containsKey(userId)) continue;
 
-        if (event['type'] == 'blur' || event['type'] == 'cheat') {
+        if (event['type'] == 'STUDENT_CHEAT' ||
+            event['type'] == 'blur' ||
+            event['type'] == 'cheat') {
           studentMap[userId]!['wasBlocked'] = true;
           if (event['resolved'] != true) {
             studentMap[userId]!['status'] = 'blocked';
@@ -166,9 +249,241 @@ class _AdminPageState extends State<AdminPage> {
         }
       }
 
+      // Add remaining group members who haven't started
+      for (var s in targetStudents) {
+        final userObj = s['user'];
+        if (userObj == null) continue;
+
+        final uid = userObj['id'].toString();
+        // If not already in the map (from submission or event)
+        if (!studentMap.containsKey(uid)) {
+          // Construct name
+          String displayName = userObj['username'] ?? 'Névtelen';
+          if (userObj['last_name'] != null && userObj['first_name'] != null) {
+            displayName = '${userObj['last_name']} ${userObj['first_name']}';
+          } else if (userObj['nickname'] != null) {
+            displayName = userObj['nickname'];
+          }
+
+          studentMap[uid] = {
+            'name': displayName,
+            'status': 'idle',
+            'wasBlocked': false,
+            'score': 0,
+            'maxScore': 100,
+            'grade': null,
+            'profilePicture':
+                userObj['pfp_url'] ?? 'https://i.pravatar.cc/150?u=$uid',
+            'user_id': userObj['id'],
+            // 'email' not in the provided JSON sample, omitting or empty
+            'email': '',
+          };
+        }
+      }
+
+      // Apply live status overrides and INSERT students from live status if missing
+      if (liveStatus != null) {
+        void ensureInMap(dynamic student, String status) {
+          final uid = student['id'].toString();
+          if (!studentMap.containsKey(uid)) {
+            // Add from live status since they weren't found in submissions or group members
+            studentMap[uid] = {
+              'name': student['username'] ?? 'Ismeretlen tanuló',
+              'status': status,
+              'wasBlocked': status == 'blocked',
+              'score': 0,
+              'maxScore': 100,
+              'grade': null,
+              'profilePicture': 'https://i.pravatar.cc/150?u=$uid',
+              'user_id': student['id'],
+              'email': '',
+            };
+          }
+        }
+
+        // Handle suspended (permanently closed by teacher) - HIGHEST PRIORITY
+        final suspendedList = liveStatus['suspended'] as List<dynamic>? ?? [];
+        for (var student in suspendedList) {
+          ensureInMap(student, 'closed');
+          final uid = student['id'].toString();
+          studentMap[uid]!['status'] = 'closed';
+          _closedStudentIds.add(uid); // Track locally too
+        }
+
+        // Handle writing
+        final writingList = liveStatus['writing'] as List<dynamic>? ?? [];
+        for (var student in writingList) {
+          ensureInMap(student, 'writing');
+          final uid = student['id'].toString();
+          if (studentMap[uid]!['status'] != 'closed') {
+            studentMap[uid]!['status'] = 'writing';
+          }
+        }
+
+        // Handle locked
+        final lockedList = liveStatus['locked'] as List<dynamic>? ?? [];
+        for (var student in lockedList) {
+          ensureInMap(student, 'blocked');
+          final uid = student['id'].toString();
+          if (studentMap[uid]!['status'] != 'closed') {
+            studentMap[uid]!['status'] = 'blocked';
+            studentMap[uid]!['wasBlocked'] = true;
+          }
+        }
+
+        // Handle finished
+        final finishedList = liveStatus['finished'] as List<dynamic>? ?? [];
+        for (var student in finishedList) {
+          ensureInMap(student, 'submitted');
+          final uid = student['id'].toString();
+          if (studentMap[uid]!['status'] != 'blocked' &&
+              studentMap[uid]!['status'] != 'closed') {
+            studentMap[uid]!['status'] = 'submitted';
+          }
+        }
+
+        // Handle idle
+        final idleList = liveStatus['idle'] as List<dynamic>? ?? [];
+        for (var student in idleList) {
+          ensureInMap(student, 'idle');
+          final uid = student['id'].toString();
+          final currentStatus = studentMap[uid]!['status'] as String;
+          if (currentStatus != 'blocked' &&
+              currentStatus != 'submitted' &&
+              currentStatus != 'closed' &&
+              currentStatus != 'writing') {
+            studentMap[uid]!['status'] = 'idle';
+          }
+        }
+      }
+
+      // === RECONCILE: Merge submission_id from unmatched submissions into real students ===
+      // The submissions API returns student_name but NOT user_id,
+      // so submissions end up as 'unmatched_*' entries while real students have numeric IDs.
+      // We need to match them by name and copy over submission_id + score + grade.
+      final unmatchedKeys = studentMap.keys
+          .where((k) => k.startsWith('unmatched_'))
+          .toList();
+      for (var unmatchedKey in unmatchedKeys) {
+        final unmatchedEntry = studentMap[unmatchedKey]!;
+        final unmatchedName =
+            (unmatchedEntry['name'] as String?)?.toLowerCase() ?? '';
+
+        // Find a real student entry (numeric key) with the same name
+        for (var realKey in studentMap.keys.toList()) {
+          if (realKey.startsWith('unmatched_')) continue;
+          final realEntry = studentMap[realKey]!;
+          final realName = (realEntry['name'] as String?)?.toLowerCase() ?? '';
+
+          if (unmatchedName.isNotEmpty && unmatchedName == realName) {
+            // Merge the submission data into the real student entry
+            realEntry['submission_id'] = unmatchedEntry['submission_id'];
+            if (unmatchedEntry['score'] != null &&
+                unmatchedEntry['score'] != 0) {
+              realEntry['score'] = unmatchedEntry['score'];
+            }
+            if (unmatchedEntry['grade'] != null) {
+              realEntry['grade'] = unmatchedEntry['grade'];
+            }
+            // Mark as submitted if they have a submission
+            if (realEntry['status'] == 'idle' ||
+                realEntry['status'] == 'writing') {
+              realEntry['status'] = 'submitted';
+            }
+            // Remove the unmatched entry
+            studentMap.remove(unmatchedKey);
+            debugPrint(
+              'Reconciled submission_id ${unmatchedEntry['submission_id']} -> student "$realName" (key: $realKey)',
+            );
+            break;
+          }
+        }
+      }
+
+      // Also: for submitted students who STILL don't have submission_id,
+      // try to find their submission from the original submissions list by name
+      for (var entry in studentMap.values) {
+        if (entry['submission_id'] == null &&
+            (entry['status'] == 'submitted' || entry['status'] == 'closed')) {
+          final entryName = (entry['name'] as String?)?.toLowerCase() ?? '';
+          for (var sub in submissions) {
+            final subName =
+                (sub['student_name'] ?? sub['user_name'] ?? sub['name'] ?? '')
+                    .toString()
+                    .toLowerCase();
+            if (entryName.isNotEmpty && entryName == subName) {
+              entry['score'] =
+                  num.tryParse(sub['percentage']?.toString() ?? '') ?? 0;
+              entry['grade'] = (sub['grade_value'] ?? sub['grade'])?.toString();
+              debugPrint(
+                'Direct match: submission_id ${sub['id']} -> student "$entryName"',
+              );
+              break;
+            }
+          }
+        }
+      }
+      debugPrint('=== Final studentMap keys: ${studentMap.keys.toList()}');
+      for (var e in studentMap.entries) {
+        debugPrint(
+          '  ${e.key}: name=${e.value['name']}, status=${e.value['status']}, submission_id=${e.value['submission_id']}',
+        );
+      }
+
+      // Fetch Quiz Stats
+      final stats = await api.getQuizStats(token, quizId);
+
+      // Calculate missing count: Total Students - Unique Submitted/Writing
+      // Actually 'submitted' status means they finished.
+      // We want "Hiányzik" -> didn't submit yet? Or didn't even start?
+      // Usually "Missing" means they haven't submitted (finished).
+      // Let's count who has 'submitted' status.
+      int submittedCount = 0;
+      for (var s in studentMap.values) {
+        if (s['status'] == 'submitted') {
+          submittedCount++;
+        }
+      }
+
+      // If stats from API has submission_count, we can use that, or our local count.
+      // Local count is safer if we want consistency with the student list we just built.
+      // But let's check stats['submission_count'] if available.
+
+      // Calculate gradedCount: students who have a grade already
+      int gradedCount = 0;
+      for (var s in studentMap.values) {
+        if (s['grade'] != null) {
+          gradedCount++;
+        }
+      }
+
+      int missingCount = 0;
+      if (totalStudentsCount > 0) {
+        // "Hiányzik" -> didn't submit OR wasn't graded yet.
+        // We defined it as (Total - GradedCount)
+        missingCount = totalStudentsCount - gradedCount;
+        if (missingCount < 0) missingCount = 0;
+      }
+
+      // Build final stats map - always ensure missing_count and total_students exist
+      final Map<String, dynamic> finalStats = stats ?? {};
+      finalStats['missing_count'] = missingCount;
+      finalStats['total_students'] = totalStudentsCount;
+      finalStats['graded_count'] = gradedCount;
+      finalStats['submission_count'] =
+          finalStats['submission_count'] ?? submittedCount;
+
       if (mounted) {
+        // Force-apply 'closed' status for locally-tracked closed students
+        for (final uid in _closedStudentIds) {
+          if (studentMap.containsKey(uid)) {
+            studentMap[uid]!['status'] = 'closed';
+          }
+        }
+
         setState(() {
           _members = studentMap.values.toList();
+          _quizStats = finalStats;
           _isLoading = false;
         });
       }
@@ -178,52 +493,514 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
+  Future<void> _manualRefresh() async {
+    setState(() {
+      _isLoading = true;
+    });
+    // Kényszerített lokális állapotok törlése a szerver tényleges adatainak lekéréséhez
+    _closedStudentIds.clear();
+    await _fetchData();
+  }
+
+  Future<void> _unlockStudent(Map<String, dynamic> member) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    final studentId = member['user_id'];
+    if (quizId == null || studentId == null) return;
+
+    // Optimistic UI update
+    setState(() {
+      member['status'] = 'writing';
+      member['wasBlocked'] = true;
+    });
+
+    final api = ApiService();
+    final success = await api.unlockStudent(token, quizId, studentId);
+
+    if (!success && mounted) {
+      // Revert on failure
+      setState(() {
+        member['status'] = 'blocked';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nem sikerült feloldani a diákot.')),
+      );
+    }
+  }
+
+  Future<void> _unlockAllBlocked() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    if (quizId == null) return;
+
+    final blockedMembers = _members
+        .where((m) => m['status'] == 'blocked')
+        .toList();
+    if (blockedMembers.isEmpty) return;
+
+    final api = ApiService();
+    int failCount = 0;
+
+    for (var member in blockedMembers) {
+      final studentId = member['user_id'];
+      if (studentId == null) continue;
+
+      // Optimistic UI update
+      setState(() {
+        member['status'] = 'writing';
+        member['wasBlocked'] = true;
+      });
+
+      final success = await api.unlockStudent(token, quizId, studentId);
+      if (!success) {
+        failCount++;
+        if (mounted) {
+          setState(() {
+            member['status'] = 'blocked';
+          });
+        }
+      }
+    }
+
+    if (failCount > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$failCount diák feloldása nem sikerült.')),
+      );
+    }
+  }
+
+  Future<void> _blockStudent(Map<String, dynamic> member) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    final studentId = member['user_id'];
+    if (quizId == null || studentId == null) return;
+
+    final previousStatus = member['status'];
+
+    // Optimistic UI update
+    setState(() {
+      member['status'] = 'blocked';
+      member['wasBlocked'] = true;
+    });
+
+    final api = ApiService();
+    final success = await api.blockStudent(token, quizId, studentId);
+
+    if (!success && mounted) {
+      setState(() {
+        member['status'] = previousStatus;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nem sikerült letiltani a diákot.')),
+      );
+    }
+  }
+
+  Future<void> _closeStudent(Map<String, dynamic> member) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    final studentId = member['user_id'];
+    if (quizId == null || studentId == null) return;
+
+    final previousStatus = member['status'];
+
+    // Optimistic UI update + track locally
+    setState(() {
+      member['status'] = 'closed';
+    });
+    _closedStudentIds.add(studentId.toString());
+
+    final api = ApiService();
+    final result = await api.closeStudentDetailed(token, quizId, studentId);
+
+    if (result['success'] != true && mounted) {
+      setState(() {
+        member['status'] = previousStatus;
+      });
+      final statusCode = result['statusCode'];
+      final body = result['body'] ?? '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Nem sikerült lezárni a diák tesztjét. ($statusCode: $body)',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+    // If API failed, also remove from local tracking
+    if (result['success'] != true) {
+      _closedStudentIds.remove(studentId.toString());
+    }
+  }
+
+  Future<void> _closeAll() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final quizId = widget.quiz['id'];
+    if (quizId == null) return;
+
+    final activeMembers = _members
+        .where((m) => m['status'] == 'writing' || m['status'] == 'blocked')
+        .toList();
+    if (activeMembers.isEmpty) return;
+
+    final api = ApiService();
+    int failCount = 0;
+
+    for (var member in activeMembers) {
+      final studentId = member['user_id'];
+      if (studentId == null) continue;
+
+      final previousStatus = member['status'];
+
+      setState(() {
+        member['status'] = 'closed';
+      });
+      _closedStudentIds.add(studentId.toString());
+
+      final result = await api.closeStudentDetailed(token, quizId, studentId);
+      if (result['success'] != true) {
+        failCount++;
+        if (mounted) {
+          setState(() {
+            member['status'] = previousStatus;
+          });
+        }
+      }
+    }
+
+    if (failCount > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$failCount diák lezárása nem sikerült.')),
+      );
+    }
+    // No immediate _fetchData() - optimistic UI stays, polling syncs later.
+  }
+
+  Future<void> _autoGradeAll(List<Map<String, dynamic>> submittedGroup) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final confirm = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (context, a1, a2) => Container(),
+      transitionBuilder: (context, a1, a2, child) {
+        final theme = Theme.of(context);
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: a1, curve: Curves.easeOutBack),
+          child: FadeTransition(
+            opacity: a1,
+            child: StatefulBuilder(
+              builder: (context, setDialogState) {
+                return AlertDialog(
+                  scrollable: true,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.auto_awesome, color: Colors.blue),
+                      SizedBox(width: 12),
+                      Text('Automatikus osztályozás'),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Állítsd be a ponthatárokat a tömeges osztályozás előtt (${submittedGroup.length} dolgozat).',
+                        style: TextStyle(fontSize: 13, color: theme.hintColor),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 2,
+                        value: _grade2Min,
+                        color: Colors.red,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade2Min = val.toInt().clamp(0, 100);
+                            if (_grade2Min >= _grade3Min) {
+                              _grade3Min = (_grade2Min + 1).clamp(0, 100);
+                            }
+                            if (_grade3Min >= _grade4Min) {
+                              _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {}); // Sync with component state
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 3,
+                        value: _grade3Min,
+                        color: Colors.amber,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade3Min = val.toInt().clamp(0, 100);
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min >= _grade4Min) {
+                              _grade4Min = (_grade3Min + 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 4,
+                        value: _grade4Min,
+                        color: Colors.lightGreen,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade4Min = val.toInt().clamp(0, 100);
+                            if (_grade4Min <= _grade3Min) {
+                              _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                            if (_grade4Min >= _grade5Min) {
+                              _grade5Min = (_grade4Min + 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                      _buildSliderForGrade(
+                        theme: theme,
+                        grade: 5,
+                        value: _grade5Min,
+                        color: Colors.green,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            _grade5Min = val.toInt().clamp(0, 100);
+                            if (_grade5Min <= _grade4Min) {
+                              _grade4Min = (_grade5Min - 1).clamp(0, 100);
+                            }
+                            if (_grade4Min <= _grade3Min) {
+                              _grade3Min = (_grade4Min - 1).clamp(0, 100);
+                            }
+                            if (_grade3Min <= _grade2Min) {
+                              _grade2Min = (_grade3Min - 1).clamp(0, 100);
+                            }
+                          });
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Mégse'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('Osztályozás indítása'),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: LoadingAnimationWidget.newtonCradle(
+          color: Theme.of(context).primaryColor,
+          size: 80,
+        ),
+      ),
+    );
+
+    final api = ApiService();
+    int successCount = 0;
+    int failCount = 0;
+
+    for (var member in submittedGroup) {
+      final submissionId = member['submission_id'];
+      if (submissionId == null) continue;
+
+      final score = (member['score'] as num?)?.toDouble() ?? 0.0;
+      int grade = 1;
+      if (score >= _grade5Min) {
+        grade = 5;
+      } else if (score >= _grade4Min) {
+        grade = 4;
+      } else if (score >= _grade3Min) {
+        grade = 3;
+      } else if (score >= _grade2Min) {
+        grade = 2;
+      }
+
+      final success = await api.updateSubmissionGrade(
+        token,
+        submissionId,
+        grade,
+      );
+      if (success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    }
+
+    if (mounted) Navigator.pop(context); // Close loading
+    _fetchData();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sikeresen osztályozva: $successCount fő.${failCount > 0 ? " Hiba: $failCount." : ""}',
+          ),
+          backgroundColor: failCount > 0 ? Colors.orange : Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildSliderForGrade({
+    required ThemeData theme,
+    required int grade,
+    required int value,
+    required Color color,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$grade-es (Minimum)',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            Text(
+              '$value%',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: color.withOpacity(0.5),
+            inactiveTrackColor: theme.dividerColor,
+            thumbColor: color,
+            overlayColor: color.withOpacity(0.2),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            trackHeight: 4,
+            valueIndicatorColor: color,
+          ),
+          child: Slider(
+            value: value.toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            label: '$value%',
+            onChanged: onChanged,
+          ),
+        ),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
   Future<void> _fetchProjectDetails() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
     if (token == null) return;
 
     final api = ApiService();
-    // Assuming widget.quiz['id'] or widget.quiz['project_id'] exists
-    final projectId = widget.quiz['id'] ?? widget.quiz['project_id'];
+    debugPrint('=== _fetchProjectDetails ===');
+    debugPrint('Quiz keys: ${widget.quiz.keys.toList()}');
+    debugPrint('Quiz data: ${widget.quiz}');
+
+    final projectId = widget.quiz['project_id'] ?? widget.quiz['blueprint_id'];
     if (projectId == null) {
+      debugPrint(
+        'No project_id found in quiz object, skipping project details fetch.',
+      );
       setState(() => _isLoadingDetails = false);
       return;
     }
 
+    debugPrint('Fetching project details for projectId: $projectId');
     try {
       final data = await api.getProjectDetails(token, projectId);
       if (mounted) {
         setState(() {
           _fullQuizData = data;
           _isLoadingDetails = false;
-          _generateMockAnswers();
         });
       }
     } catch (e) {
       if (mounted) setState(() => _isLoadingDetails = false);
-    }
-  }
-
-  void _generateMockAnswers() {
-    if (_fullQuizData == null || _fullQuizData!['blocks'] == null) return;
-    final blocks = _fullQuizData!['blocks'] as List;
-
-    // Assign mock answers to each student
-    for (var member in _members) {
-      final answers = <Map<String, dynamic>>[];
-      for (var block in blocks) {
-        // Randomly decide if student answered correctly, incorrectly, or skipped
-        // Simple logic: if grade is high, mostly correct
-        // For now just mock some data
-        answers.add({
-          'question_id': block['id'],
-          'question_text': block['question'],
-          'answer_text': 'Mock answer for ${block['question']}',
-          'is_correct': member['grade'] != null && member['grade'] > 3,
-        });
-      }
-      member['mock_answers'] = answers;
     }
   }
 
@@ -446,8 +1223,6 @@ class _AdminPageState extends State<AdminPage> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () {
-            final themeProvider = ThemeInherited.of(context);
-            themeProvider.triggerHaptic();
             if (onTap != null) {
               onTap();
             } else {
@@ -620,7 +1395,7 @@ class _AdminPageState extends State<AdminPage> {
           Icon(
             _getIconForSection(_selectedSection),
             size: 64,
-            color: Theme.of(context).hintColor.withOpacity(0.2),
+            color: Theme.of(context).hintColor.withValues(alpha: 0.2),
           ),
           const SizedBox(height: 16),
           Text(
@@ -639,19 +1414,15 @@ class _AdminPageState extends State<AdminPage> {
 
     // Calculate Stats
     final gradeCounts = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-    double totalGradeSum = 0;
 
     for (var m in gradedStudents) {
-      final g = m['grade'] as int;
+      final g = int.tryParse(m['grade'].toString()) ?? 0;
       gradeCounts[g] = (gradeCounts[g] ?? 0) + 1;
-      totalGradeSum += g;
     }
 
-    final double average = gradedStudents.isNotEmpty
-        ? totalGradeSum / gradedStudents.length
-        : 0.0;
-
-    final int missingCount = _members.length - gradedStudents.length;
+    // Use actual count of processed members for consistency
+    final int totalStudents = _members.length;
+    final int ratedCount = gradedStudents.length;
 
     // Determine max frequency for distribution bar
     int maxFreq = 0;
@@ -694,28 +1465,30 @@ class _AdminPageState extends State<AdminPage> {
                         _buildSummaryItem(
                           context,
                           'Összesen',
-                          '${_members.length} fő',
+                          '$totalStudents fő',
                           theme.textTheme.bodyLarge?.color ?? Colors.black,
                         ),
                         const SizedBox(width: 24),
+                        // Calculate Average % from members
                         _buildSummaryItem(
                           context,
-                          'Átlag',
-                          average.toStringAsFixed(2),
+                          'Átlag %',
+                          '${_calculateAveragePercentage()}%',
                           Colors.blue,
                         ),
                         const SizedBox(width: 24),
+                        // Display API Submission Count
                         _buildSummaryItem(
                           context,
                           'Beadta',
-                          '${gradedStudents.length} fő',
+                          '${_quizStats?['submission_count'] ?? 0} db',
                           Colors.green,
                         ),
                         const SizedBox(width: 24),
                         _buildSummaryItem(
                           context,
                           'Hiányzik',
-                          '$missingCount fő',
+                          '${totalStudents - ratedCount} fő',
                           Colors.red,
                         ),
                       ],
@@ -775,12 +1548,12 @@ class _AdminPageState extends State<AdminPage> {
             itemCount: _members.length,
             itemBuilder: (context, index) {
               final member = _members[index];
-              final grade = member['grade'] as int?;
-              final score = member['score'] as int? ?? 0;
-              final maxScore = member['maxScore'] as int? ?? 100;
-              final percent = maxScore > 0
-                  ? (score / maxScore * 100).round()
-                  : 0;
+              // API returns: percentage (number), grade_value (string)
+              final grade = member['grade']
+                  ?.toString(); // mapped from grade_value
+              final percentage =
+                  (member['score'] as num?)?.toInt() ??
+                  0; // mapped from percentage
               final profilePic = member['profilePicture'] as String?;
 
               return Card(
@@ -794,7 +1567,7 @@ class _AdminPageState extends State<AdminPage> {
                     vertical: 8,
                   ),
                   leading: CircleAvatar(
-                    backgroundColor: theme.primaryColor.withOpacity(0.1),
+                    backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
                     backgroundImage: profilePic != null && profilePic.isNotEmpty
                         ? NetworkImage(profilePic)
                         : null,
@@ -809,17 +1582,14 @@ class _AdminPageState extends State<AdminPage> {
                     member['name'],
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: grade != null
-                      ? Text('$score / $maxScore pont ($percent%)')
-                      : const Text(
-                          'Nincs osztályozva',
-                          style: TextStyle(color: Colors.grey),
-                        ),
+                  subtitle: Text(
+                    grade != null ? '$percentage%' : 'Nincs osztályozva',
+                    style: TextStyle(color: grade != null ? null : Colors.grey),
+                  ),
                   trailing: grade != null
                       ? Text(
-                          grade.toString(),
-                          style: TextStyle(
-                            color: _getGradeColor(grade),
+                          grade,
+                          style: const TextStyle(
                             fontWeight: FontWeight.w900,
                             fontSize: 24,
                           ),
@@ -880,8 +1650,8 @@ class _AdminPageState extends State<AdminPage> {
           width: 40, // Explicit width for the track
           alignment: Alignment.bottomCenter,
           decoration: BoxDecoration(
-            color: theme.dividerColor.withOpacity(
-              0.05,
+            color: theme.dividerColor.withValues(
+              alpha: 0.05,
             ), // Subtle track background
             borderRadius: BorderRadius.circular(8),
           ),
@@ -896,12 +1666,12 @@ class _AdminPageState extends State<AdminPage> {
                 decoration: BoxDecoration(
                   color: isMostFrequent
                       ? theme.primaryColor
-                      : theme.primaryColor.withOpacity(0.6),
+                      : theme.primaryColor.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: isMostFrequent
                       ? [
                           BoxShadow(
-                            color: theme.primaryColor.withOpacity(0.3),
+                            color: theme.primaryColor.withValues(alpha: 0.3),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
@@ -930,7 +1700,7 @@ class _AdminPageState extends State<AdminPage> {
           height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: _getGradeColor(grade).withOpacity(0.2), // Always faint color
+            color: _getGradeColor(grade).withValues(alpha: 0.2),
             shape: BoxShape.circle,
           ),
           child: Text(
@@ -1015,7 +1785,7 @@ class _AdminPageState extends State<AdminPage> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: theme.primaryColor.withOpacity(0.1),
+                        color: theme.primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1055,7 +1825,7 @@ class _AdminPageState extends State<AdminPage> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: theme.dividerColor.withOpacity(0.1),
+                        color: theme.dividerColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1086,7 +1856,7 @@ class _AdminPageState extends State<AdminPage> {
             border: Border(top: BorderSide(color: theme.dividerColor)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 10,
                 offset: const Offset(0, -5),
               ),
@@ -1099,42 +1869,19 @@ class _AdminPageState extends State<AdminPage> {
                 width: 250,
                 height: 56, // Match Menu button height
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    final studentToPass = submittedGroup.isNotEmpty
-                        ? submittedGroup.first
-                        : {
-                            'id': 999,
-                            'name': 'Teszt Elek',
-                            'grade': 5,
-                            'cheatingStatus': 'none',
-                          };
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => GradingView(
-                          student: studentToPass,
-                          quizTitle: widget.quiz['project_name'] ?? 'Teszt',
-                          grade2Limit: widget.grade2Limit,
-                          grade3Limit: widget.grade3Limit,
-                          grade4Limit: widget.grade4Limit,
-                          grade5Limit: widget.grade5Limit,
-                        ),
-                      ),
-                    );
-                  },
+                  onPressed: () => _autoGradeAll(submittedGroup),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.primaryColor,
                     foregroundColor: Colors.white,
                     elevation: 4,
-                    shadowColor: Colors.black.withOpacity(0.3),
+                    shadowColor: Colors.black.withValues(alpha: 0.3),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  icon: const Icon(Icons.edit_note, size: 24),
+                  icon: const Icon(Icons.auto_awesome, size: 24),
                   label: const Text(
-                    'Dolgozatok javítása',
+                    'Automatikus osztályozás',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -1150,6 +1897,10 @@ class _AdminPageState extends State<AdminPage> {
     Map<String, dynamic> member, {
     bool showStatus = true,
   }) {
+    final theme = Theme.of(context);
+    final isSubmitted =
+        member['status'] == 'submitted' || member['status'] == 'closed';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
@@ -1171,24 +1922,104 @@ class _AdminPageState extends State<AdminPage> {
                 style: TextStyle(color: _getStatusColor(member['status'])),
               )
             : null,
-        trailing:
-            (member['status'] == 'submitted' || member['status'] == 'closed')
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: isSubmitted
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    '${member['score']} / ${member['maxScore']} pont',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (member['submission_id'] == null)
+                        const Tooltip(
+                          message: "Nincs beadott feladat",
+                          child: Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                        )
+                      else if (member['score'] != null)
+                        Text(
+                          '${member['score']}%',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: theme.textTheme.bodyMedium?.color
+                                ?.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      if (member['grade'] != null && member['grade'] == "1")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF44336),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "2")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFF5722),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "3")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFFC107),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "4")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF8BC34A),
+                          ),
+                        ),
+
+                      if (member['grade'] != null && member['grade'] == "5")
+                        Text(
+                          'Jegy:  ${member['grade']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF4CAF50),
+                          ),
+                        ),
+                    ],
                   ),
-                  const Text(
-                    'Jegy: 4',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.chevron_right, color: Colors.grey.shade400),
                 ],
               )
             : null,
-        onTap: null, // Disabled click as requested
+        onTap: isSubmitted
+            ? () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GradingView(
+                      student: member,
+                      quizTitle: widget.quiz['project_name'] ?? 'Teszt',
+                      grade2Limit: widget.grade2Limit,
+                      grade3Limit: widget.grade3Limit,
+                      grade4Limit: widget.grade4Limit,
+                      grade5Limit: widget.grade5Limit,
+                      quizBlocks: _fullQuizData != null
+                          ? _fullQuizData!['blocks'] as List<dynamic>?
+                          : null,
+                    ),
+                  ),
+                );
+              }
+            : null,
       ),
     );
   }
@@ -1203,6 +2034,8 @@ class _AdminPageState extends State<AdminPage> {
         return 'Írja...';
       case 'blocked':
         return 'Letiltva';
+      case 'idle':
+        return 'Nem kezdte el';
       default:
         return '';
     }
@@ -1224,8 +2057,7 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Widget _buildMonitoringSection(BuildContext context) {
-    // Csak azokat jelenítjük meg, akik már elkezdték (nem 'idle')
-    final activeMembers = _members.where((m) => m['status'] != 'idle').toList();
+    final activeMembers = _members.toList();
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -1244,7 +2076,7 @@ class _AdminPageState extends State<AdminPage> {
                           size: 64,
                           color: Theme.of(
                             context,
-                          ).disabledColor.withOpacity(0.3),
+                          ).disabledColor.withValues(alpha: 0.3),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -1277,14 +2109,125 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
+  String _remainingTimeString() {
+    final dateEndStr = widget.quiz['date_end'];
+    if (dateEndStr == null) return '--:--';
+    final dateEnd = DateTime.tryParse(dateEndStr)?.toLocal();
+    if (dateEnd == null) return '--:--';
+    final diff = dateEnd.difference(DateTime.now());
+    if (diff.isNegative) return '00:00';
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes.remainder(60);
+    final seconds = diff.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Color _remainingTimeColor(ThemeData theme) {
+    final dateEndStr = widget.quiz['date_end'];
+    if (dateEndStr == null) {
+      return theme.textTheme.bodyLarge?.color ?? Colors.white;
+    }
+    final dateEnd = DateTime.tryParse(dateEndStr)?.toLocal();
+    if (dateEnd == null) {
+      return theme.textTheme.bodyLarge?.color ?? Colors.white;
+    }
+    final diff = dateEnd.difference(DateTime.now());
+    if (diff.isNegative) return Colors.red;
+    if (diff.inMinutes < 5) return Colors.red;
+    if (diff.inMinutes < 15) return Colors.orange;
+    return theme.textTheme.bodyLarge?.color ?? Colors.white;
+  }
+
+  Future<void> _extendQuizTime() async {
+    final token = Provider.of<UserProvider>(context, listen: false).token;
+    if (token == null) return;
+
+    final dateEndStr = widget.quiz['date_end'];
+    final dateStartStr = widget.quiz['date_start'];
+    if (dateEndStr == null || dateStartStr == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Hiányzó dátum adatok: start=$dateStartStr, end=$dateEndStr',
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    final dateEnd = DateTime.tryParse(dateEndStr);
+    final dateStart = DateTime.tryParse(dateStartStr);
+    if (dateEnd == null || dateStart == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Érvénytelen dátum formátum: start=$dateStartStr, end=$dateEndStr',
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Adding 1 second to satisfy server constraint "You can only delay it"
+    // due to potential precision loss (server microseconds vs response milliseconds)
+    final safeStart = dateStart.add(const Duration(seconds: 1));
+    final newEnd = dateEnd.add(const Duration(minutes: 5));
+
+    final result = await ApiService().updateQuiz(
+      token,
+      widget.quiz['id'],
+      safeStart.toUtc().toIso8601String(),
+      newEnd.toUtc().toIso8601String(),
+    );
+
+    if (result != null && result['error'] != true && mounted) {
+      // result is always Map<String, dynamic> here
+      setState(() {
+        widget.quiz.addAll(result);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('+5 perc hozzáadva a teszthez!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else if (mounted) {
+      final errorMsg = result?['message'] ?? 'Ismeretlen hiba';
+      final statusCode = result?['status'] ?? '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Hiba ($statusCode): $errorMsg'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
   Widget _buildDashboardBar(BuildContext context) {
     final theme = Theme.of(context);
+    final remainingTime = _remainingTimeString();
+    final timeColor = _remainingTimeColor(theme);
     final writingCount = _members.where((m) => m['status'] == 'writing').length;
     final blockedCount = _members.where((m) => m['status'] == 'blocked').length;
     final submittedCount = _members
         .where((m) => m['status'] == 'submitted')
         .length;
     final closedCount = _members.where((m) => m['status'] == 'closed').length;
+    final idleCount = _members.where((m) => m['status'] == 'idle').length;
 
     return Column(
       children: [
@@ -1308,16 +2251,16 @@ class _AdminPageState extends State<AdminPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        "45:00",
+                        remainingTime,
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: theme.textTheme.bodyLarge?.color,
+                          color: timeColor,
                         ),
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: () {},
+                        onPressed: _extendQuizTime,
                         icon: const Icon(Icons.more_time, size: 28),
                         tooltip: "+5 perc",
                         color: theme.primaryColor,
@@ -1340,7 +2283,6 @@ class _AdminPageState extends State<AdminPage> {
                         Colors.amber,
                         "Tiltva",
                       ),
-                      const SizedBox(width: 16),
                       _buildStatItem(
                         context,
                         Icons.check_circle_outline,
@@ -1351,10 +2293,10 @@ class _AdminPageState extends State<AdminPage> {
                       const SizedBox(width: 16),
                       _buildStatItem(
                         context,
-                        Icons.lock_clock,
-                        closedCount,
-                        Colors.red,
-                        "Lezárva",
+                        Icons.hourglass_empty,
+                        idleCount,
+                        Colors.grey,
+                        "Várakozó",
                       ),
 
                       const SizedBox(width: 32),
@@ -1376,7 +2318,7 @@ class _AdminPageState extends State<AdminPage> {
                         Positioned(
                           left: 0,
                           child: IconButton(
-                            onPressed: () {},
+                            onPressed: _extendQuizTime,
                             icon: const Icon(Icons.more_time, size: 28),
                             tooltip: "+5 perc",
                             color: theme.primaryColor,
@@ -1392,11 +2334,11 @@ class _AdminPageState extends State<AdminPage> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              "45:00",
+                              remainingTime,
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
-                                color: theme.textTheme.bodyLarge?.color,
+                                color: timeColor,
                               ),
                             ),
                           ],
@@ -1404,7 +2346,7 @@ class _AdminPageState extends State<AdminPage> {
                         Positioned(
                           right: 0,
                           child: IconButton(
-                            onPressed: () {},
+                            onPressed: _fetchData,
                             icon: const Icon(Icons.refresh, size: 28),
                             tooltip: "Frissítés",
                           ),
@@ -1440,6 +2382,15 @@ class _AdminPageState extends State<AdminPage> {
                             Colors.green,
                             "Leadta",
                           ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
                           _buildStatItem(
                             context,
                             Icons.lock_clock,
@@ -1447,56 +2398,19 @@ class _AdminPageState extends State<AdminPage> {
                             Colors.red,
                             "Lezárva",
                           ),
+                          _buildStatItem(
+                            context,
+                            Icons.hourglass_empty,
+                            idleCount,
+                            Colors.grey,
+                            "Várakozik",
+                          ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // Actions wrapped (Unblock/Close all)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {},
-                            icon: const Icon(Icons.lock_open, size: 22),
-                            label: const Text(
-                              "Feloldás", // Shortened label for mobile
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber.withValues(
-                                alpha: 0.1,
-                              ),
-                              foregroundColor: Colors.amber.shade800,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {},
-                            icon: const Icon(
-                              Icons.stop_circle_outlined,
-                              size: 22,
-                            ),
-                            label: const Text(
-                              "Lezárás", // Shortened label for mobile
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red.withValues(
-                                alpha: 0.1,
-                              ),
-                              foregroundColor: Colors.red,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+
                   ],
                 );
               }
@@ -1516,35 +2430,10 @@ class _AdminPageState extends State<AdminPage> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Unblock All
-        ElevatedButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.lock_open, size: 22),
-          label: const Text("Összes feloldása", style: TextStyle(fontSize: 16)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.amber.withValues(alpha: 0.1),
-            foregroundColor: Colors.amber.shade800,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Close All
-        ElevatedButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.stop_circle_outlined, size: 22),
-          label: const Text("Összes lezárása", style: TextStyle(fontSize: 16)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.withValues(alpha: 0.1),
-            foregroundColor: Colors.red,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          ),
-        ),
-        const SizedBox(width: 12),
+
         // Refresh
         IconButton(
-          onPressed: () {},
+          onPressed: _manualRefresh,
           icon: const Icon(Icons.refresh, size: 28),
           tooltip: "Frissítés",
         ),
@@ -1609,6 +2498,11 @@ class _AdminPageState extends State<AdminPage> {
         borderColor = Colors.green;
         statusIcon = Icons.check_circle_outline;
         iconColor = Colors.green;
+        break;
+      case 'idle':
+        borderColor = Colors.grey;
+        statusIcon = Icons.hourglass_empty;
+        iconColor = Colors.grey;
         break;
       default:
         borderColor = Colors.grey;
@@ -1752,6 +2646,12 @@ class _AdminPageState extends State<AdminPage> {
                             size: 18,
                           ),
                         ),
+                      ] else if (status == 'blocked') ...[
+                        const SizedBox(width: 6),
+                        const Tooltip(
+                          message: "Csalt / Letiltva",
+                          child: Icon(Icons.block, color: Colors.red, size: 18),
+                        ),
                       ],
                     ],
                   ),
@@ -1817,15 +2717,53 @@ class _AdminPageState extends State<AdminPage> {
     bool isFinished,
     ThemeData theme,
   ) {
-    if (status == 'writing' || status == 'blocked') {
+    if (status == 'writing') {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _blockStudent(member),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.withValues(alpha: 0.1),
+                foregroundColor: Colors.amber.shade800,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Letilt',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _closeStudent(member),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.withValues(alpha: 0.1),
+                foregroundColor: Colors.red,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Lezár',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (status == 'blocked') {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: () {
-            setState(() {
-              member['status'] = 'closed';
-            });
-          },
+          onPressed: () => _closeStudent(member),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.red.withValues(alpha: 0.1),
             foregroundColor: Colors.red,
@@ -1842,13 +2780,38 @@ class _AdminPageState extends State<AdminPage> {
         ),
       );
     } else if (isFinished) {
-      return Text(
-        '${member['score']} / ${member['maxScore']} pont',
-        style: TextStyle(
-          color: theme.textTheme.bodyLarge?.color,
-          fontSize: 15,
-          fontWeight: FontWeight.bold,
-        ),
+      // Show percentage and grade_value from API directly
+      final percentage = (member['score'] as num?)?.toInt() ?? 0;
+      final grade = member['grade']?.toString();
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (member['submission_id'] == null)
+            const Tooltip(
+              message: "Nincs beadott feladat",
+              child: Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+            )
+          else
+            Text(
+              '$percentage%',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          if (grade != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              grade,
+              style: TextStyle(
+                color: theme.primaryColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ],
       );
     }
 
@@ -1873,12 +2836,7 @@ class _AdminPageState extends State<AdminPage> {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: () {
-            setState(() {
-              member['status'] = 'writing';
-              member['wasBlocked'] = true;
-            });
-          },
+          onPressed: () => _unlockStudent(member),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green.withValues(alpha: 0.1),
             foregroundColor: Colors.green,
@@ -1889,7 +2847,7 @@ class _AdminPageState extends State<AdminPage> {
             elevation: 0,
           ),
           child: const Text(
-            'Engedélyezés',
+            'Feloldás',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
           ),
         ),
@@ -1919,16 +2877,19 @@ class _AdminPageState extends State<AdminPage> {
 
     double average = 0;
     if (rated > 0) {
-      final sum = _members
-          .where((m) => m['grade'] != null)
-          .fold(0, (prev, m) => prev + (m['grade'] as int));
+      double sum = 0;
+      for (var m in _members) {
+        if (m['grade'] != null) {
+          sum += double.tryParse(m['grade'].toString()) ?? 0;
+        }
+      }
       average = sum / rated;
     }
 
     Map<int, int> distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
     for (var m in _members) {
       if (m['grade'] != null) {
-        int g = m['grade'];
+        int g = int.tryParse(m['grade'].toString()) ?? 0;
         distribution[g] = (distribution[g] ?? 0) + 1;
       }
     }
@@ -1941,271 +2902,424 @@ class _AdminPageState extends State<AdminPage> {
     };
   }
 
-  Widget _buildExportSection(BuildContext context) {
-    final theme = Theme.of(context);
-    final stats = _calculateStats();
+  // Preview state
+  int _previewKey = 0;
+  bool _showPreview = false;
+  LayoutCallback? _cachedPdfBuilder;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Exportálási beállítások',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: theme.textTheme.bodyLarge?.color,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  void _updatePreviewCallback() {
+    final quizTitle =
+        widget.quiz['project_name'] ?? widget.quiz['name'] ?? 'Teszt neve';
+    final groupName = widget.groupName ?? '';
+    // Use real live data – same as _exportPdf
+    final liveStudents = _members;
+    final liveStats = _calculateStats();
+    final options = {
+      'orientation': _optOrientation,
+      'compactMode': _optCompactMode,
+      'rowNumbering': _optRowNumbering,
+      'stripedRows': _optStripedRows,
+      'showBorders': _optShowBorders,
+      'anonymize': _optAnonymize,
+      'signature': _optSignature,
+      'timestamp': _optTimestamp,
+      'coverPage': _optCoverPage,
+      'answerKey': _optAnswerKey,
+      'onlyIncorrect': _optOnlyIncorrect,
+      'customNote': _optCustomNote,
+      'showStudentId': _optShowStudentId,
+      'watermark': _optWatermark,
+      'pageNumbers': _optPageNumbers,
+      'passFail': _optPassFail,
+      'pageSize': _optPageSize,
+      'grayscale': _optGrayscale,
+      'showPoints': _optShowPoints,
+      'hideCorrect': _optHideCorrect,
+    };
+
+    _cachedPdfBuilder = (format) => PdfService.generateGradesReport(
+      quizTitle: quizTitle,
+      groupName: groupName,
+      students: liveStudents,
+      stats: liveStats,
+      quizData: _fullQuizData,
+      includeStats: _exportIncludeStats,
+      includeStudentList: _exportIncludeStudentList,
+      includeStudentDetails: _exportIncludeStudentDetails,
+      includeQuestions: _exportIncludeQuestions,
+      includeWarnings: _exportIncludeWarnings,
+      warningLayout: _exportWarningLayout,
+      options: options,
+    );
+  }
+
+  Widget _buildExportSection(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 900;
+
+        // Settings Column
+        final settingsColumn = SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildExportSettingsUI(context),
+              const SizedBox(height: 24),
+              // Preview + Export buttons
+              Row(
                 children: [
-                  Text(
-                    'Tartalom',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: theme.textTheme.bodyLarge?.color,
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          if (_showPreview) {
+                            _showPreview = false;
+                          } else {
+                            _updatePreviewCallback();
+                            _showPreview = true;
+                            _previewKey++;
+                          }
+                        });
+                      },
+                      icon: Icon(
+                        _showPreview
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      label: Text(
+                        _showPreview
+                            ? 'Előnézet elrejtése'
+                            : 'Előnézet megtekintése',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Theme.of(context).primaryColor),
+                        foregroundColor: Theme.of(context).primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _buildExportToggle(
-                    'Statisztikák (átlag, eloszlás)',
-                    _exportIncludeStats,
-                    (value) => setState(() => _exportIncludeStats = value),
-                  ),
-                  _buildExportToggle(
-                    'Tanulók listája (név, pontszám, jegy)',
-                    _exportIncludeStudentList,
-                    (value) =>
-                        setState(() => _exportIncludeStudentList = value),
-                  ),
-                  _buildExportToggle(
-                    'Tanulói részletek (válaszok, idő)',
-                    _exportIncludeStudentDetails,
-                    (value) =>
-                        setState(() => _exportIncludeStudentDetails = value),
-                  ),
-                  _buildExportToggle(
-                    'Kérdések és helyes válaszok',
-                    _exportIncludeQuestions,
-                    (value) => setState(() => _exportIncludeQuestions = value),
-                  ),
-                  _buildExportToggle(
-                    'Tanulói Státuszok (pl. Leadta, Letiltva)',
-                    _exportIncludeWarnings,
-                    (value) => setState(() => _exportIncludeWarnings = value),
+                  if (_showPreview) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _updatePreviewCallback();
+                            _previewKey++;
+                          });
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Frissítés'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(
+                            color: Theme.of(context).primaryColor,
+                          ),
+                          foregroundColor: Theme.of(context).primaryColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _exportPdf(context),
+                      icon: const Icon(Icons.picture_as_pdf),
+                      label: const Text('PDF exportálása'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
-          // --- Advanced Settings ---
-          const SizedBox(height: 24),
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        );
+
+        if (!isWide || !_showPreview) {
+          return settingsColumn;
+        }
+
+        // Split View for Desktop
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Settings Panel
+            Expanded(flex: 2, child: settingsColumn),
+            // Vertical Divider
+            Container(
+              width: 1,
+              height: double.infinity,
+              color: Theme.of(context).dividerColor,
             ),
-            child: Theme(
-              data: theme.copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                title: Text(
-                  'Bővített beállítások',
+            // Preview Panel
+            Expanded(
+              flex: 3,
+              child: Container(
+                color: Colors.grey.shade100,
+                child: _buildPdfPreviewPane(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPdfPreviewPane() {
+    if (_cachedPdfBuilder == null) {
+      return const Center(child: Text("Kattints az előnézet gombra!"));
+    }
+
+    return KeyedSubtree(
+      key: ValueKey(_previewKey),
+      child: PdfPreview(
+        build: _cachedPdfBuilder!,
+        allowSharing: false,
+        allowPrinting: false,
+        initialPageFormat: _optOrientation == 'landscape'
+            ? PdfPageFormat.a4.landscape
+            : PdfPageFormat.a4,
+        canChangeOrientation: false,
+        canChangePageFormat: false,
+        maxPageWidth: 800,
+        loadingWidget: Center(child: CircularProgressIndicator()),
+        onError: (context, error) => Center(child: Text('Hiba: $error')),
+      ),
+    );
+  }
+
+  Future<void> _exportPdf(BuildContext context) async {
+    final quizTitle =
+        widget.quiz['project_name'] ?? widget.quiz['name'] ?? 'Teszt';
+    final stats = _calculateStats();
+    final options = {
+      'orientation': _optOrientation,
+      'compactMode': _optCompactMode,
+      'rowNumbering': _optRowNumbering,
+      'stripedRows': _optStripedRows,
+      'showBorders': _optShowBorders,
+      'anonymize': _optAnonymize,
+      'signature': _optSignature,
+      'timestamp': _optTimestamp,
+      'coverPage': _optCoverPage,
+      'answerKey': _optAnswerKey,
+      'onlyIncorrect': _optOnlyIncorrect,
+      'customNote': _optCustomNote,
+      'showStudentId': _optShowStudentId,
+      'watermark': _optWatermark,
+      'pageNumbers': _optPageNumbers,
+      'passFail': _optPassFail,
+      'pageSize': _optPageSize,
+      'grayscale': _optGrayscale,
+      'showPoints': _optShowPoints,
+      'hideCorrect': _optHideCorrect,
+      'fontSize': _optFontSize,
+      'feedbackBox': _optFeedbackBox,
+    };
+    final pdf = await PdfService.generateGradesReport(
+      quizTitle: quizTitle,
+      groupName: widget.groupName ?? '',
+      students: _members,
+      stats: stats,
+      quizData: _fullQuizData,
+      includeStats: _exportIncludeStats,
+      includeStudentList: _exportIncludeStudentList,
+      includeStudentDetails: _exportIncludeStudentDetails,
+      includeQuestions: _exportIncludeQuestions,
+      includeWarnings: _exportIncludeWarnings,
+      warningLayout: _exportWarningLayout,
+      options: options,
+    );
+    Printing.sharePdf(bytes: pdf, filename: '${quizTitle}_admin_report.pdf');
+  }
+
+  Widget _buildExportSettingsUI(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Filter out students for stats passed to options if needed, but PdfService takes full list.
+    // _members is already filtered/processed in _fetchData.
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        /*Text(
+          'Exportálási beállítások',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: theme.textTheme.bodyLarge?.color,
+          ),
+        ),
+        const SizedBox(height: 24),*/
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tartalom',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: theme.primaryColor,
+                    color: theme.textTheme.bodyLarge?.color,
                   ),
                 ),
-                leading: Icon(Icons.tune, color: theme.primaryColor),
-                childrenPadding: const EdgeInsets.all(16),
-                children: [
-                  // 1. Megjelenés (Layout)
-                  _buildSettingsGroup('Megjelenés', [
-                    _buildDropdown(
-                      'Tájolás',
-                      _optOrientation,
-                      ['portrait', 'landscape'],
-                      ['Álló', 'Fekvő'],
-                      (v) => setState(() => _optOrientation = v!),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Kompakt mód',
-                      _optCompactMode,
-                      (v) => setState(() => _optCompactMode = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Szürkeárnyalatos',
-                      _optGrayscale,
-                      (v) => setState(() => _optGrayscale = v),
-                    ),
-                  ]),
-                  const Divider(),
-
-                  // 2. Táblázatok (Tables)
-                  _buildSettingsGroup('Táblázatok', [
-                    _buildSettingsGroupToggle(
-                      'Sorszámozás',
-                      _optRowNumbering,
-                      (v) => setState(() => _optRowNumbering = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Zebra csíkozás',
-                      _optStripedRows,
-                      (v) => setState(() => _optStripedRows = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Szegélyek megjelenítése',
-                      _optShowBorders,
-                      (v) => setState(() => _optShowBorders = v),
-                    ),
-                  ]),
-                  const Divider(),
-
-                  // 3. Adatvédelem (Privacy)
-                  _buildSettingsGroup('Adatvédelem', [
-                    _buildSettingsGroupToggle(
-                      'Névtelenítés',
-                      _optAnonymize,
-                      (v) => setState(() => _optAnonymize = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Pass/Fail kiemelés',
-                      _optPassFail,
-                      (v) => setState(() => _optPassFail = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Tanuló ID mutatása',
-                      _optShowStudentId,
-                      (v) => setState(() => _optShowStudentId = v),
-                    ),
-                  ]),
-                  const Divider(),
-
-                  // 4. Extrák (Extras)
-                  _buildSettingsGroup('Extrák', [
-                    _buildSettingsGroupToggle(
-                      'Aláírás helye',
-                      _optSignature,
-                      (v) => setState(() => _optSignature = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Létrehozás ideje',
-                      _optTimestamp,
-                      (v) => setState(() => _optTimestamp = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Címlap',
-                      _optCoverPage,
-                      (v) => setState(() => _optCoverPage = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Megoldókulcs (végén)',
-                      _optAnswerKey,
-                      (v) => setState(() => _optAnswerKey = v),
-                    ),
-                    _buildSettingsGroupToggle(
-                      'Csak hibás válaszok',
-                      _optOnlyIncorrect,
-                      (v) => setState(() => _optOnlyIncorrect = v),
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  TextField(
-                    onChanged: (v) => setState(() => _optCustomNote = v),
-                    decoration: InputDecoration(
-                      labelText: 'Megjegyzés a lábléchez',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      isDense: true,
-                    ),
-                  ),
-                ],
-              ),
+                const SizedBox(height: 12),
+                _buildExportToggle(
+                  'Statisztikák (átlag, eloszlás)',
+                  _exportIncludeStats,
+                  (value) => setState(() => _exportIncludeStats = value),
+                ),
+                _buildExportToggle(
+                  'Tanulók listája (név, pontszám, jegy)',
+                  _exportIncludeStudentList,
+                  (value) => setState(() => _exportIncludeStudentList = value),
+                ),
+                _buildExportToggle(
+                  'Tanulói Státuszok (pl. Leadta, Letiltva)',
+                  _exportIncludeWarnings,
+                  (value) => setState(() => _exportIncludeWarnings = value),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 32),
-          Center(
-            child: SizedBox(
-              width: 250,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  final pdf = await PdfService.generateGradesReport(
-                    quizTitle: widget.quiz['project_name'] ?? 'Teszt',
-                    groupName: widget.groupName ?? '',
-                    students: _members,
-                    stats: stats,
-                    quizData: _fullQuizData,
-                    includeStats: _exportIncludeStats,
-                    includeStudentList: _exportIncludeStudentList,
-                    includeStudentDetails: _exportIncludeStudentDetails,
-                    includeQuestions: _exportIncludeQuestions,
-                    includeWarnings: _exportIncludeWarnings,
-                    warningLayout: _exportWarningLayout,
-                    // New Options passed as a Map to avoid huge argument list
-                    options: {
-                      'orientation': _optOrientation,
-                      'rowNumbering': _optRowNumbering,
-                      'stripedRows': _optStripedRows,
-                      'showBorders': _optShowBorders,
-                      'anonymize': _optAnonymize,
-                      'signature': _optSignature,
-                      'timestamp': _optTimestamp,
-                      'coverPage': _optCoverPage,
-                      'answerKey': _optAnswerKey,
-                      'onlyIncorrect': _optOnlyIncorrect,
-                      'grayscale': _optGrayscale,
-                      'compactMode': _optCompactMode,
-                      'customNote': _optCustomNote,
-                      'passFail': _optPassFail,
-                      // Missing options added
-                      'pageSize': _optPageSize,
-                      'fontSize': _optFontSize,
-                      'watermark': _optWatermark,
-                      'pageNumbers': _optPageNumbers,
-                      'feedbackBox': _optFeedbackBox,
-                      'showPoints': _optShowPoints,
-                      'hideCorrect': _optHideCorrect,
-                      'showStudentId': _optShowStudentId,
-                    },
-                  );
-                  Printing.sharePdf(
-                    bytes: pdf,
-                    filename:
-                        '${widget.quiz['project_name'] ?? 'Teszt'}_admin_report.pdf',
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  shadowColor: Colors.black.withOpacity(0.3),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.picture_as_pdf, size: 24),
-                label: const Text(
-                  'PDF generálása',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        // --- Advanced Settings ---
+        const SizedBox(height: 24),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Theme(
+            data: theme.copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              title: Text(
+                'Bővített beállítások',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: theme.primaryColor,
                 ),
               ),
+              leading: Icon(Icons.tune, color: theme.primaryColor),
+              childrenPadding: const EdgeInsets.all(16),
+              children: [
+                // 1. Megjelenés (Layout)
+                _buildSettingsGroup('Megjelenés', [
+                  _buildDropdown(
+                    'Tájolás',
+                    _optOrientation,
+                    ['portrait', 'landscape'],
+                    ['Álló', 'Fekvő'],
+                    (v) => setState(() => _optOrientation = v!),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Kompakt mód',
+                    _optCompactMode,
+                    (v) => setState(() => _optCompactMode = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Szürkeárnyalatos',
+                    _optGrayscale,
+                    (v) => setState(() => _optGrayscale = v),
+                  ),
+                ]),
+                const Divider(),
+
+                // 2. Táblázatok (Tables)
+                _buildSettingsGroup('Táblázatok', [
+                  _buildSettingsGroupToggle(
+                    'Sorszámozás',
+                    _optRowNumbering,
+                    (v) => setState(() => _optRowNumbering = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Zebra csíkozás',
+                    _optStripedRows,
+                    (v) => setState(() => _optStripedRows = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Szegélyek megjelenítése',
+                    _optShowBorders,
+                    (v) => setState(() => _optShowBorders = v),
+                  ),
+                ]),
+                const Divider(),
+
+                // 3. Adatvédelem (Privacy)
+                _buildSettingsGroup('Adatvédelem', [
+                  _buildSettingsGroupToggle(
+                    'Névtelenítés',
+                    _optAnonymize,
+                    (v) => setState(() => _optAnonymize = v),
+                  ),
+                ]),
+                const Divider(),
+
+                // 4. Extrák (Extras)
+                _buildSettingsGroup('Extrák', [
+                  _buildSettingsGroupToggle(
+                    'Aláírás helye',
+                    _optSignature,
+                    (v) => setState(() => _optSignature = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Létrehozás ideje',
+                    _optTimestamp,
+                    (v) => setState(() => _optTimestamp = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Címlap',
+                    _optCoverPage,
+                    (v) => setState(() => _optCoverPage = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Megoldókulcs (végén)',
+                    _optAnswerKey,
+                    (v) => setState(() => _optAnswerKey = v),
+                  ),
+                  _buildSettingsGroupToggle(
+                    'Csak hibás válaszok',
+                    _optOnlyIncorrect,
+                    (v) => setState(() => _optOnlyIncorrect = v),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                TextField(
+                  onChanged: (v) => setState(() => _optCustomNote = v),
+                  decoration: InputDecoration(
+                    labelText: 'Megjegyzés a lábléchez',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    isDense: true,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -2216,7 +3330,7 @@ class _AdminPageState extends State<AdminPage> {
   ) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -2232,14 +3346,13 @@ class _AdminPageState extends State<AdminPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: theme.primaryColor,
+            activeThumbColor: theme.primaryColor,
           ),
         ],
       ),
     );
   }
 
-  // Helper widgets for settings
   Widget _buildSettingsGroup(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2262,7 +3375,7 @@ class _AdminPageState extends State<AdminPage> {
     ValueChanged<bool> onChanged,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           SizedBox(
@@ -2270,7 +3383,7 @@ class _AdminPageState extends State<AdminPage> {
             child: Switch(
               value: value,
               onChanged: onChanged,
-              activeColor: Theme.of(context).primaryColor,
+              activeThumbColor: Theme.of(context).primaryColor,
             ),
           ),
           const SizedBox(width: 12),
@@ -2319,5 +3432,17 @@ class _AdminPageState extends State<AdminPage> {
       default:
         return Icons.construction;
     }
+  }
+
+  String _calculateAveragePercentage() {
+    final gradedOnes = _members
+        .where((m) => m['score'] != null && (m['score'] as num) > 0)
+        .toList();
+    if (gradedOnes.isEmpty) return '0.0';
+    double sum = 0;
+    for (var m in gradedOnes) {
+      sum += (m['score'] as num).toDouble();
+    }
+    return (sum / gradedOnes.length).toStringAsFixed(1);
   }
 }

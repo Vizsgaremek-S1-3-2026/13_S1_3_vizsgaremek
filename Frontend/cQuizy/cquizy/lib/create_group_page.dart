@@ -4,9 +4,13 @@ import 'providers/user_provider.dart';
 import 'group_page.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'api_service.dart';
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
+import 'widgets/group_card.dart';
 
 class CreateGroupPage extends StatefulWidget {
-  const CreateGroupPage({super.key});
+  final bool tutorialMode;
+
+  const CreateGroupPage({super.key, this.tutorialMode = false});
 
   @override
   State<CreateGroupPage> createState() => _CreateGroupPageState();
@@ -17,7 +21,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   final _groupNameController = TextEditingController();
 
   Color _selectedColor = const Color(0xFFE57373); // Default red
-  int _protectionLevel = 1; // 0=Nyitott, 1=Védett, 2=Zárolt
   bool _isCreating = false;
 
   // HSL color picker state
@@ -25,6 +28,23 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   double _saturation = 0.7; // 0-1
   double _lightness = 0.6; // 0-1
   bool _showCustomColorPicker = false;
+
+  // Tutorial GlobalKeys
+  final GlobalKey _groupNameKey = GlobalKey();
+  final GlobalKey _colorPickerKey = GlobalKey();
+  final GlobalKey _previewKey = GlobalKey();
+  final GlobalKey _createButtonKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    // Start tutorial after widget is built
+    if (widget.tutorialMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startTutorial();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -210,6 +230,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           _buildSectionLabel('CSOPORT NEVE', theme),
           const SizedBox(height: 12),
           TextFormField(
+            key: _groupNameKey,
             controller: _groupNameController,
             style: TextStyle(color: theme.textTheme.bodyLarge?.color),
             decoration: _buildInputDecoration(
@@ -253,17 +274,13 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
           const SizedBox(height: 32),
 
-          // Settings
-          _buildSectionLabel('BEÁLLÍTÁSOK', theme),
-          const SizedBox(height: 16),
-          _buildProtectionSlider(theme),
-
           const SizedBox(height: 48),
 
           // Create Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
+              key: _createButtonKey,
               onPressed: _isCreating ? null : _createGroup,
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
@@ -387,6 +404,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     ];
 
     return Column(
+      key: _colorPickerKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Preset colors
@@ -653,197 +671,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     return luminance > 0.5 ? Colors.black : Colors.white;
   }
 
-  Widget _buildProtectionSlider(ThemeData theme) {
-    final labels = ['Nyitott', 'Védett', 'Zárolt'];
-    final icons = [
-      Icons.lock_open_rounded,
-      Icons.shield_rounded,
-      Icons.lock_rounded,
-    ];
-    final colors = [Colors.green, Colors.orange, Colors.red];
-    final descriptions = [
-      'Nincs védelem - házi feladat, gyakorlás',
-      'Csalásmegelőzés - screenshot, hangerő, fókusz figyelés',
-      'Teljes zárolás - kiosk mód + csalásmegelőzés',
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Label row with icons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(3, (index) {
-              final isSelected = _protectionLevel == index;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _protectionLevel = index),
-                  child: Column(
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? colors[index].withOpacity(0.2)
-                              : Colors.transparent,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected
-                                ? colors[index]
-                                : theme.dividerColor,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: Icon(
-                          icons[index],
-                          color: isSelected
-                              ? colors[index]
-                              : theme.iconTheme.color?.withOpacity(0.5),
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        labels[index],
-                        style: TextStyle(
-                          color: isSelected
-                              ? colors[index]
-                              : theme.textTheme.bodyMedium?.color?.withOpacity(
-                                  0.6,
-                                ),
-                          fontSize: 12,
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 16),
-          // Slider
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: colors[_protectionLevel],
-              inactiveTrackColor: theme.dividerColor,
-              thumbColor: colors[_protectionLevel],
-              overlayColor: colors[_protectionLevel].withOpacity(0.2),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
-              trackHeight: 6,
-            ),
-            child: Slider(
-              value: _protectionLevel.toDouble(),
-              min: 0,
-              max: 2,
-              divisions: 2,
-              onChanged: (value) =>
-                  setState(() => _protectionLevel = value.toInt()),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Description
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colors[_protectionLevel].withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  color: colors[_protectionLevel],
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    descriptions[_protectionLevel],
-                    style: TextStyle(
-                      color: theme.textTheme.bodyMedium?.color,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingTile({
-    required ThemeData theme,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    required IconData icon,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor, width: 1),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: theme.primaryColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: theme.primaryColor, size: 24),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: theme.textTheme.bodyLarge?.color,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-            fontSize: 13,
-          ),
-        ),
-        trailing: Switch(
-          value: value,
-          activeColor: theme.primaryColor,
-          onChanged: onChanged,
-          thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
-            if (states.contains(WidgetState.selected)) {
-              return Colors.white;
-            }
-            return theme.colorScheme.outline;
-          }),
-          trackColor: WidgetStateProperty.resolveWith<Color>((states) {
-            if (states.contains(WidgetState.selected)) {
-              return theme.primaryColor;
-            }
-            return theme.colorScheme.surfaceContainerHighest;
-          }),
-          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-        ),
-      ),
-    );
-  }
-
   Widget _buildPreview(ThemeData theme, String teacherName) {
     final groupName = _groupNameController.text.trim().isEmpty
         ? 'Csoport Neve'
@@ -863,76 +690,15 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     );
 
     return Container(
+      key: _previewKey,
       constraints: const BoxConstraints(maxWidth: 500),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Group Card Preview matching home_page.dart GroupCard
-          Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              Container(
-                constraints: const BoxConstraints(),
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  gradient: previewGroup.getGradient(context),
-                  borderRadius: BorderRadius.circular(5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _selectedColor.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {}, // Preview only
-                    borderRadius: BorderRadius.circular(5),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40.0,
-                        vertical: 20.0,
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            previewGroup.title,
-                            style: TextStyle(
-                              color: previewGroup.getTextColor(context),
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            previewGroup.subtitle,
-                            style: TextStyle(
-                              color: previewGroup
-                                  .getTextColor(context)
-                                  .withOpacity(0.8),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Kiosk mode indicator if enabled (keeping consistent with home page style if it had one,
-              // but home page uses a yellow square for notifications.
-              // Here we might want to show kiosk mode differently or just in the badges below.
-              // The user asked for "exactly the same", so maybe I should NOT add the kiosk icon ON the card
-              // if the home page card doesn't have it (it only has notification dot).
-              // However, the previous preview had it. I'll stick to the badges below for extra info
-              // and keep the card clean like home page.)
-            ],
+          GroupCard(
+            group: previewGroup,
+            onGroupSelected: (_) {}, // Preview only
           ),
           const SizedBox(height: 16),
           // Info badges
@@ -945,12 +711,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 Icons.calendar_today,
                 'Létrehozva: ${_formatDate(DateTime.now())}',
               ),
-              if (_protectionLevel >= 2)
-                _buildInfoBadge(theme, Icons.lock, 'Zárolt mód'),
-              if (_protectionLevel >= 1 && _protectionLevel < 2)
-                _buildInfoBadge(theme, Icons.shield, 'Védett mód'),
-              if (_protectionLevel == 0)
-                _buildInfoBadge(theme, Icons.lock_open, 'Nyitott mód'),
             ],
           ),
         ],
@@ -989,6 +749,211 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 
   String _formatDate(DateTime date) {
     return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}.';
+  }
+
+  void _startTutorial() {
+    late TutorialCoachMark tutorialCoachMark;
+    List<TargetFocus> targets = [];
+
+    // 1. Group Name Field
+    targets.add(
+      TargetFocus(
+        identify: "group_name",
+        keyTarget: _groupNameKey,
+        alignSkip: Alignment.topRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Csoport Neve",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Add meg a csoport nevét. Ez az alapvető azonosító, amely megjelenik a csoportkártyán. Például: 'Matematika 9.A' vagy 'Fizika emelt'.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 2. Color Picker
+    targets.add(
+      TargetFocus(
+        identify: "color_picker",
+        keyTarget: _colorPickerKey,
+        alignSkip: Alignment.topLeft,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Színválasztás",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Válassz egy színt a csoportnak! Használhatsz előre definiált színeket, vagy alkoss sajátot az egyedi HSL (Árnyalat, Telítettség, Világosság) csúszkákkal.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 4. Preview
+    targets.add(
+      TargetFocus(
+        identify: "preview",
+        keyTarget: _previewKey,
+        alignSkip: Alignment.topLeft,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        contents: [
+          TargetContent(
+            align: ContentAlign.bottom,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Előnézet",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Itt láthatod élő előnézetben, hogyan fog kinézni a csoportkártya a főoldalon. Minden változtatás azonnal megjelenik!",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    // 5. Create Button
+    targets.add(
+      TargetFocus(
+        identify: "create_button",
+        keyTarget: _createButtonKey,
+        alignSkip: Alignment.topRight,
+        shape: ShapeLightFocus.RRect,
+        radius: 12,
+        contents: [
+          TargetContent(
+            align: ContentAlign.top,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Csoport Létrehozása",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Ha minden beállítás rendben van, kattints ide a csoport létrehozásához! A csoport azonnal megjelenik a főoldalon, és megoszthatod a meghívó kódot a diákokkal.",
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black,
+      textSkip: "Kihagyás",
+      paddingFocus: 0,
+      opacityShadow: 0.9,
+      pulseEnable: true,
+      onFinish: () {
+        debugPrint("TUTORIAL: Create group tutorial finished");
+        _finishTutorial();
+      },
+      onClickTarget: (target) {
+        debugPrint("onClickTarget: $target");
+      },
+      onSkip: () {
+        debugPrint("TUTORIAL: Tutorial skipped");
+        _finishTutorial();
+        return true;
+      },
+    );
+
+    // Add a slight delay before showing to ensure rendering is complete
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        tutorialCoachMark.show(context: context);
+      }
+    });
+  }
+
+  bool _isNavigating = false;
+
+  void _finishTutorial() {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    // Show feedback
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Útmutató befejezve. Visszatérés..."),
+          duration: Duration(milliseconds: 1000),
+        ),
+      );
+    }
+
+    // Simple delay to let the snackbar appear and overlay to close
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        debugPrint("TUTORIAL: Popping CreateGroupPage now");
+        Navigator.of(
+          context,
+        ).maybePop(true); // Return true to indicate tutorial completion
+      }
+    });
   }
 
   Future<void> _createGroup() async {

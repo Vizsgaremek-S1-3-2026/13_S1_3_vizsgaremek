@@ -104,6 +104,7 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
                 child: Column(
                   children: [
                     TextFormField(
+                      // Removed nameInputKey
                       controller: _nameController,
                       decoration: InputDecoration(
                         labelText: 'Projekt neve',
@@ -133,6 +134,7 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
                     ),
                     const SizedBox(height: 24),
                     TextFormField(
+                      // Removed descInputKey
                       controller: _descController,
                       decoration: InputDecoration(
                         labelText: 'Leírás (opcionális)',
@@ -180,6 +182,7 @@ class _CreateProjectDialogState extends State<CreateProjectDialog> {
                         ),
                         const SizedBox(width: 16),
                         ElevatedButton(
+                          // Removed createButtonKey
                           onPressed: () {
                             if (_formKey.currentState!.validate()) {
                               Navigator.pop(context, {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'models/user.dart';
+import 'models/stats_models.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -15,18 +16,11 @@ class ApiService {
   // Az API alap URL-je. Győződj meg róla, hogy a szerver ezen a címen fut.
   //static const String _baseUrl = 'http://127.0.0.1:8000/api';
   static const String _baseUrl =
-      'https://3dp1tfq4-8000.euw.devtunnels.ms/api';
+      'https://one3-s1-3-vizsgaremek.onrender.com/api';
 
   // Bejelentkezési funkció
   // Visszatérési érték: A szervertől kapott token, ha sikeres, egyébként null.
   Future<String?> login(String username, String password) async {
-    // --- TESZT MÓD ---
-    if (username == 'test' && password == 'test') {
-      debugPrint('TESZT MÓD: Sikeres bejelentkezés');
-      return 'test_token';
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/login');
     try {
       final response = await http.post(
@@ -92,25 +86,6 @@ class ApiService {
 
   // Felhasználói profil lekérése
   Future<User?> getUserProfile(String token) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Mock profil adatok visszaadása');
-      return User(
-        id: 1,
-        username: 'testuser',
-        isSuperuser: true,
-        firstName: 'Teszt',
-        lastName: 'Elek',
-        email: 'teszt.elek@example.com',
-        isStaff: true,
-        isActive: true,
-        dateJoined: DateTime.now().subtract(const Duration(days: 365)),
-        nickname: 'Teszter',
-        pfpUrl: 'https://via.placeholder.com/150',
-      );
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me');
     try {
       final response = await http.get(
@@ -140,13 +115,6 @@ class ApiService {
     String token,
     Map<String, dynamic> data,
   ) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Profil frissítés szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me');
     try {
       final response = await http.patch(
@@ -178,13 +146,6 @@ class ApiService {
     String currentPassword,
     String newPassword,
   ) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Jelszó módosítás szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me/change-password');
     try {
       final response = await http.post(
@@ -215,13 +176,6 @@ class ApiService {
 
   // Fiók törlése
   Future<bool> deleteAccount(String token, String password) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Fiók törlése szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me');
     try {
       final response = await http.delete(
@@ -253,13 +207,6 @@ class ApiService {
     String newEmail,
     String password,
   ) async {
-    // --- TESZT MÓD ---
-    if (token == 'test_token') {
-      debugPrint('TESZT MÓD: Email módosítás szimulálása');
-      return true;
-    }
-    // -----------------
-
     final url = Uri.parse('$_baseUrl/users/me/change-email');
     try {
       final response = await http.post(
@@ -660,14 +607,47 @@ class ApiService {
     }
   }
 
+  // Get live quiz status of students (Teacher)
+  Future<Map<String, dynamic>?> getQuizStatus(String token, int quizId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/status');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } else {
+        debugPrint(
+          'Kvíz állapot lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba kvíz állapot lekérése során: $e');
+      return null;
+    }
+  }
+
   // Update an existing Quiz session
   Future<Map<String, dynamic>?> updateQuiz(
     String token,
     int quizId,
-    DateTime start,
-    DateTime end,
+    String dateStartIso,
+    String dateEndIso,
   ) async {
     final url = Uri.parse('$_baseUrl/quizzes/$quizId');
+    final body = jsonEncode({
+      'date_start': dateStartIso,
+      'date_end': dateEndIso,
+    });
+    debugPrint('=== UPDATE QUIZ ===');
+    debugPrint('URL: $url');
+    debugPrint('Body: $body');
     try {
       final response = await http.put(
         url,
@@ -675,11 +655,10 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'date_start': start.toIso8601String(),
-          'date_end': end.toIso8601String(),
-        }),
+        body: body,
       );
+
+      debugPrint('Response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(utf8.decode(response.bodyBytes));
@@ -687,11 +666,23 @@ class ApiService {
         debugPrint(
           'Teszt frissítési hiba: ${response.statusCode} - ${response.body}',
         );
-        return null;
+        // Try to parse JSON error, otherwise use status code
+        String errorMsg;
+        try {
+          final parsed = jsonDecode(response.body);
+          errorMsg = parsed['detail'] ?? parsed['error'] ?? parsed.toString();
+        } catch (_) {
+          errorMsg = 'Szerverhiba';
+        }
+        return {
+          'error': true,
+          'status': response.statusCode,
+          'message': errorMsg,
+        };
       }
     } catch (e) {
       debugPrint('Hálózati hiba teszt frissítése során: $e');
-      return null;
+      return {'error': true, 'message': e.toString()};
     }
   }
 
@@ -991,8 +982,12 @@ class ApiService {
     String token,
     Map<String, dynamic> submissionData,
   ) async {
-    final url = Uri.parse('$_baseUrl/quizzes/submit');
+    final url = Uri.parse('$_baseUrl/quizzes/submit/');
     try {
+      debugPrint('=== SUBMIT QUIZ DEBUG ===');
+      debugPrint('URL: $url');
+      debugPrint('PAYLOAD: ${jsonEncode(submissionData)}');
+
       final response = await http.post(
         url,
         headers: {
@@ -1002,25 +997,29 @@ class ApiService {
         body: jsonEncode(submissionData),
       );
 
+      debugPrint('STATUS CODE: ${response.statusCode}');
+      debugPrint('RESPONSE BODY: ${response.body}');
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(utf8.decode(response.bodyBytes));
       } else {
         debugPrint(
-          'Kvíz beadása hiba: ${response.statusCode} - ${response.body}',
+          '!!! Kvíz beadása HIBA: ${response.statusCode} - ${response.body}',
         );
         return null;
       }
-    } catch (e) {
-      debugPrint('Hálózati hiba kvíz beadása során: $e');
+    } catch (e, stackTrace) {
+      debugPrint('!!! Hálózati hiba kvíz beadása során: $e');
+      debugPrint('Stack trace: $stackTrace');
       return null;
     }
   }
 
   // --- Monitoring & Events ---
 
-  // Report a cheat event (Student)
+  // Report a quiz event (Start, Finish, Cheat)
   Future<bool> reportEvent(String token, Map<String, dynamic> eventData) async {
-    final url = Uri.parse('$_baseUrl/quizzes/events');
+    final url = Uri.parse('$_baseUrl/quizzes/events/log');
     try {
       final response = await http.post(
         url,
@@ -1035,6 +1034,31 @@ class ApiService {
     } catch (e) {
       debugPrint('Esemény jelentése hiba: $e');
       return false;
+    }
+  }
+
+  // Report event and return the created event ID (for immediate resolve chaining)
+  Future<int?> reportEventGetId(String token, Map<String, dynamic> eventData) async {
+    final url = Uri.parse('$_baseUrl/quizzes/events/log');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(eventData),
+      );
+
+      debugPrint('reportEventGetId → ${response.statusCode}: ${response.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data['id'] as int?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('reportEventGetId hiba: $e');
+      return null;
     }
   }
 
@@ -1087,9 +1111,36 @@ class ApiService {
     }
   }
 
-  // Resolve/Unlock an event (Teacher)
-  Future<bool> resolveEvent(String token, int eventId) async {
-    final url = Uri.parse('$_baseUrl/quizzes/events/$eventId');
+  // Resolve/Close a student event (Teacher)
+  // decision: "CLOSE"
+  Future<bool> resolveStudent(
+    String token,
+    int eventId,
+    String decision,
+  ) async {
+    final url = Uri.parse('$_baseUrl/quizzes/events/$eventId/resolve');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'decision': decision}),
+      );
+
+      debugPrint('resolveStudent [$decision] eventId=$eventId → ${response.statusCode}: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('resolveStudent error: $e');
+      return false;
+    }
+  }
+
+  // Unlock a specific student (Teacher)
+  // POST /quizzes/{quiz_id}/unlock/{student_id}
+  Future<bool> unlockStudent(String token, int quizId, int studentId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/unlock/$studentId');
     try {
       final response = await http.post(
         url,
@@ -1099,9 +1150,61 @@ class ApiService {
         },
       );
 
-      return response.statusCode == 200;
+      debugPrint('unlockStudent quizId=$quizId studentId=$studentId → ${response.statusCode}: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
+      debugPrint('unlockStudent error: $e');
       return false;
+    }
+  }
+
+  // Block a specific student (Teacher)
+  // POST /quizzes/{quiz_id}/block/{student_id}
+  Future<bool> blockStudent(String token, int quizId, int studentId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/block/$studentId');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('blockStudent quizId=$quizId studentId=$studentId → ${response.statusCode}: ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('blockStudent error: $e');
+      return false;
+    }
+  }
+
+  // Close a specific student's test (Teacher)
+  // POST /quizzes/{quiz_id}/close/{student_id}
+  Future<Map<String, dynamic>> closeStudentDetailed(String token, int quizId, int studentId) async {
+    final url = Uri.parse('$_baseUrl/quizzes/$quizId/close/$studentId');
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      debugPrint('closeStudent quizId=$quizId studentId=$studentId → ${response.statusCode}: ${response.body}');
+      return {
+        'success': response.statusCode == 200 || response.statusCode == 204,
+        'statusCode': response.statusCode,
+        'body': response.body,
+      };
+    } catch (e) {
+      debugPrint('closeStudent error: $e');
+      return {
+        'success': false,
+        'statusCode': 0,
+        'body': e.toString(),
+      };
     }
   }
 
@@ -1165,6 +1268,7 @@ class ApiService {
     int submissionId,
   ) async {
     final url = Uri.parse('$_baseUrl/quizzes/submission/$submissionId');
+    debugPrint('=== getSubmissionDetails === URL: $url');
     try {
       final response = await http.get(
         url,
@@ -1174,12 +1278,15 @@ class ApiService {
         },
       );
 
+      debugPrint('getSubmissionDetails response: ${response.statusCode} - ${response.body}');
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes));
       } else {
+        debugPrint('getSubmissionDetails HIBA: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
+      debugPrint('getSubmissionDetails EXCEPTION: $e');
       return null;
     }
   }
@@ -1225,7 +1332,7 @@ class ApiService {
           'Content-Type': 'application/json; charset=UTF-8',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'grade': grade}),
+        body: jsonEncode({'new_grade': grade.toString()}),
       );
 
       return response.statusCode == 200;
@@ -1254,5 +1361,160 @@ class ApiService {
     } catch (e) {
       return null;
     }
+  }
+
+  // Get user results for a group
+  Future<List<Map<String, dynamic>>> getUserResults(
+    String token,
+    int groupId,
+  ) async {
+    final url = Uri.parse('$_baseUrl/quizzes/group/$groupId/results');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint(
+          'Eredmények lekérési hiba: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Hálózati hiba eredmények lekérése során: $e');
+      return [];
+    }
+  }
+  // --- Statistics & Insights (New) ---
+
+  // Get status of user (self)
+  Future<Map<String, dynamic>?> getMe(String token) async {
+    final url = Uri.parse('$_baseUrl/users/me');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Get groups with rank (re-using existing logic but as a clean helper)
+  Future<List<GroupWithRankOutSchema>> getGroupsWithRank(String token) async {
+    final data = await getUserGroups(token);
+    return data.map((e) => GroupWithRankOutSchema.fromJson(e)).toList();
+  }
+
+  // Teacher: Get group overview stats
+  Future<AdminGroupOverviewSchema?> getGroupStatsOverview(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/stats/overview');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return AdminGroupOverviewSchema.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Teacher: Get student leaderboard
+  Future<List<AdminStudentStatSchema>> getGroupStudentStats(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/stats/students');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => AdminStudentStatSchema.fromJson(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Teacher: Get quiz difficulty map
+  Future<List<AdminQuizStatSchema>> getGroupQuizStats(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/stats/quizzes');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => AdminQuizStatSchema.fromJson(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Get grading scale for a group
+  Future<List<GradePercentageSchema>> getGroupGradingScale(String token, int groupId) async {
+    final url = Uri.parse('$_baseUrl/groups/$groupId/grading-scale');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((e) => GradePercentageSchema.fromJson(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Student: Get own results for a group
+  Future<List<SubmissionOutSchema>> getStudentResults(String token, int groupId) async {
+    final data = await getUserResults(token, groupId);
+    return data.map((e) => SubmissionOutSchema.fromJson(e)).toList();
+  }
+
+  // Common: Get quiz stats (avg/min/max)
+  Future<QuizStatsSchema?> getQuizStatsModel(String token, int quizId) async {
+    final data = await getQuizStats(token, quizId);
+    if (data != null) {
+      return QuizStatsSchema.fromJson(data);
+    }
+    return null;
   }
 }

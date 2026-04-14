@@ -4,6 +4,10 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'dart:io';
 import 'project_editor_page.dart';
 
 class ProjectsPage extends StatefulWidget {
@@ -315,6 +319,70 @@ class _ProjectsPageState extends State<ProjectsPage> {
     }
   }
 
+  Future<void> _exportProject(Map<String, dynamic> project) async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    try {
+      final api = ApiService();
+      // Fetch full details including blocks
+      final fullProject = await api.getProjectDetails(token, project['id']);
+      if (fullProject == null) {
+        throw Exception('Nem sikerült betölteni a projekt adatait.');
+      }
+
+      final Map<String, dynamic> projectData = {
+        'name': fullProject['name'],
+        'desc': fullProject['desc'],
+        'blocks': fullProject['blocks'] ?? [],
+      };
+
+      final String jsonString = jsonEncode(projectData);
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Projekt exportálása',
+        fileName:
+            '${(fullProject['name'] as String).replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')}.cq',
+        allowedExtensions: ['cq'],
+        type: FileType.custom,
+      );
+
+      if (outputFile != null) {
+        // Enforce extension
+        if (!outputFile.endsWith('.cq')) {
+          outputFile += '.cq';
+        }
+        final File file = File(outputFile);
+        await file.writeAsString(jsonString);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Projekt sikeresen exportálva!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hiba az exportálás során: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildInlineActionButton({
     required IconData icon,
     required String label,
@@ -365,13 +433,20 @@ class _ProjectsPageState extends State<ProjectsPage> {
             // Header title
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'Projektek',
-                style: TextStyle(
-                  color: theme.textTheme.titleMedium?.color?.withOpacity(0.8),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Projektek',
+                    style: TextStyle(
+                      color: theme.textTheme.titleMedium?.color?.withOpacity(
+                        0.8,
+                      ),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 8),
@@ -711,6 +786,20 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                   onTap: () {
                                     setState(() => _expandedProjectId = null);
                                     _duplicateProject(project);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Export button
+                              Expanded(
+                                child: _buildInlineActionButton(
+                                  icon: Icons.download,
+                                  label: 'Export',
+                                  color: Colors.blueAccent,
+                                  isDark: isDark,
+                                  onTap: () {
+                                    setState(() => _expandedProjectId = null);
+                                    _exportProject(project);
                                   },
                                 ),
                               ),

@@ -5,7 +5,8 @@ import 'group_page.dart';
 import 'settings_page.dart';
 import 'test_taking_page.dart';
 import 'utils/web_protections.dart';
-import 'dart:ui';
+import 'utils/version_manager.dart';
+
 import 'create_group_page.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
@@ -14,6 +15,13 @@ import 'create_project_dialog.dart';
 import 'create_quiz_dialog.dart';
 import 'theme.dart';
 import 'admin_page.dart';
+import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'student_tests_page.dart';
+import 'statistics_page.dart';
+import 'widgets/group_card.dart';
 
 const double kDesktopBreakpoint = 900.0;
 
@@ -40,24 +48,33 @@ class ActiveTestItem {
   }
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   List<Group> _myGroups = [];
   List<Group> _otherGroups = [];
-  Group? _selectedGroup;
+  List<ActiveTestItem> _activeTests = []; // State for active tests sidebar
 
+  Group? _selectedGroup;
+  bool _isLoading = true;
+
+  // New GlobalKeys for Tutorial
   bool _isBottomBarVisible = true;
   bool _isMemberPanelOpen = false;
   bool _isSpeedDialOpen = false;
   bool _showProjects = false;
+  bool _showStudentTests = false;
+  bool _showStatistics = false;
   int _projectsRefreshKey = 0;
+  List<Map<String, dynamic>>? _preFetchedProjects;
+  bool _isUpdateAvailable = false;
 
-  List<ActiveTestItem> _activeTests = [];
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _initializeGroups();
+    _checkVersion();
     // Refresh every 30 seconds to catch starting tests
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
@@ -91,12 +108,28 @@ class _HomePageState extends State<HomePage> {
     _otherGroups = [];
     _activeTests = [];
     _fetchGroups();
+    // Safety: if still loading after 10s (e.g. network hang), clear spinner
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && _isLoading) setState(() => _isLoading = false);
+    });
+  }
+
+  Future<void> _checkVersion() async {
+    final hasUpdate = await VersionManager.isUpdateAvailable();
+    if (hasUpdate && mounted) {
+      setState(() {
+        _isUpdateAvailable = true;
+      });
+    }
   }
 
   Future<void> _fetchGroups() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final token = userProvider.token;
-    if (token == null) return;
+    if (token == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
 
     final apiService = ApiService();
     List<dynamic> groupsData;
@@ -104,234 +137,204 @@ class _HomePageState extends State<HomePage> {
       groupsData = await apiService.getUserGroups(token);
     } catch (e) {
       debugPrint('Error fetching groups: $e');
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
 
-    final Map<int, String> groupAdminNames = {};
-    final Map<int, String> groupAdminFirstNames = {};
-    final Map<int, String> groupAdminLastNames = {};
-    final List<Future<void>> adminNameFutures = [];
+    // 1. Initial State Update - Show groups immediately with basic info
+    if (mounted) {
+      try {
+        setState(() {
+          final allExisting = [..._myGroups, ..._otherGroups];
+          final initialGroups = groupsData
+              .map((json) {
+                try {
+                  final isAdmin = json['rank'] == 'ADMIN';
+                  final groupId = json['id'];
 
-    for (var json in groupsData) {
-      if (json['rank'] != 'ADMIN') {
-        final groupId = json['id'];
-        if (groupId != null) {
-          adminNameFutures.add(() async {
-            try {
-              final members = await apiService.getGroupMembers(token, groupId);
-              final adminMember = members.firstWhere(
-                (m) => m['rank'] == 'ADMIN',
-                orElse: () => <String, dynamic>{},
-              );
+                  // Carry over existing state to prevent flickering
+                  Group? existing;
+                  try {
+                    existing = allExisting.firstWhere((g) => g.id == groupId);
+                  } catch (_) {}
 
-              if (adminMember.isNotEmpty && adminMember['user'] != null) {
-                final user = adminMember['user'] as Map<String, dynamic>;
-                final firstName = user['first_name']?.toString() ?? '';
-                final lastName = user['last_name']?.toString() ?? '';
-                final nickname = user['nickname']?.toString() ?? '';
-                final username = user['username']?.toString() ?? '';
-
-                // Store first and last name separately
-                groupAdminFirstNames[groupId] = firstName;
-                groupAdminLastNames[groupId] = lastName;
-
-                // Prioritize full name over nickname
-                String displayName = 'Admin';
-                if (firstName.isNotEmpty || lastName.isNotEmpty) {
-                  displayName = '$lastName $firstName'.trim();
-                } else if (nickname.isNotEmpty) {
-                  displayName = nickname;
-                } else if (username.isNotEmpty) {
-                  displayName = username;
+                  return Group.fromJson(json).copyWith(
+                    hasNotification: existing?.hasNotification ?? false,
+                    testExpiryDate: existing?.testExpiryDate,
+                    activeTestTitle: existing?.activeTestTitle,
+                    activeTestDescription: existing?.activeTestDescription,
+                    instructorFirstName: existing?.instructorFirstName ?? '',
+                    instructorLastName: existing?.instructorLastName ?? '',
+                    activeQuizData: existing?.activeQuizData,
+                    allActiveQuizzes: existing?.allActiveQuizzes ?? [],
+                  );
+                } catch (_) {
+                  return null;
                 }
-                groupAdminNames[groupId] = displayName;
-              }
-            } catch (e) {
-              debugPrint('Error fetching admin for group $groupId: $e');
-            }
-          }());
-        }
+              })
+              .whereType<Group>()
+              .toList();
+
+          _updateGroupsState(initialGroups);
+          _isLoading = false;
+        });
+      } catch (e) {
+        debugPrint('Error updating groups state: $e');
+        if (mounted) setState(() => _isLoading = false);
       }
     }
 
-    // Fetch Quizzes for each group to determine active tests
-    final Map<int, List<Map<String, dynamic>>> groupAllActiveQuizzes = {};
-    final List<Future<void>> quizFutures = [];
-
+    // 2. Background Task: Load Admin Names & Active Quizzes
+    // We do this asynchronously without blocking the main UI
     for (var json in groupsData) {
       final groupId = json['id'];
-      if (groupId != null) {
-        quizFutures.add(() async {
-          try {
-            final quizzes = await apiService.getGroupQuizzes(token, groupId);
-            final now = DateTime.now();
+      if (groupId == null) continue;
 
-            final activeQuizzes = quizzes.where((q) {
-              final end = DateTime.tryParse(q['date_end'] ?? '');
-              final start = DateTime.tryParse(q['date_start'] ?? '');
-              return end != null &&
-                  start != null &&
-                  end.toLocal().isAfter(now) &&
-                  start.toLocal().isBefore(now);
-            }).toList();
-
-            if (activeQuizzes.isNotEmpty) {
-              // Sort by end date (closest to expiry first)
-              activeQuizzes.sort((a, b) {
-                final endA = DateTime.parse(a['date_end']);
-                final endB = DateTime.parse(b['date_end']);
-                return endA.compareTo(endB);
-              });
-              groupAllActiveQuizzes[groupId] = activeQuizzes;
-            }
-          } catch (e) {
-            debugPrint('Error fetching quizzes for group $groupId: $e');
-          }
-        }());
+      // a) Load Admin/Owner details if not already perfect
+      if (json['rank'] != 'ADMIN') {
+        _loadGroupAdminBackground(token, groupId, apiService);
       }
+
+      // b) Load Active Quizzes (Notifications)
+      _loadGroupQuizzesBackground(token, groupId, apiService);
     }
+  }
 
-    await Future.wait([...adminNameFutures, ...quizFutures]);
-
+  void _updateGroupsState(List<Group> allGroups) {
     if (!mounted) return;
+    _myGroups = allGroups.where((g) => g.rank == 'ADMIN').toList();
+    _otherGroups = allGroups.where((g) => g.rank != 'ADMIN').toList();
 
-    setState(() {
-      final allGroups = groupsData.map((json) {
-        // Parse color from hex string
-        Color groupColor = Colors.blue;
-        if (json['color'] != null) {
-          try {
-            String colorStr = json['color'].toString();
-            if (colorStr.startsWith('#')) {
-              colorStr = colorStr.substring(1);
-            }
-            if (colorStr.length == 6) {
-              groupColor = Color(int.parse('FF$colorStr', radix: 16));
-            }
-          } catch (e) {
-            debugPrint('Color parsing error: $e');
-          }
+    if (_selectedGroup != null) {
+      _selectedGroup = allGroups.firstWhere(
+        (g) => g.id == _selectedGroup!.id,
+        orElse: () => _selectedGroup!,
+      );
+    }
+    _activeTests = _getActiveTests();
+    _cleanupExpiredNotifications();
+  }
+
+  Future<void> _loadGroupAdminBackground(
+    String token,
+    int groupId,
+    ApiService api,
+  ) async {
+    try {
+      final members = await api.getGroupMembers(token, groupId);
+      final adminMember = members.firstWhere(
+        (m) => m['rank'] == 'ADMIN',
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (adminMember.isNotEmpty && adminMember['user'] != null && mounted) {
+        final user = adminMember['user'] as Map<String, dynamic>;
+        final firstName = user['first_name']?.toString() ?? '';
+        final lastName = user['last_name']?.toString() ?? '';
+
+        String displayName = 'Admin';
+        if (firstName.isNotEmpty || lastName.isNotEmpty) {
+          displayName = '$lastName $firstName'.trim();
         }
 
-        // ADMIN rank means teacher/admin
-        final isAdmin = json['rank'] == 'ADMIN';
-        final groupId = json['id'];
+        setState(() {
+          _updateGroupInLists(
+            groupId,
+            (g) => g.copyWith(
+              ownerName: displayName,
+              instructorFirstName: firstName,
+              instructorLastName: lastName,
+              subtitle: displayName,
+            ),
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('Error bg-loading admin: $e');
+    }
+  }
 
-        // Extract instructor first and last name separately
-        String instructorFirstName = '';
-        String instructorLastName = '';
+  Future<void> _loadGroupQuizzesBackground(
+    String token,
+    int groupId,
+    ApiService api,
+  ) async {
+    try {
+      final quizzes = await api.getGroupQuizzes(token, groupId);
+      final now = DateTime.now();
 
-        if (isAdmin) {
-          // If I am admin, use my name from UserProvider
-          final user = userProvider.user;
-          if (user != null) {
-            instructorFirstName = user.firstName;
-            instructorLastName = user.lastName;
-          }
-        } else {
-          // First try to get from members API lookup
-          if (groupId != null && groupAdminFirstNames.containsKey(groupId)) {
-            instructorFirstName = groupAdminFirstNames[groupId]!;
-            instructorLastName = groupAdminLastNames[groupId] ?? '';
-          }
-          // Fall back to owner object in API response
-          else if (json['owner'] != null && json['owner'] is Map) {
-            final owner = json['owner'];
-            instructorFirstName = owner['first_name']?.toString() ?? '';
-            instructorLastName = owner['last_name']?.toString() ?? '';
-          }
-        }
-
-        // Resolve owner name (Teacher's Full Name) for display
-        String ownerName = (() {
-          if (isAdmin) {
-            final user = userProvider.user;
-            if (user != null &&
-                (user.firstName.isNotEmpty || user.lastName.isNotEmpty)) {
-              return '${user.lastName} ${user.firstName}'.trim();
-            }
-            return user?.username ?? 'Én';
-          }
-
-          // 1. Try fetched admin name (from group members lookup)
-          if (groupId != null && groupAdminNames.containsKey(groupId)) {
-            return groupAdminNames[groupId]!;
-          }
-
-          // 2. Try owner_name field (API provided name)
-          if (json['owner_name'] != null &&
-              json['owner_name'].toString().isNotEmpty) {
-            return json['owner_name'].toString();
-          }
-
-          if (instructorFirstName.isNotEmpty || instructorLastName.isNotEmpty) {
-            return '$instructorLastName $instructorFirstName'.trim();
-          }
-
-          return 'Admin';
-        })();
-
-        // Determine active quiz data
-        bool hasNotification = false;
-        DateTime? testExpiry;
-        String? activeTestTitle;
-        Map<String, dynamic>? primaryActiveQuiz;
-        List<Map<String, dynamic>> allActiveQuizzes = [];
-
-        if (groupId != null && groupAllActiveQuizzes.containsKey(groupId)) {
-          allActiveQuizzes = groupAllActiveQuizzes[groupId]!;
-          if (allActiveQuizzes.isNotEmpty) {
-            primaryActiveQuiz = allActiveQuizzes.first;
-            hasNotification = true;
-            testExpiry = DateTime.parse(
-              primaryActiveQuiz['date_end'],
-            ).toLocal();
-
-            if (primaryActiveQuiz['project_name'] != null) {
-              activeTestTitle = primaryActiveQuiz['project_name'];
-            } else {
-              activeTestTitle = 'Aktív Teszt';
-            }
-          }
-        }
-
-        return Group(
-          id: groupId,
-          title: json['name'] ?? 'Névtelen csoport',
-          ownerName: ownerName,
-          instructorFirstName: instructorFirstName,
-          instructorLastName: instructorLastName,
-          subtitle: isAdmin ? '' : ownerName, // Logic for Home Page Card
-          color: groupColor,
-          inviteCode: json['invite_code'],
-          inviteCodeFormatted: json['invite_code_formatted'],
-          rank: json['rank'] ?? 'MEMBER',
-          hasNotification: hasNotification,
-          testExpiryDate: testExpiry,
-          activeTestTitle: activeTestTitle,
-          activeQuizData: primaryActiveQuiz,
-          allActiveQuizzes: allActiveQuizzes, // Pass all active quizzes
-          anticheat:
-              json['anticheat'] ?? false, // Protection level: Nyitott default
-          kiosk: json['kiosk'] ?? false, // Kiosk mode default disabled
-        );
+      final activeQuizzes = quizzes.where((q) {
+        final end = DateTime.tryParse(q['date_end'] ?? '');
+        final start = DateTime.tryParse(q['date_start'] ?? '');
+        return end != null &&
+            start != null &&
+            end.toLocal().isAfter(now) &&
+            start.toLocal().isBefore(now);
       }).toList();
 
-      _myGroups = allGroups.where((g) => g.rank == 'ADMIN').toList();
-      _otherGroups = allGroups.where((g) => g.rank != 'ADMIN').toList();
+      activeQuizzes.sort(
+        (a, b) => DateTime.parse(
+          a['date_end'] ?? '',
+        ).compareTo(DateTime.parse(b['date_end'] ?? '')),
+      );
 
-      if (_selectedGroup != null) {
-        // Update selected group with fresh data
-        _selectedGroup = allGroups.firstWhere(
-          (g) => g.id == _selectedGroup!.id,
-          orElse: () => _selectedGroup!,
-        );
+      if (mounted) {
+        // Optimization: check if data changed before calling setState
+        Group? current;
+        try {
+          current = [..._myGroups, ..._otherGroups].firstWhere((g) => g.id == groupId);
+        } catch (_) {}
+
+        if (current != null) {
+          final bool sameNotif = current.hasNotification == activeQuizzes.isNotEmpty;
+          
+          bool sameQuizzes = current.allActiveQuizzes.length == activeQuizzes.length;
+          if (sameQuizzes) {
+            for (int i = 0; i < activeQuizzes.length; i++) {
+              if (current.allActiveQuizzes[i]['id'] != activeQuizzes[i]['id'] ||
+                  current.allActiveQuizzes[i]['date_end'] != activeQuizzes[i]['date_end']) {
+                sameQuizzes = false;
+                break;
+              }
+            }
+          }
+
+          if (sameNotif && sameQuizzes) return; // No change, skip update
+        }
+
+        setState(() {
+          _updateGroupInLists(groupId, (g) {
+            if (activeQuizzes.isEmpty)
+              return g.copyWith(hasNotification: false, allActiveQuizzes: []);
+
+            final primary = activeQuizzes.first;
+
+            return g.copyWith(
+              hasNotification: true,
+              testExpiryDate: DateTime.parse(primary['date_end']).toLocal(),
+              activeTestTitle: primary['project_name'] ?? 'Aktív Teszt',
+              activeQuizData: primary,
+              allActiveQuizzes: activeQuizzes.cast<Map<String, dynamic>>(),
+            );
+          });
+        });
       }
-
-      _cleanupExpiredNotifications();
-      _activeTests = _getActiveTests();
-    });
+    } catch (e) {
+      debugPrint('Error bg-loading quizzes: $e');
+    }
   }
+
+  void _updateGroupInLists(int groupId, Group Function(Group) updater) {
+    _myGroups = _myGroups.map((g) => g.id == groupId ? updater(g) : g).toList();
+    _otherGroups = _otherGroups
+        .map((g) => g.id == groupId ? updater(g) : g)
+        .toList();
+    if (_selectedGroup?.id == groupId) {
+      _selectedGroup = updater(_selectedGroup!);
+    }
+    _activeTests = _getActiveTests();
+  }
+
 
   void _cleanupExpiredNotifications() {
     final now = DateTime.now();
@@ -382,15 +385,38 @@ class _HomePageState extends State<HomePage> {
   void _selectGroup(Group group) {
     setState(() {
       _selectedGroup = group;
+      _preFetchedProjects = null; // Reset for new selection
     });
     _fetchGroups();
+    if (group.rank == 'ADMIN') {
+      _preFetchProjects();
+    }
   }
 
   void _unselectGroup() {
     setState(() {
       _selectedGroup = null;
       _isMemberPanelOpen = false;
+      _preFetchedProjects = null;
     });
+  }
+
+  Future<void> _preFetchProjects() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    final api = ApiService();
+    try {
+      final projects = await api.getProjects(token);
+      if (mounted) {
+        setState(() {
+          _preFetchedProjects = projects;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error pre-fetching projects: $e');
+    }
   }
 
   Future<void> _showJoinGroupDialog() async {
@@ -449,8 +475,88 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _importProject() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.token;
+    if (token == null) return;
+
+    try {
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Projekt importálása',
+        type: FileType.custom,
+        allowedExtensions: ['cq'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final File file = File(result.files.single.path!);
+        final String content = await file.readAsString();
+        final Map<String, dynamic> data = jsonDecode(content);
+
+        final api = ApiService();
+        // Create new project
+        final name = data['name'] ?? 'Importált projekt';
+        final desc = data['desc'] ?? '';
+        final newProject = await api.createProject(token, name, desc);
+
+        if (newProject != null) {
+          final newId = newProject['id'];
+          // Update blocks
+          if (data['blocks'] != null) {
+            final blocks = List<Map<String, dynamic>>.from(
+              (data['blocks'] as List).map((item) {
+                // Deep copy and reset IDs
+                final block = jsonDecode(jsonEncode(item));
+                block['id'] = 0;
+                if (block['answers'] != null) {
+                  for (var ans in block['answers']) {
+                    ans['id'] = 0;
+                  }
+                }
+                return block;
+              }),
+            );
+            await api.updateProject(token, newId, {
+              'name': name,
+              'desc': desc,
+              'blocks': blocks,
+            });
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Projekt sikeresen importálva!'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+            // Refresh projects list
+            setState(() {
+              _projectsRefreshKey++;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hiba az importálás során: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   void _toggleSpeedDial() {
-    ThemeInherited.of(context).triggerHaptic();
     setState(() {
       _isSpeedDialOpen = !_isSpeedDialOpen;
     });
@@ -469,7 +575,7 @@ class _HomePageState extends State<HomePage> {
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             body: Row(
               children: [
-                _buildSideNav(_activeTests),
+                Container(child: _buildSideNav(_activeTests)),
                 Expanded(
                   child: Stack(
                     children: [
@@ -485,21 +591,24 @@ class _HomePageState extends State<HomePage> {
                             onPressed: _unselectGroup,
                           ),
                         ),
-                      Positioned(
-                        bottom: 24,
-                        right: 24,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 300),
-                          opacity: _isMemberPanelOpen ? 0.0 : 1.0,
-                          child: IgnorePointer(
-                            ignoring: _isMemberPanelOpen,
-                            child: _buildSpeedDial(
-                              context,
-                              isGroupView: isGroupView,
+                      if (!_showStudentTests && !_showStatistics)
+                        Positioned(
+                          bottom: 24,
+                          right: 24,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 300),
+                            opacity: _isMemberPanelOpen ? 0.0 : 1.0,
+                            child: IgnorePointer(
+                              ignoring: _isMemberPanelOpen,
+                              child: _buildSpeedDial(
+                                context,
+                                isGroupView: isGroupView,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+
+                      // Tutorial / Help Button (Removed)
                     ],
                   ),
                 ),
@@ -553,10 +662,11 @@ class _HomePageState extends State<HomePage> {
                                 ),
                               ),
                               const Spacer(),
-                              _buildSpeedDial(
-                                context,
-                                isGroupView: isGroupView,
-                              ),
+                              if (!_showStudentTests && !_showStatistics)
+                                _buildSpeedDial(
+                                  context,
+                                  isGroupView: isGroupView,
+                                ),
                             ],
                           ),
                         ),
@@ -572,44 +682,60 @@ class _HomePageState extends State<HomePage> {
 
   // Az animált tartalomváltó
   Widget _buildAnimatedContent() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: _selectedGroup != null
-          ? GroupPage(
-              key: ValueKey(_selectedGroup!.title),
-              group: _selectedGroup!,
-              onTestExpired: (group) => _fetchGroups(),
-              onMemberPanelToggle: (isOpen) {
-                setState(() {
-                  _isMemberPanelOpen = isOpen;
-                });
-              },
-              onAdminTransferred: () async {
-                _unselectGroup();
-                await _fetchGroups();
-              },
-              onGroupUpdated: () async {
-                final currentGroupId = _selectedGroup?.id;
-                await _fetchGroups();
-                if (currentGroupId != null) {
-                  final allGroups = [..._myGroups, ..._otherGroups];
-                  final updatedGroup = allGroups.firstWhere(
-                    (g) => g.id == currentGroupId,
-                    orElse: () => _selectedGroup!,
-                  );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        return false;
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _selectedGroup != null
+            ? GroupPage(
+                key: ValueKey(_selectedGroup!.title),
+                group: _selectedGroup!,
+                onTestExpired: (group) => _fetchGroups(),
+                onMemberPanelToggle: (isOpen) {
                   setState(() {
-                    _selectedGroup = updatedGroup;
+                    _isMemberPanelOpen = isOpen;
                   });
-                }
-              },
-              onGroupLeft: () async {
-                _unselectGroup();
-                await _fetchGroups();
-              },
-            )
-          : _showProjects
-          ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
-          : _buildGroupList(),
+                },
+                onAdminTransferred: () async {
+                  _unselectGroup();
+                  await _fetchGroups();
+                },
+                onGroupUpdated: () async {
+                  final currentGroupId = _selectedGroup?.id;
+                  await _fetchGroups();
+                  if (currentGroupId != null) {
+                    final allGroups = [..._myGroups, ..._otherGroups];
+                    final updatedGroup = allGroups.firstWhere(
+                      (g) => g.id == currentGroupId,
+                      orElse: () => _selectedGroup!,
+                    );
+                    setState(() {
+                      _selectedGroup = updatedGroup;
+                    });
+                  }
+                },
+                onGroupLeft: () async {
+                  _unselectGroup();
+                  await _fetchGroups();
+                },
+              )
+            : _showProjects
+            ? ProjectsPage(key: ValueKey('projects_$_projectsRefreshKey'))
+            : _showStudentTests
+            ? StudentTestsPage(
+                onGroupSelected: (group) {
+                  setState(() {
+                    _showStudentTests = false;
+                  });
+                  _selectGroup(group);
+                },
+              )
+            : _showStatistics
+            ? const StatisticsPage()
+            : _buildGroupList(),
+      ),
     );
   }
 
@@ -643,87 +769,233 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (_showProjects) {
-      return AnimatedOpacity(
-        duration: const Duration(milliseconds: 300),
-        opacity: 1.0,
-        child: AnimatedScale(
-          duration: const Duration(milliseconds: 300),
-          scale: 1.0,
-          curve: Curves.easeInOut,
-          child: Tooltip(
-            message: 'Új projekt létrehozása',
-            child: InkWell(
-              onTap: () async {
-                final result = await showGeneralDialog<Map<String, String>>(
-                  context: context,
-                  barrierDismissible: true,
-                  barrierLabel: '',
-                  transitionDuration: const Duration(milliseconds: 300),
-                  pageBuilder: (context, animation1, animation2) {
-                    return Container();
-                  },
-                  transitionBuilder: (context, a1, a2, widget) {
-                    return ScaleTransition(
-                      scale: Tween<double>(begin: 0.5, end: 1.0).animate(a1),
-                      child: FadeTransition(
-                        opacity: a1,
-                        child: const CreateProjectDialog(),
-                      ),
-                    );
-                  },
-                );
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Import Project Button
+                AnimatedScale(
+                  scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                    child: _isSpeedDialOpen
+                        ? Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                buildLabel('Projekt importálása'),
+                                Tooltip(
+                                  message: 'Projekt importálása fájlból',
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _isSpeedDialOpen = false;
+                                      });
+                                      _importProject();
+                                    },
+                                    customBorder: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12.0),
+                                    ),
+                                    child: Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: theme.primaryColor.withOpacity(
+                                          0.9,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          12.0,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.upload_file,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+                // Create Project Button
+                AnimatedScale(
+                  scale: _isSpeedDialOpen ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: _isSpeedDialOpen ? 1.0 : 0.0,
+                    child: _isSpeedDialOpen
+                        ? Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                buildLabel('Projekt létrehozása'),
+                                Tooltip(
+                                  message: 'Új projekt létrehozása',
+                                  child: InkWell(
+                                    // Removed createProjectButtonKey
+                                    onTap: () async {
+                                      setState(() {
+                                        _isSpeedDialOpen = false;
+                                      });
+                                      final result =
+                                          await showGeneralDialog<
+                                            Map<String, String>
+                                          >(
+                                            context: context,
+                                            barrierDismissible: true,
+                                            barrierLabel: '',
+                                            transitionDuration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            pageBuilder:
+                                                (
+                                                  context,
+                                                  animation1,
+                                                  animation2,
+                                                ) {
+                                                  return Container();
+                                                },
+                                            transitionBuilder:
+                                                (context, a1, a2, widget) {
+                                                  return ScaleTransition(
+                                                    scale: Tween<double>(
+                                                      begin: 0.5,
+                                                      end: 1.0,
+                                                    ).animate(a1),
+                                                    child: FadeTransition(
+                                                      opacity: a1,
+                                                      child:
+                                                          const CreateProjectDialog(),
+                                                    ),
+                                                  );
+                                                },
+                                          );
 
-                if (result != null) {
-                  final userProvider = Provider.of<UserProvider>(
-                    context,
-                    listen: false,
-                  );
-                  final token = userProvider.token;
-                  if (token != null) {
-                    final api = ApiService();
-                    final project = await api.createProject(
-                      token,
-                      result['name']!,
-                      result['desc']!,
-                    );
-                    if (mounted) {
-                      if (project != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Projekt sikeresen létrehozva!'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                        setState(() {
-                          _projectsRefreshKey++;
-                        });
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Hiba a projekt létrehozása során'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  }
-                }
-              },
+                                      if (result != null) {
+                                        final userProvider =
+                                            Provider.of<UserProvider>(
+                                              context,
+                                              listen: false,
+                                            );
+                                        final token = userProvider.token;
+                                        if (token != null) {
+                                          final api = ApiService();
+                                          final project = await api
+                                              .createProject(
+                                                token,
+                                                result['name']!,
+                                                result['desc']!,
+                                              );
+                                          if (mounted) {
+                                            if (project != null) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Projekt sikeresen létrehozva!',
+                                                  ),
+                                                  backgroundColor: Colors.green,
+                                                ),
+                                              );
+                                              setState(() {
+                                                _projectsRefreshKey++;
+                                              });
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Hiba a projekt létrehozása során',
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    customBorder: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12.0),
+                                    ),
+                                    child: Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: theme.primaryColor.withOpacity(
+                                          0.9,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          12.0,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Main Toggle Button
+          Tooltip(
+            message: _isSpeedDialOpen ? 'Bezárás' : 'Projekt műveletek',
+            child: InkWell(
+              onTap: _toggleSpeedDial,
               customBorder: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16.0),
               ),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
                   color: theme.primaryColor,
                   borderRadius: BorderRadius.circular(16.0),
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 28),
+                child: AnimatedRotation(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  turns: _isSpeedDialOpen ? 0.125 : 0,
+                  child: Icon(
+                    _isSpeedDialOpen ? Icons.close : Icons.add,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       );
     }
 
@@ -746,8 +1018,10 @@ class _HomePageState extends State<HomePage> {
                   if (_selectedGroup != null && _selectedGroup!.id != null) {
                     final result = await showDialog<bool>(
                       context: context,
-                      builder: (context) =>
-                          CreateQuizDialog(groupId: _selectedGroup!.id!),
+                      builder: (context) => CreateQuizDialog(
+                        groupId: _selectedGroup!.id!,
+                        initialProjects: _preFetchedProjects,
+                      ),
                     );
                     if (result == true) {
                       _fetchGroups();
@@ -807,7 +1081,6 @@ class _HomePageState extends State<HomePage> {
                                 message: 'Csatlakozás csoporthoz',
                                 child: InkWell(
                                   onTap: () {
-                                    ThemeInherited.of(context).triggerHaptic();
                                     setState(() {
                                       _isSpeedDialOpen = false;
                                     });
@@ -856,8 +1129,8 @@ class _HomePageState extends State<HomePage> {
                               Tooltip(
                                 message: 'Csoport létrehozása',
                                 child: InkWell(
+                                  // Removed createGroupButtonKey
                                   onTap: () async {
-                                    ThemeInherited.of(context).triggerHaptic();
                                     setState(() {
                                       _isSpeedDialOpen = false;
                                     });
@@ -905,6 +1178,7 @@ class _HomePageState extends State<HomePage> {
         Tooltip(
           message: _isSpeedDialOpen ? 'Bezárás' : 'Csoport művelet',
           child: InkWell(
+            // Removed speedDialKey
             onTap: _toggleSpeedDial,
             customBorder: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16.0),
@@ -947,7 +1221,6 @@ class _HomePageState extends State<HomePage> {
         message: tooltip,
         child: InkWell(
           onTap: () {
-            ThemeInherited.of(context).triggerHaptic();
             onPressed();
           },
           customBorder: RoundedRectangleBorder(
@@ -969,6 +1242,12 @@ class _HomePageState extends State<HomePage> {
 
   // A csoportlista
   Widget _buildGroupList() {
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: Theme.of(context).primaryColor),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
@@ -1035,11 +1314,20 @@ class _HomePageState extends State<HomePage> {
                   SideNavItem(
                     label: 'Csoportok',
                     icon: Icons.group,
-                    isSelected: _selectedGroup == null && !_showProjects,
+                    isSelected:
+                        _selectedGroup == null &&
+                        !_showProjects &&
+                        !_showStudentTests &&
+                        !_showStatistics,
                     onTap: () {
-                      if (_selectedGroup != null || _showProjects) {
+                      if (_selectedGroup != null ||
+                          _showProjects ||
+                          _showStudentTests ||
+                          _showStatistics) {
                         setState(() {
                           _showProjects = false;
+                          _showStudentTests = false;
+                          _showStatistics = false;
                           _selectedGroup = null;
                         });
                       }
@@ -1048,6 +1336,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 8),
                   SideNavItem(
+                    // Removed projectsNavKey
                     label: 'Projektek',
                     icon: Icons.folder,
                     isSelected: _showProjects,
@@ -1055,6 +1344,8 @@ class _HomePageState extends State<HomePage> {
                       if (!_showProjects) {
                         setState(() {
                           _showProjects = true;
+                          _showStudentTests = false;
+                          _showStatistics = false;
                           _selectedGroup = null;
                           _isMemberPanelOpen = false;
                         });
@@ -1063,9 +1354,41 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  SideNavItem(label: 'Tesztek', icon: Icons.quiz),
+                  SideNavItem(
+                    label: 'Tesztek',
+                    icon: Icons.quiz,
+                    isSelected: _showStudentTests,
+                    onTap: () {
+                      if (!_showStudentTests) {
+                        setState(() {
+                          _showStudentTests = true;
+                          _showProjects = false;
+                          _showStatistics = false;
+                          _selectedGroup = null;
+                          _isMemberPanelOpen = false;
+                        });
+                      }
+                      if (isDrawer) Navigator.pop(context);
+                    },
+                  ),
                   const SizedBox(height: 8),
-                  SideNavItem(label: 'Statisztika', icon: Icons.bar_chart),
+                  SideNavItem(
+                    label: 'Statisztika',
+                    icon: Icons.bar_chart,
+                    isSelected: _showStatistics,
+                    onTap: () {
+                      if (!_showStatistics) {
+                        setState(() {
+                          _showStatistics = true;
+                          _showProjects = false;
+                          _showStudentTests = false;
+                          _selectedGroup = null;
+                          _isMemberPanelOpen = false;
+                        });
+                      }
+                      if (isDrawer) Navigator.pop(context);
+                    },
+                  ),
                 ],
               ),
             ),
@@ -1102,7 +1425,7 @@ class _HomePageState extends State<HomePage> {
           Consumer<UserProvider>(
             builder: (context, userProvider, child) {
               final user = userProvider.user;
-              final pfpUrl = user?.pfpUrl;
+              final pfpUrl = user?.effectivePfpUrl;
 
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -1159,18 +1482,22 @@ class _HomePageState extends State<HomePage> {
                             ),
                             child: CircleAvatar(
                               radius: 20,
-                              backgroundColor: theme.primaryColor,
-                              backgroundImage:
-                                  pfpUrl != null && pfpUrl.isNotEmpty
-                                  ? NetworkImage(pfpUrl)
-                                  : null,
-                              child: pfpUrl == null || pfpUrl.isEmpty
+                              backgroundColor: Colors.white,
+                              child: (pfpUrl == null || pfpUrl.isEmpty)
                                   ? const Icon(
                                       Icons.person,
                                       color: Colors.white,
                                       size: 20,
                                     )
-                                  : null,
+                                  : ClipOval(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4.0),
+                                        child: Image.network(
+                                          pfpUrl,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1214,7 +1541,34 @@ class _HomePageState extends State<HomePage> {
               );
             },
           ),
-
+          if (_isUpdateAvailable) ...[
+            const SizedBox(height: 12),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.system_update_alt, color: Colors.red, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '! Új verzió érhető el',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
         ],
       ),
@@ -1359,6 +1713,11 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
     BuildContext context,
     Map<String, dynamic> quiz,
   ) {
+    if (kIsWeb && widget.item.group.kiosk) {
+      _showWebKioskRestrictionDialog(context);
+      return;
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -1483,7 +1842,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                                   );
                                   quizData['group_obj'] = widget.item.group;
 
-                                  Navigator.pushAndRemoveUntil(
+                                  Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => TestTakingPage(
@@ -1493,7 +1852,6 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                                         kiosk: widget.item.group.kiosk,
                                       ),
                                     ),
-                                    (route) => false,
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -1525,6 +1883,34 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
           ),
         );
       },
+    );
+  }
+
+  void _showWebKioskRestrictionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.desktop_windows_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Csak alkalmazásban elérhető'),
+          ],
+        ),
+        content: const Text(
+          'Ez a teszt Zárolt védelmi szinttel (Kiosk módban) lett létrehozva. A webes böngésző nem támogatja ezt a szintű biztonságot.\n\nKérjük, nyisd meg az alkalmazást (Windows, Android vagy iOS) a teszt kitöltéséhez!',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rendben'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1624,6 +2010,7 @@ class _ActiveTestCardState extends State<ActiveTestCard> {
                         MaterialPageRoute(
                           builder: (context) => AdminPage(
                             quiz: widget.item.quiz, // Use item quiz
+                            groupId: group.id!,
                             groupName: group.title,
                           ),
                         ),
@@ -1845,94 +2232,6 @@ class _ActiveTestCarouselState extends State<ActiveTestCarousel> {
         color: _currentPage == index ? Colors.white : Colors.white54,
         borderRadius: BorderRadius.circular(5),
       ),
-    );
-  }
-}
-
-class GroupCard extends StatelessWidget {
-  final Group group;
-  final Function(Group) onGroupSelected;
-
-  const GroupCard({
-    super.key,
-    required this.group,
-    required this.onGroupSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isMobile = constraints.maxWidth < 600;
-
-        return Stack(
-          alignment: Alignment.centerLeft,
-          children: [
-            Container(
-              constraints: const BoxConstraints(),
-              margin: EdgeInsets.only(
-                bottom: isMobile ? 12.0 : 16.0,
-                left: isMobile ? 12.0 : 16.0,
-                right: isMobile ? 12.0 : 16.0,
-              ),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: group.getGradient(context),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => onGroupSelected(group),
-                  borderRadius: BorderRadius.circular(5),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isMobile ? 20.0 : 40.0,
-                      vertical: isMobile ? 14.0 : 20.0,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          group.title,
-                          style: TextStyle(
-                            color: group.getTextColor(context),
-                            fontSize: isMobile ? 18 : 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: isMobile ? 2 : 4),
-                        Text(
-                          group.subtitle,
-                          style: TextStyle(
-                            color: group.getTextColor(context).withOpacity(0.8),
-                            fontSize: isMobile ? 12 : 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (group.hasNotification)
-              Positioned(
-                right: isMobile ? 20 : 25,
-                bottom: isMobile ? 20 : 25,
-                child: Container(
-                  width: 18,
-                  height: 18,
-                  decoration: const BoxDecoration(
-                    color: Color(0xfffdd835),
-                    shape: BoxShape.rectangle,
-                    borderRadius: BorderRadius.all(Radius.circular(5)),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
     );
   }
 }

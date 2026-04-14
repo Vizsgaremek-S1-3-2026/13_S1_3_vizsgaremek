@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'dart:math';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'api_service.dart';
@@ -100,6 +103,59 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     _debounce = Timer(const Duration(milliseconds: 500), () {
       _performBankSearch(query);
     });
+  }
+
+  Future<void> _exportProject() async {
+    final Map<String, dynamic> projectData = {
+      'name': _nameController.text,
+      'desc': _descController.text,
+      'blocks': _blocks,
+    };
+
+    try {
+      final String jsonString = jsonEncode(projectData);
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Projekt exportálása',
+        fileName:
+            '${_nameController.text.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')}.cq',
+        allowedExtensions: ['cq'],
+        type: FileType.custom,
+      );
+
+      if (outputFile != null) {
+        // Enforce extension
+        if (!outputFile.endsWith('.cq')) {
+          outputFile += '.cq';
+        }
+        final File file = File(outputFile);
+        await file.writeAsString(jsonString);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Projekt sikeresen exportálva!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hiba az exportálás során: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   void _saveValidState() {
@@ -475,8 +531,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _undo() {
     if (_undoStack.isEmpty) return;
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       // Save current state to redo
@@ -499,8 +553,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _redo() {
     if (_redoStack.isEmpty) return;
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       // Save current to undo
@@ -596,8 +648,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
   void _addQuestionFromBank(Map<String, dynamic> bankItem) {
     if (!mounted) return;
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       final newBlock = Map<String, dynamic>.from(bankItem);
@@ -757,7 +807,12 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         cleanAnswer['text'] = answer['text']?.toString() ?? '';
 
         // is_correct: required bool
-        cleanAnswer['is_correct'] = answer['is_correct'] == true;
+        // For 'text' type questions, all answers MUST be correct for the backend
+        if (blockType == 'text') {
+          cleanAnswer['is_correct'] = true;
+        } else {
+          cleanAnswer['is_correct'] = answer['is_correct'] == true;
+        }
 
         // points: required int
         cleanAnswer['points'] = (answer['points'] as num?)?.toInt() ?? 0;
@@ -1054,8 +1109,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _applySettingsToAll() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
 
     setState(() {
       for (var block in _blocks) {
@@ -1262,8 +1315,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addQuestionBlock(String type) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1273,8 +1324,16 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         'image_url': '',
         'link_url': '',
         'answers': [
-          {'text': '', 'is_correct': false, 'points': 0},
-          {'text': '', 'is_correct': false, 'points': 0},
+          {
+            'text': '',
+            'is_correct': type == 'text',
+            'points': type == 'text' ? 1 : 0
+          },
+          {
+            'text': '',
+            'is_correct': type == 'text',
+            'points': type == 'text' ? 1 : 0
+          },
         ],
       });
     });
@@ -1282,8 +1341,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addTrueFalseQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1302,8 +1359,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addMatchingQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1322,8 +1377,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addOrderingQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1343,8 +1396,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addGapFillQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1366,8 +1417,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addRangeQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1390,8 +1439,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addSentenceOrderingQuestion() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1411,8 +1458,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addTextBlock() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -1425,8 +1470,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addDividerBlock() {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.add({
         'order': _blocks.length,
@@ -2777,8 +2820,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _removeQuestion(int index) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       _blocks.removeAt(index);
       for (int i = 0; i < _blocks.length; i++) {
@@ -2789,16 +2830,15 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _addAnswer(int blockIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       final answers = List<Map<String, dynamic>>.from(
         _blocks[blockIndex]['answers'] ?? [],
       );
+      final blockType = _blocks[blockIndex]['type'] ?? 'single';
       answers.add({
         'text': '',
-        'is_correct': false,
-        'points': _defaultIncorrectPoints,
+        'is_correct': blockType == 'text',
+        'points': blockType == 'text' ? 1 : _defaultIncorrectPoints,
       });
       _blocks[blockIndex]['answers'] = answers;
     });
@@ -2806,8 +2846,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _removeAnswer(int blockIndex, int answerIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       final answers = List<Map<String, dynamic>>.from(
         _blocks[blockIndex]['answers'] ?? [],
@@ -2821,8 +2859,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _onReorderQuestions(int oldIndex, int newIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       if (newIndex > oldIndex) newIndex--;
       final item = _blocks.removeAt(oldIndex);
@@ -2835,8 +2871,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   void _onReorderAnswers(int blockIndex, int oldIndex, int newIndex) {
     _saveValidState();
-    final themeProvider = ThemeInherited.of(context);
-    themeProvider.triggerHaptic();
     setState(() {
       if (newIndex > oldIndex) newIndex--;
       final answers = List<Map<String, dynamic>>.from(
@@ -3045,208 +3079,127 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                       ),
                     ),
 
-                  // Mobile Tools Speed Dial (combines Question Bank, Settings, Order)
-                  if (isMobile)
-                    Positioned(
-                      right: 16,
-                      bottom: 75,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Expandable buttons
-                          AnimatedOpacity(
+                  // Unified Tools Speed Dial (Question Bank, Statistics, Settings, Order)
+                  // Unified Tools Speed Dial (Question Bank, Statistics, Settings, Order)
+                  Positioned(
+                    right: isMobile ? 16 : 24,
+                    bottom: isMobile ? 80 : 96, // Above the Save button row
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.end, // Aligns labels to the right
+                      children: [
+                        // Expandable buttons (Always visible on Desktop, collapsible on Mobile)
+                        AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: (!isMobile || _isToolsMenuOpen) ? 1.0 : 0.0,
+                          child: AnimatedScale(
                             duration: const Duration(milliseconds: 200),
-                            opacity: _isToolsMenuOpen ? 1.0 : 0.0,
-                            child: AnimatedScale(
-                              duration: const Duration(milliseconds: 200),
-                              scale: _isToolsMenuOpen ? 1.0 : 0.0,
-                              alignment: Alignment.bottomCenter,
-                              child: IgnorePointer(
-                                ignoring: !_isToolsMenuOpen,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Question Bank
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: Material(
-                                        color: theme.cardColor,
-                                        borderRadius: BorderRadius.circular(10),
-                                        elevation: 2,
-                                        child: InkWell(
-                                          onTap: () {
-                                            ThemeInherited.of(
-                                              context,
-                                            ).triggerHaptic();
-                                            setState(() {
-                                              _showQuestionBankPanel =
-                                                  !_showQuestionBankPanel;
-                                              _isToolsMenuOpen = false;
-                                              if (_showQuestionBankPanel) {
-                                                _showSettingsPanel = false;
-                                                _showOrderPanel = false;
-                                                _showStatisticsPanel = false;
-                                              }
-                                            });
-                                          },
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          child: Container(
-                                            width: 40,
-                                            height: 40,
-                                            alignment: Alignment.center,
-                                            child: Icon(
-                                              Icons.library_books,
-                                              color: theme.iconTheme.color,
-                                              size: 20,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
+                            scale: (!isMobile || _isToolsMenuOpen) ? 1.0 : 0.0,
+                            alignment: Alignment.bottomCenter,
+                            child: IgnorePointer(
+                              ignoring: !(!isMobile || _isToolsMenuOpen),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // Helper for side buttons with labels
+                                  _buildSideMenuButton(
+                                    icon: Icons.library_books,
+                                    label: 'Kérdésbank',
+                                    onTap: () {
+                                      setState(() {
+                                        _showQuestionBankPanel =
+                                            !_showQuestionBankPanel;
+                                        if (isMobile) _isToolsMenuOpen = false;
+                                        if (_showQuestionBankPanel) {
+                                          _showSettingsPanel = false;
+                                          _showOrderPanel = false;
+                                          _showStatisticsPanel = false;
+                                        }
+                                      });
+                                    },
+                                    theme: theme,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildSideMenuButton(
+                                    icon: Icons.analytics_outlined,
+                                    label: 'Statisztika',
+                                    onTap: () {
+                                      setState(() {
+                                        _showStatisticsPanel =
+                                            !_showStatisticsPanel;
+                                        if (isMobile) _isToolsMenuOpen = false;
+                                        if (_showStatisticsPanel) {
+                                          _showQuestionBankPanel = false;
+                                          _showSettingsPanel = false;
+                                          _showOrderPanel = false;
+                                        }
+                                      });
+                                    },
+                                    theme: theme,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildSideMenuButton(
+                                    icon: Icons.tune,
+                                    label: 'Beállítások',
+                                    onTap: () {
+                                      setState(() {
+                                        _showSettingsPanel =
+                                            !_showSettingsPanel;
+                                        if (isMobile) _isToolsMenuOpen = false;
+                                        if (_showSettingsPanel) {
+                                          _showQuestionBankPanel = false;
+                                          _showOrderPanel = false;
+                                          _showStatisticsPanel = false;
+                                        }
+                                      });
+                                    },
+                                    theme: theme,
+                                  ),
+                                  if (_blocks.isNotEmpty) ...[
+                                    const SizedBox(height: 12),
+                                    _buildSideMenuButton(
+                                      icon: Icons.reorder,
+                                      label: 'Sorrend',
+                                      onTap: () {
+                                        setState(() {
+                                          _showOrderPanel = !_showOrderPanel;
+                                          if (isMobile)
+                                            _isToolsMenuOpen = false;
+                                          if (_showOrderPanel) {
+                                            _showQuestionBankPanel = false;
+                                            _showSettingsPanel = false;
+                                            _showStatisticsPanel = false;
+                                          }
+                                        });
+                                      },
+                                      theme: theme,
                                     ),
-                                    // Statistics
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: Material(
-                                        color: theme.cardColor,
-                                        borderRadius: BorderRadius.circular(10),
-                                        elevation: 2,
-                                        child: InkWell(
-                                          onTap: () {
-                                            ThemeInherited.of(
-                                              context,
-                                            ).triggerHaptic();
-                                            setState(() {
-                                              _showStatisticsPanel =
-                                                  !_showStatisticsPanel;
-                                              _isToolsMenuOpen = false;
-                                              if (_showStatisticsPanel) {
-                                                _showQuestionBankPanel = false;
-                                                _showSettingsPanel = false;
-                                                _showOrderPanel = false;
-                                              }
-                                            });
-                                          },
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          child: Container(
-                                            width: 40,
-                                            height: 40,
-                                            alignment: Alignment.center,
-                                            child: Icon(
-                                              Icons.analytics_outlined,
-                                              color: theme.iconTheme.color,
-                                              size: 20,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    // Settings
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: Material(
-                                        color: theme.cardColor,
-                                        borderRadius: BorderRadius.circular(10),
-                                        elevation: 2,
-                                        child: InkWell(
-                                          onTap: () {
-                                            ThemeInherited.of(
-                                              context,
-                                            ).triggerHaptic();
-                                            setState(() {
-                                              _showSettingsPanel =
-                                                  !_showSettingsPanel;
-                                              _isToolsMenuOpen = false;
-                                              if (_showSettingsPanel) {
-                                                _showQuestionBankPanel = false;
-                                                _showOrderPanel = false;
-                                              }
-                                            });
-                                          },
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          child: Container(
-                                            width: 40,
-                                            height: 40,
-                                            alignment: Alignment.center,
-                                            child: Icon(
-                                              Icons.tune,
-                                              color: theme.iconTheme.color,
-                                              size: 20,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    // Order (only if blocks exist)
-                                    if (_blocks.isNotEmpty)
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 8,
-                                        ),
-                                        child: Material(
-                                          color: theme.cardColor,
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          elevation: 2,
-                                          child: InkWell(
-                                            onTap: () {
-                                              ThemeInherited.of(
-                                                context,
-                                              ).triggerHaptic();
-                                              setState(() {
-                                                _showOrderPanel =
-                                                    !_showOrderPanel;
-                                                _isToolsMenuOpen = false;
-                                                if (_showOrderPanel) {
-                                                  _showQuestionBankPanel =
-                                                      false;
-                                                  _showSettingsPanel = false;
-                                                }
-                                              });
-                                            },
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            child: Container(
-                                              width: 40,
-                                              height: 40,
-                                              alignment: Alignment.center,
-                                              child: Icon(
-                                                Icons.reorder,
-                                                color: theme.iconTheme.color,
-                                                size: 20,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
                                   ],
-                                ),
+                                ],
                               ),
                             ),
                           ),
-                          // Main toggle button with consistent spacing
-                          if (_isToolsMenuOpen) const SizedBox(height: 8),
+                        ),
+                        // Main toggle button (Only visible on Mobile)
+                        if (isMobile) ...[
+                          const SizedBox(
+                            height: 16,
+                          ), // Gap between menu and toggle
                           Material(
                             color: theme.cardColor,
                             borderRadius: BorderRadius.circular(12),
                             elevation: 4,
                             child: InkWell(
                               onTap: () {
-                                ThemeInherited.of(context).triggerHaptic();
                                 setState(
                                   () => _isToolsMenuOpen = !_isToolsMenuOpen,
                                 );
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Container(
-                                width: 44,
+                                width: 44, // Matches FAB size
                                 height: 44,
                                 alignment: Alignment.center,
                                 child: AnimatedRotation(
@@ -3264,49 +3217,9 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
-
-                  // Desktop: Question Bank Button (Floating)
-                  if (!isMobile)
-                    Positioned(
-                      right: 24,
-                      bottom: _blocks.isEmpty ? 96 : 232,
-                      child: Material(
-                        color: theme.cardColor,
-                        borderRadius: BorderRadius.circular(12),
-                        elevation: 4,
-                        shadowColor: Colors.black26,
-                        child: Tooltip(
-                          message: 'Kérdésbank',
-                          child: InkWell(
-                            onTap: () {
-                              final themeProvider = ThemeInherited.of(context);
-                              themeProvider.triggerHaptic();
-                              setState(() {
-                                _showQuestionBankPanel =
-                                    !_showQuestionBankPanel;
-                                if (_showQuestionBankPanel) {
-                                  _showSettingsPanel = false;
-                                  _showOrderPanel = false;
-                                }
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              width: 50,
-                              height: 50,
-                              alignment: Alignment.center,
-                              child: Icon(
-                                Icons.library_books,
-                                color: theme.iconTheme.color,
-                                size: 24,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  ),
 
                   // Floating bottom buttons at screen edges
                   Positioned(
@@ -3617,152 +3530,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                       ],
                     ),
                   ),
-                  // Desktop: Statistics Button (Above Settings Button)
-                  if (!isMobile)
-                    // Desktop: Question Bank Button (Above Statistics Button)
-                    if (!isMobile)
-                      Positioned(
-                        right: 24,
-                        bottom: 294,
-                        child: Material(
-                          color: theme.cardColor,
-                          elevation: 4,
-                          shadowColor: Colors.black.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(12),
-                          child: InkWell(
-                            onTap: () {
-                              final theme = ThemeInherited.of(context);
-                              theme.triggerHaptic();
-                              setState(() {
-                                _showQuestionBankPanel =
-                                    !_showQuestionBankPanel;
-                                _showStatisticsPanel = false;
-                                _showSettingsPanel = false;
-                                _showOrderPanel = false;
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              width: 50,
-                              height: 50,
-                              alignment: Alignment.center,
-                              child: Icon(
-                                _showQuestionBankPanel
-                                    ? Icons.close
-                                    : Icons.storage,
-                                color: theme.iconTheme.color,
-                                size: 24,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  if (!isMobile)
-                    Positioned(
-                      right: 24,
-                      bottom: 228,
-                      child: Material(
-                        color: theme.cardColor,
-                        elevation: 4,
-                        shadowColor: Colors.black.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: () {
-                            final theme = ThemeInherited.of(context);
-                            theme.triggerHaptic();
-                            setState(() {
-                              _showStatisticsPanel = !_showStatisticsPanel;
-                              _showSettingsPanel = false;
-                              _showOrderPanel = false;
-                              _showQuestionBankPanel = false;
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: 50,
-                            height: 50,
-                            alignment: Alignment.center,
-                            child: Icon(
-                              _showStatisticsPanel
-                                  ? Icons.close
-                                  : Icons.analytics_outlined,
-                              color: theme.iconTheme.color,
-                              size: 24,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  // Desktop: Settings Button (Above Order Button)
-                  if (!isMobile)
-                    Positioned(
-                      right: 24,
-                      bottom: 162,
-                      child: Material(
-                        color: theme.cardColor,
-                        elevation: 4,
-                        shadowColor: Colors.black.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: () {
-                            final theme = ThemeInherited.of(context);
-                            theme.triggerHaptic();
-                            setState(
-                              () => _showSettingsPanel = !_showSettingsPanel,
-                            );
-                            if (_showOrderPanel) {
-                              setState(() => _showOrderPanel = false);
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: 50,
-                            height: 50,
-                            alignment: Alignment.center,
-                            child: Icon(
-                              Icons.tune,
-                              color: theme.iconTheme.color,
-                              size: 24,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  // Desktop: Toggle Button (Order)
-                  if (!isMobile && _blocks.isNotEmpty)
-                    Positioned(
-                      right: 24,
-                      bottom: 96,
-                      child: Material(
-                        color: theme.cardColor,
-                        elevation: 4,
-                        shadowColor: Colors.black.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: () {
-                            final theme = ThemeInherited.of(context);
-                            theme.triggerHaptic();
-                            setState(() => _showOrderPanel = !_showOrderPanel);
-                            if (_showSettingsPanel) {
-                              setState(() => _showSettingsPanel = false);
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: 50,
-                            height: 50,
-                            alignment: Alignment.center,
-                            child: Icon(
-                              _showOrderPanel ? Icons.close : Icons.reorder,
-                              color: theme.iconTheme.color,
-                              size: 24,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
 
                   // Floating question order editor and toggle button
 
@@ -4249,7 +4016,18 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                         }).toList(),
                         onChanged: (value) {
                           if (value != null) {
-                            setState(() => _blocks[index]['type'] = value);
+                            setState(() {
+                              _blocks[index]['type'] = value;
+                              // If changing to 'text', ensure all answers are marked as correct
+                              if (value == 'text') {
+                                if (_blocks[index]['answers'] != null) {
+                                  for (var a in _blocks[index]['answers']) {
+                                    a['is_correct'] = true;
+                                    if (a['points'] == 0) a['points'] = 1;
+                                  }
+                                }
+                              }
+                            });
                           }
                         },
                       ),
@@ -5163,6 +4941,42 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                       ],
                     ),
                   ],
+                  const SizedBox(height: 24),
+                  Divider(color: theme.dividerColor),
+                  const SizedBox(height: 24),
+
+                  // Project Actions
+                  Text(
+                    'PROJEKT MŰVELETEK',
+                    style: TextStyle(
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(
+                        0.6,
+                      ),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() => _showSettingsPanel = false);
+                        _exportProject();
+                      },
+                      icon: const Icon(Icons.download, size: 20),
+                      label: const Text('Projekt Exportálása'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
                   // Danger Zone
                   const SizedBox(height: 32),
                   Text(
@@ -5780,6 +5594,59 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                 style: TextStyle(fontSize: 12, color: theme.hintColor),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSideMenuButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required ThemeData theme,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: theme.textTheme.bodyMedium?.color,
+              fontWeight: FontWeight.w500,
+              fontSize: 13,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Material(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(12),
+          elevation: 2,
+          child: InkWell(
+            onTap: () {
+              onTap();
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              child: Icon(icon, color: theme.iconTheme.color, size: 22),
+            ),
           ),
         ),
       ],

@@ -4,10 +4,10 @@ import 'package:window_manager/window_manager.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'group_page.dart';
 import 'api_service.dart';
 import 'package:kiosk_mode/kiosk_mode.dart';
 import 'utils/web_protections.dart';
@@ -16,12 +16,11 @@ import 'package:screen_protector/screen_protector.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:volume_controller/volume_controller.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_windows/webview_windows.dart';
 import 'package:scribble/scribble.dart';
 
 import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
+import 'auth_gate.dart';
 
 class TestTakingPage extends StatefulWidget {
   final Map<String, dynamic> quiz;
@@ -45,10 +44,13 @@ class _TestTakingPageState extends State<TestTakingPage>
     with WidgetsBindingObserver, WindowListener {
   // --- Protection State ---
   bool _isBlacklisted = false;
+  bool _isAntiCheatActive = false;
+  bool _isSubmitting = false;
   bool _isOffline = false;
   bool _isKioskModeActive = true;
   DateTime? _finishTime;
   Timer? _countdownTimer;
+  Timer? _statusPollingTimer;
   double _originalVolume = 1.0;
   StreamSubscription<double>? _volumeSubscription;
 
@@ -69,11 +71,9 @@ class _TestTakingPageState extends State<TestTakingPage>
   static const double _notepadMaxSize = 600.0;
 
   // --- Notepad Tabs ---
-  int _notepadTabIndex = 0; // 0 = Jegyzet, 1 = Web, 2 = Kép
-  String? _selectedWebUrl;
+  int _notepadTabIndex = 0; // 0 = Jegyzet, 1 = Kép
   String? _selectedImageUrl;
-  WebViewController? _webViewController;
-  WebviewController? _windowsWebViewController;
+  String? _selectedImageText;
 
   // --- Drawing State ---
   bool _isDrawingMode = false;
@@ -82,67 +82,22 @@ class _TestTakingPageState extends State<TestTakingPage>
   // --- Question Marking State ---
   final Set<int> _markedQuestions = {};
 
-  // Extract allowed URLs from questions
-  List<String> get _allowedUrls {
-    final urls = <String>[];
-    for (final q in _questions) {
-      final url = q['link_url']?.toString();
-      if (url != null && url.isNotEmpty) {
-        if (!urls.contains(url)) {
-          urls.add(url);
-        }
-      }
-    }
-    // Fallback/Default for testing
-    if (urls.isEmpty) {
-      urls.add('https://szbi-pg.hu');
-    }
-    return urls;
-  }
-
-  void _initializeWebView() {
+  /// Minimizes all other windows on Windows using PowerShell
+  Future<void> _minimizeOtherWindows() async {
     if (!kIsWeb && Platform.isWindows) {
-      final urls = _allowedUrls;
-      if (urls.isNotEmpty) {
-        _selectedWebUrl = urls.first;
+      try {
+        // This PowerShell command minimizes all windows except our app
+        // (New-Object -ComObject shell.application).minimizeall()
+        await Process.run('powershell', [
+          '-Command',
+          '(New-Object -ComObject shell.application).minimizeall()',
+        ]);
+        // After minimizing all, we need to ensure our app is restored/focused
+        await windowManager.show();
+        await windowManager.focus();
+      } catch (e) {
+        debugPrint('Hiba az ablakok letételekor: $e');
       }
-      _initializeWindowsWebView();
-      return;
-    }
-
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (int progress) {},
-          onPageStarted: (String url) {},
-          onPageFinished: (String url) {},
-          onWebResourceError: (WebResourceError error) {},
-          onNavigationRequest: (NavigationRequest request) {
-            return NavigationDecision.navigate;
-          },
-        ),
-      );
-
-    final urls = _allowedUrls;
-    if (urls.isNotEmpty) {
-      _selectedWebUrl = urls.first;
-      _webViewController!.loadRequest(Uri.parse(_selectedWebUrl!));
-    }
-  }
-
-  Future<void> _initializeWindowsWebView() async {
-    _windowsWebViewController = WebviewController();
-    try {
-      await _windowsWebViewController!.initialize();
-      await _windowsWebViewController!.setBackgroundColor(Colors.transparent);
-      if (_selectedWebUrl != null) {
-        await _windowsWebViewController!.loadUrl(_selectedWebUrl!);
-      }
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('Windows WebView hiba: $e');
     }
   }
 
@@ -154,25 +109,65 @@ class _TestTakingPageState extends State<TestTakingPage>
     // Initial API Load
     _loadQuiz();
 
-    // Only enable focus monitoring... (rest of initState)
-    if (widget.anticheat) {
-      windowManager.addListener(this);
-    }
-    if (widget.kiosk) {
-      _enterFullscreen();
-    }
-    _initializeWebView();
-    if (kIsWeb && widget.anticheat) {
-      _setupWebProtections();
-    }
-    if (widget.anticheat) {
-      _setupAdvancedProtections();
-    } else {
-      _initPersistentTimer();
-    }
+    // Use post-frame callback for stable window initialization on desktop
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      // Only enable focus monitoring on desktop platforms
+      if (widget.anticheat &&
+          !kIsWeb &&
+          (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+        windowManager.addListener(this);
+      }
+
+      if (widget.kiosk) {
+        // On Windows, first minimize other apps if in Kiosk/Zárolt mode
+        if (Platform.isWindows) {
+          await _minimizeOtherWindows();
+          // Give OS a moment to settle
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        _enterFullscreen();
+      }
+
+      if (kIsWeb && widget.anticheat) {
+        _setupWebProtections();
+      }
+      if (widget.anticheat) {
+        _setupAdvancedProtections();
+      } else {
+        _initPersistentTimer();
+      }
+      _initStatusPolling();
+    });
   }
 
   Future<void> _loadQuiz() async {
+    // Safety guard: Don't allow starting kiosk mode on web
+    if (kIsWeb && widget.kiosk) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Hiba'),
+            content: const Text(
+                'Ez a teszt "Zárolt" módban van, ami webes felületen nem támogatott.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Go back from TestTakingPage
+                },
+                child: const Text('Vissza'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     final quizId = widget.quiz['id'];
     if (quizId == null) {
       if (mounted) {
@@ -202,16 +197,30 @@ class _TestTakingPageState extends State<TestTakingPage>
       if (data != null && data['blocks'] != null) {
         final List<dynamic> blocks = data['blocks'];
         if (mounted) {
-          setState(() {
-            _questions = blocks.cast<Map<String, dynamic>>();
-            _isLoading = false;
-          });
+          if (widget.anticheat) {
+            // Várakozás a biztonságos környezet inicializálására (kizárja az azonnali fals tiltásokat)
+            await Future.delayed(const Duration(seconds: 2));
+            if (mounted) {
+              setState(() {
+                _isAntiCheatActive = true;
+                _questions = blocks.cast<Map<String, dynamic>>();
+                _isLoading = false;
+              });
+              _reportEvent('TEST_START', 'A diák elkezdte a tesztet.');
+            }
+          } else {
+            setState(() {
+              _questions = blocks.cast<Map<String, dynamic>>();
+              _isLoading = false;
+            });
+            _reportEvent('TEST_START', 'A diák elkezdte a tesztet.');
+          }
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Hiba a teszt betöltésekor: Üres válasz'),
+              content: Text('Hiba a teszt betöltésekor: Ăśres válasz'),
             ),
           );
           Navigator.pop(context);
@@ -230,13 +239,21 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   void _enableScreenshotProtection() async {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await ScreenProtector.protectDataLeakageOn();
+      try {
+        await ScreenProtector.protectDataLeakageOn();
+      } catch (e) {
+        debugPrint('Képernyőkép védelem bekapcsolása sikertelen: $e');
+      }
     }
   }
 
   void _disableScreenshotProtection() async {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await ScreenProtector.protectDataLeakageOff();
+      try {
+        await ScreenProtector.protectDataLeakageOff();
+      } catch (e) {
+        debugPrint('Képernyőkép védelem kikapcsolása sikertelen: $e');
+      }
     }
   }
 
@@ -267,11 +284,15 @@ class _TestTakingPageState extends State<TestTakingPage>
     // 4. Initialize Persistent Timer
     _initPersistentTimer();
 
-    // 5. Keep screen awake during test
-    WakelockPlus.enable();
+    // 5. Keep screen awake during test (not supported on web)
+    if (!kIsWeb) {
+      WakelockPlus.enable();
+    }
 
-    // 6. Mute volume to prevent audio cheating
-    _muteVolume();
+    // 6. Mute volume to prevent audio cheating (only on mobile)
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      _muteVolume();
+    }
 
     // 7. Desktop keyboard shortcut blocking
     if (!kIsWeb) {
@@ -387,8 +408,12 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-  void _clearClipboard() {
-    Clipboard.setData(const ClipboardData(text: ''));
+  void _clearClipboard() async {
+    try {
+      await Clipboard.setData(const ClipboardData(text: ''));
+    } catch (e) {
+      debugPrint('Vágólap ürítése sikertelen: $e');
+    }
   }
 
   void _muteVolume() async {
@@ -488,8 +513,67 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     // Start UI update timer
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+
+      // Auto-submit if time is up
+      if (_finishTime != null && !_isSubmitting) {
+        final remaining = _finishTime!.difference(DateTime.now()).inSeconds;
+        if (remaining <= 1) {
+          // 1 second buffer
+          timer.cancel();
+          _submitTest(forced: true);
+          return;
+        }
+      }
+
+      setState(() {});
     });
+  }
+
+  void _initStatusPolling() {
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 3), (
+      timer,
+    ) async {
+      await _checkLockStatus();
+    });
+  }
+
+  Future<void> _checkLockStatus() async {
+    if (!mounted || _isSubmitting) return;
+
+    final token = context.read<UserProvider>().token;
+    final quizId = widget.quiz['id'];
+    if (token == null || quizId == null) return;
+
+    final statusData = await ApiService().checkLockStatus(token, quizId);
+    if (statusData == null || !mounted || _isSubmitting) return;
+
+    final isClosed = statusData['is_closed'] == true;
+    final isLocked = statusData['is_locked'] == true;
+    final activeEventId = statusData['active_event_id'];
+    debugPrint(
+      '[lock-status] is_locked=$isLocked is_closed=$isClosed active_event_id=$activeEventId',
+    );
+
+    if (isClosed) {
+      // Tanár lezárta â†’ automatikus beadás
+      _statusPollingTimer?.cancel();
+      _submitTest(forced: true);
+    } else if (isLocked) {
+      // Tanár letiltotta â†’ felület zárolása (ha még nincs zárolva)
+      if (!_isBlacklisted) {
+        setState(() {
+          _isBlacklisted = true;
+        });
+        _reportEvent('STUDENT_CHEAT', 'Tanár általi letiltás.');
+      }
+    } else if (!isLocked && _isBlacklisted) {
+      // Tanár feloldotta â†’ folytatás
+      setState(() {
+        _isBlacklisted = false;
+      });
+      // A tanár feloldása már regisztrálva van a szerveren a resolve hívással.
+    }
   }
 
   void _setupWebProtections() {
@@ -500,28 +584,50 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   @override
   void dispose() {
-    _countdownTimer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
+    try {
+      _countdownTimer?.cancel();
+    } catch (_) {}
+    try {
+      _statusPollingTimer?.cancel();
+    } catch (_) {}
+    try {
+      WidgetsBinding.instance.removeObserver(this);
+    } catch (_) {}
 
     // Cleanup drawings
-    for (var notifier in _imageDrawings.values) {
-      notifier.dispose();
-    }
-    _imageDrawings.clear();
+    try {
+      for (var notifier in _imageDrawings.values) {
+        notifier.dispose();
+      }
+      _imageDrawings.clear();
+    } catch (_) {}
 
-    // Only cleanup protections if they were enabled
-    if (widget.anticheat) {
-      windowManager.removeListener(this);
-      _disableScreenshotProtection();
-      WakelockPlus.disable();
-      _restoreVolume();
-      _cleanupDesktopKeyboardProtection();
-      _cleanupDesktopScreenProtection();
-    }
+    // Cleanup protections silently
+    try {
+      if (widget.anticheat) {
+        if (!kIsWeb &&
+            (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          windowManager.removeListener(this);
+        }
+        _disableScreenshotProtection();
+        if (!kIsWeb) WakelockPlus.disable();
+        if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+          try {
+            _restoreVolume();
+          } catch (_) {}
+        }
+        try {
+          _cleanupDesktopKeyboardProtection();
+        } catch (_) {}
+        try {
+          _cleanupDesktopScreenProtection();
+        } catch (_) {}
+      }
+    } catch (_) {}
 
-    if (widget.kiosk) {
-      _exitFullscreen();
-    }
+    try {
+      if (widget.kiosk) _exitFullscreen();
+    } catch (_) {}
 
     super.dispose();
   }
@@ -529,29 +635,28 @@ class _TestTakingPageState extends State<TestTakingPage>
   Future<void> _enterFullscreen() async {
     try {
       // Mobile fullscreen logic remains same
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      SystemChrome.setPreferredOrientations([
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
       ]);
 
       // Desktop enhancement - Windows
       if (!kIsWeb && Platform.isWindows) {
+        // Sequence windowManager calls to avoid race conditions on Windows 10
         await windowManager.setPreventClose(true);
         await windowManager.setAlwaysOnTop(true);
 
-        // Hide title bar for true fullscreen
-        await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-
-        // Run PowerShell command to minimize all windows (like Win+D)
-        await Process.run('powershell', [
-          '-command',
-          '(New-Object -ComObject Shell.Application).MinimizeAll()',
-        ]);
-        // Give OS a tiny bit of time to process, then bring ourselves back
-        await Future.delayed(const Duration(milliseconds: 300));
+        // Try to show/focus again after potential minimizeall() call
         await windowManager.show();
         await windowManager.focus();
+
+        // setFullScreen also hides the title bar automatically in most cases
+        // Only set TitleBarStyle if absolutely needed, as it can be glitchy
+        try {
+          await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+        } catch (_) {}
+
         await windowManager.setFullScreen(true);
       }
 
@@ -568,69 +673,25 @@ class _TestTakingPageState extends State<TestTakingPage>
     }
   }
 
-  /// Kiosk mode with retry - keeps asking user until they enable it
+  /// Kiosk mode with retry - keeps asking user until they enable it natively without blocking Flutter dialogs
   Future<void> _enableKioskModeWithRetry() async {
+    // Attempt to start kiosk mode with OS
+    await startKioskMode();
+
     while (mounted) {
-      // Try to start kiosk mode
-      await startKioskMode();
-
-      // Wait a moment for the system to process
       await Future.delayed(const Duration(milliseconds: 500));
-
-      // Check if kiosk mode is actually enabled now
       final currentMode = await getKioskMode();
 
       if (currentMode == KioskMode.enabled) {
-        setState(() => _isKioskModeActive = true);
+        if (!_isKioskModeActive) {
+          setState(() => _isKioskModeActive = true);
+        }
         return; // Success - exit the loop
-      }
-
-      // Kiosk mode was not enabled - show retry dialog
-      if (!mounted) return;
-
-      final shouldRetry = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.lock_outline, color: Colors.orange, size: 28),
-              SizedBox(width: 12),
-              Expanded(child: Text('Kiosk mód szükséges')),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'A teszt biztonságos kitöltéséhez engedélyezned kell a kiosk módot.',
-                style: TextStyle(fontSize: 16),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'A következő párbeszédablakban nyomd meg az "Indítás" vagy "Start" gombot a folytatáshoz.',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).pop(true),
-              icon: const Icon(Icons.check),
-              label: const Text('Rendben'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldRetry != true) {
-        // This shouldn't happen with barrierDismissible: false, but just in case
-        break;
+      } else {
+        // Not enabled - show the fullscreen overlay implicitly by updating state
+        if (_isKioskModeActive) {
+          setState(() => _isKioskModeActive = false);
+        }
       }
     }
   }
@@ -648,14 +709,17 @@ class _TestTakingPageState extends State<TestTakingPage>
       }
 
       // Reset Mobile UI
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
 
       // Reset Desktop
       if (!kIsWeb && Platform.isWindows) {
         await windowManager.setPreventClose(false);
         await windowManager.setAlwaysOnTop(false);
         await windowManager.setFullScreen(false);
+        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+        // Give the window manager time to apply changes
+        await Future.delayed(const Duration(milliseconds: 200));
       } else if (!kIsWeb && (Platform.isLinux || Platform.isMacOS)) {
         await windowManager.setFullScreen(false);
       }
@@ -674,7 +738,6 @@ class _TestTakingPageState extends State<TestTakingPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Only trigger anti-cheat if protection is enabled (Védett or Zárolt mode)
     if (widget.anticheat) {
       if (state == AppLifecycleState.inactive ||
           state == AppLifecycleState.paused) {
@@ -692,152 +755,15 @@ class _TestTakingPageState extends State<TestTakingPage>
   void _triggerAntiCheat() {
     // Double-check: only block if anticheat is enabled
     if (!widget.anticheat) return;
+    if (!_isAntiCheatActive) return; // Ne kapcsoljon be a betöltés közben
+    if (_isSubmitting) return; // Don't re-trigger during submission
 
     if (!_isBlacklisted) {
       setState(() {
         _isBlacklisted = true;
       });
-      _showAntiCheatDialog();
+      _reportEvent('STUDENT_CHEAT', 'Rendszer általi letiltás (Anticheat).');
     }
-  }
-
-  void _showAntiCheatDialog() {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.8),
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation1, animation2) => Container(),
-      transitionBuilder: (context, a1, a2, child) {
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.8, end: 1.0).animate(a1),
-          child: FadeTransition(
-            opacity: a1,
-            child: AlertDialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              content: Container(
-                width: 400,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.red, width: 3),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(20),
-                        ),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(
-                            Icons.gpp_bad_rounded,
-                            color: Colors.white,
-                            size: 64,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'LE LETTÉL TILTVA!',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Detektáltuk, hogy elhagytad a teszt felületét. A tesztedet blokkoltuk.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextButton(
-                                  onPressed: () {
-                                    // Navigator jump back to group page
-                                    _exitFullscreen().then((_) {
-                                      Navigator.of(context).pushAndRemoveUntil(
-                                        MaterialPageRoute(
-                                          builder: (context) => GroupPage(
-                                            group: widget
-                                                .quiz['group_obj'], // We'll need to pass this
-                                            onTestExpired: (g) {},
-                                          ),
-                                        ),
-                                        (route) => false,
-                                      );
-                                    });
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.grey[600],
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Lezárás',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    setState(() => _isBlacklisted = false);
-                                    Navigator.pop(context);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Engedélyez',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   String _getFormattedRemainingTime() {
@@ -868,10 +794,14 @@ class _TestTakingPageState extends State<TestTakingPage>
     // If margins are large enough (desktop), use standard padding.
     // If margins are small (mobile), force left padding.
     final horizontalMargin = (screenWidth - _maxContentWidth) / 2;
-    final needsExtraLeftPadding = horizontalMargin < 60;
+    // On mobile/narrow screens, use symmetric padding for better centering
+    // For wider screens, use asymmetric padding for the hanging question number
+    final isNarrow = screenWidth < 1000;
+    final needsExtraLeftPadding = !isNarrow && horizontalMargin < 60;
+    final horizontalPadding = isNarrow ? 20.0 : 0.0;
 
     return PopScope(
-      canPop: false, // Prevent back button
+      canPop: _isSubmitting, // Prevent back button unless submitting
       child: Focus(
         autofocus: true,
         onKeyEvent: (node, event) {
@@ -916,38 +846,56 @@ class _TestTakingPageState extends State<TestTakingPage>
                       Expanded(
                         child: Stack(
                           children: [
-                            // 1. Scrollable Questions List
-                            ListView.builder(
-                              controller: _scrollController,
-                              padding: EdgeInsets.only(
-                                top: 140, // Space for fixed header
-                                bottom: 100, // Space for bottom padding
-                                left: needsExtraLeftPadding ? 60 : 20,
-                                right: 20,
+                            // 1. Scrollable Questions List or Loading
+                            if (_isLoading)
+                              const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Biztonságos környezet előkészítése...',
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              ListView.builder(
+                                controller: _scrollController,
+                                padding: EdgeInsets.only(
+                                  top: 140, // Space for fixed header
+                                  bottom: 100, // Space for bottom padding
+                                  left: isNarrow
+                                      ? horizontalPadding
+                                      : (needsExtraLeftPadding ? 60 : 20),
+                                  right: isNarrow ? horizontalPadding : 20,
+                                ),
+                                itemCount: _questions.length,
+                                itemBuilder: (context, index) {
+                                  return Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: _maxContentWidth,
+                                      ),
+                                      child: _buildQuestionCard(
+                                        _questions[index],
+                                        index,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                              itemCount: _questions.length,
-                              itemBuilder: (context, index) {
-                                return Center(
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxWidth: _maxContentWidth,
-                                    ),
-                                    child: _buildQuestionCard(
-                                      _questions[index],
-                                      index,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
 
                             // 2. Fixed Header
                             Align(
                               alignment: Alignment.topCenter,
                               child: Padding(
                                 padding: EdgeInsets.only(
-                                  left: needsExtraLeftPadding ? 60 : 20,
-                                  right: 20,
+                                  left: isNarrow
+                                      ? horizontalPadding
+                                      : (needsExtraLeftPadding ? 60 : 20),
+                                  right: isNarrow ? horizontalPadding : 20,
                                 ),
                                 child: ConstrainedBox(
                                   constraints: const BoxConstraints(
@@ -958,7 +906,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                               ),
                             ),
 
-                            // 3. Anti-Cheat & Kiosk Overlays
+                            // 3. Anti-Cheat Overlay
                             if (_isBlacklisted)
                               Container(
                                 color: Colors.black87,
@@ -967,66 +915,73 @@ class _TestTakingPageState extends State<TestTakingPage>
                                     margin: const EdgeInsets.all(32),
                                     padding: const EdgeInsets.all(32),
                                     decoration: BoxDecoration(
-                                      color: Colors.red,
+                                      color: theme.cardColor,
                                       borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 4,
-                                      ),
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         const Icon(
-                                          Icons.gpp_bad_rounded,
-                                          color: Colors.white,
-                                          size: 80,
+                                          Icons.warning_amber_rounded,
+                                          color: Colors.orange,
+                                          size: 64,
                                         ),
                                         const SizedBox(height: 24),
                                         const Text(
-                                          'TESZT ZÁROLVA',
+                                          'Letiltva',
                                           style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 32,
+                                            fontSize: 28,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                         const SizedBox(height: 16),
                                         const Text(
-                                          'Tiltott tevékenységet észleltünk. A folytatáshoz tanári engedély szükséges.',
+                                          'A felületed zárolva lett, vagy szabálytalan tevékenységet észlelt a rendszer.\nVárd meg a tanári feloldást.',
                                           textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 18,
-                                          ),
+                                          style: TextStyle(fontSize: 16),
                                         ),
                                         const SizedBox(height: 32),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            ElevatedButton(
-                                              onPressed: () {
-                                                // In real app, verify strict password or teacher action
-                                                // For demo, just unlock
-                                                setState(() {
-                                                  _isBlacklisted = false;
-                                                });
-                                              },
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.white,
-                                                foregroundColor: Colors.red,
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 32,
-                                                      vertical: 16,
-                                                    ),
-                                              ),
-                                              child: const Text(
-                                                'Feloldás (Demo)',
-                                              ),
+                                        // Wait for teacher button
+                                        OutlinedButton.icon(
+                                          onPressed:
+                                              null, // Disabled - waiting for teacher
+                                          icon: const Icon(
+                                            Icons.hourglass_top,
+                                            size: 18,
+                                          ),
+                                          label: const Text(
+                                            'Várakozás a tanári feloldásra...',
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 12,
                                             ),
-                                          ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        // Final Submit button
+                                        ElevatedButton.icon(
+                                          onPressed: () => _submitTest(),
+                                          icon: const Icon(
+                                            Icons.check_circle_outline,
+                                            size: 18,
+                                          ),
+                                          label: const Text(
+                                            'Beadás és kilépés',
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: theme.primaryColor,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 12,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1251,8 +1206,6 @@ class _TestTakingPageState extends State<TestTakingPage>
                 Row(
                   children: [
                     _buildNotepadTab(0, 'Jegyzet', Icons.notes, theme),
-                    if (!widget.anticheat)
-                      _buildNotepadTab(1, 'Web', Icons.language, theme),
                     if (_selectedImageUrl != null)
                       _buildNotepadTab(2, 'Kép', Icons.image, theme),
                   ],
@@ -1271,8 +1224,6 @@ class _TestTakingPageState extends State<TestTakingPage>
     switch (_notepadTabIndex) {
       case 0:
         return _buildNotepadTextField(theme);
-      case 1:
-        return _buildWebView(theme);
       case 2:
         return _buildImageViewer(theme);
       default:
@@ -1364,6 +1315,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                 onPressed: () {
                   setState(() {
                     _selectedImageUrl = null;
+                    _selectedImageText = null;
                     _isDrawingMode = false;
                     if (_notepadTabIndex == 2) _notepadTabIndex = 0;
                   });
@@ -1454,6 +1406,46 @@ class _TestTakingPageState extends State<TestTakingPage>
                   ),
                 ),
         ),
+        if (_selectedImageText != null && _selectedImageText!.isNotEmpty)
+          ClipRRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.cardColor.withOpacity(0.7),
+                  border: Border(
+                    top: BorderSide(color: theme.dividerColor.withOpacity(0.2)),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(0.4),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SelectableText(
+                        _selectedImageText!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.1,
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         // Drawing toolbar (only visible in drawing mode)
         if (_isDrawingMode)
           Container(
@@ -1558,67 +1550,6 @@ class _TestTakingPageState extends State<TestTakingPage>
     );
   }
 
-  Widget _buildWebView(ThemeData theme) {
-    final urls = _allowedUrls;
-    return Column(
-      children: [
-        if (urls.length > 1)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.dividerColor.withOpacity(0.05),
-              border: Border(
-                bottom: BorderSide(color: theme.dividerColor.withOpacity(0.5)),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.link, size: 14),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButton<String>(
-                    value: _selectedWebUrl,
-                    isExpanded: true,
-                    underline: const SizedBox(),
-                    items: urls.map((url) {
-                      return DropdownMenuItem<String>(
-                        value: url,
-                        child: Text(
-                          url,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() {
-                          _selectedWebUrl = val;
-                          if (!kIsWeb && Platform.isWindows) {
-                            _windowsWebViewController?.loadUrl(val);
-                          } else {
-                            _webViewController?.loadRequest(Uri.parse(val));
-                          }
-                        });
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        Expanded(
-          child: _webViewController != null || _windowsWebViewController != null
-              ? ((!kIsWeb && Platform.isWindows)
-                    ? (_windowsWebViewController?.value.isInitialized ?? false
-                          ? Webview(_windowsWebViewController!)
-                          : const Center(child: CircularProgressIndicator()))
-                    : WebViewWidget(controller: _webViewController!))
-              : const Center(child: CircularProgressIndicator()),
-        ),
-      ],
-    );
-  }
 
   Widget _buildExpandedNotepadHorizontal(ThemeData theme) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1666,8 +1597,6 @@ class _TestTakingPageState extends State<TestTakingPage>
           child: Row(
             children: [
               _buildNotepadTab(0, 'Jegyzet', Icons.notes, theme),
-              if (!widget.anticheat)
-                _buildNotepadTab(1, 'Web', Icons.language, theme),
               if (_selectedImageUrl != null)
                 _buildNotepadTab(2, 'Kép', Icons.image, theme),
             ],
@@ -2040,71 +1969,199 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildSubmitButton(ThemeData theme) {
     return ElevatedButton.icon(
       onPressed: () {
-        // Count actual questions (exclude text_block and divider)
-        int totalQuestions = 0;
-        int answeredQuestions = 0;
+        // Check each question and collect unanswered ones
+        List<Map<String, dynamic>> unansweredQuestions = [];
+        int questionNumber = 0;
 
         for (int i = 0; i < _questions.length; i++) {
-          final type = _questions[i]['type']?.toString().toLowerCase() ?? '';
+          final question = _questions[i];
+          final type = question['type']?.toString().toLowerCase() ?? '';
+          final questionId = question['id'];
+
+          // Skip non-question types
           if (type == 'text_block' || type == 'divider') continue;
-          totalQuestions++;
-          if (_userAnswers.containsKey(i) && _userAnswers[i] != null) {
-            final answer = _userAnswers[i];
-            bool hasAnswer = false;
-            if (answer is String && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is List && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is Map && answer.isNotEmpty)
-              hasAnswer = true;
-            else if (answer is num)
-              hasAnswer = true;
-            if (hasAnswer) answeredQuestions++;
+          questionNumber++;
+
+          // Ordering and sentence_ordering always have answers (auto-initialized)
+          if (type == 'ordering' || type == 'sentence_ordering') {
+            continue; // Always accepted
+          }
+
+          // Check if user provided an answer
+          final answer = _userAnswers[questionId];
+          bool hasAnswer = false;
+
+          if (answer != null) {
+            switch (type) {
+              case 'single':
+                hasAnswer = answer is int;
+                break;
+              case 'multiple':
+                hasAnswer = answer is List && answer.isNotEmpty;
+                break;
+              case 'text':
+                hasAnswer = answer is String && answer.trim().isNotEmpty;
+                break;
+              case 'range':
+                hasAnswer = answer is num;
+                break;
+              case 'matching':
+                if (answer is Map && answer.isNotEmpty) {
+                  final answers = question['answers'] as List? ?? [];
+                  // Check if ALL pairs have non-empty values
+                  hasAnswer = answers.every((pair) {
+                    final pairId = pair['id']; // Use ID for lookup
+                    final userVal = answer[pairId];
+                    return userVal != null &&
+                        userVal.toString().trim().isNotEmpty;
+                  });
+                }
+                break;
+              case 'gap_fill':
+                if (answer is Map) {
+                  final answers = question['answers'] as List? ?? [];
+                  final gapIndices = answers
+                      .map((a) => a['gap_index']?.toString())
+                      .where((idx) => idx != null)
+                      .toSet();
+                  hasAnswer =
+                      gapIndices.isNotEmpty &&
+                      gapIndices.every((idx) {
+                        final val = answer[idx];
+                        return val != null && val.toString().trim().isNotEmpty;
+                      });
+                }
+                break;
+              case 'category':
+                if (answer is Map && answer.isNotEmpty) {
+                  final items = question['items'] as List? ?? [];
+                  // Check if ALL items are categorized
+                  hasAnswer = items.every((item) {
+                    final itemId = item['id']?.toString();
+                    return answer.containsKey(itemId);
+                  });
+                }
+                break;
+              default:
+                if (answer is String && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is List && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is Map && answer.isNotEmpty)
+                  hasAnswer = true;
+                else if (answer is num)
+                  hasAnswer = true;
+            }
+          }
+
+          if (!hasAnswer) {
+            final questionText =
+                question['question']?.toString() ?? 'Kérdés #$questionNumber';
+            final shortText = questionText.length > 40
+                ? '${questionText.substring(0, 40)}...'
+                : questionText;
+            unansweredQuestions.add({
+              'number': questionNumber,
+              'text': shortText,
+              'type': type,
+            });
           }
         }
 
-        final unansweredCount = totalQuestions - answeredQuestions;
-        final hasUnanswered = unansweredCount > 0;
+        final hasUnanswered = unansweredQuestions.isNotEmpty;
 
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Dolgozat beadása'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (hasUnanswered) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.orange,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasUnanswered) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.3),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Nem válaszoltál minden kérdésre!\n$unansweredCount megválaszolatlan kérdés.',
-                            style: const TextStyle(
-                              color: Colors.orange,
-                              fontWeight: FontWeight.w500,
-                            ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.orange,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${unansweredQuestions.length} hiányzó válasz:',
+                                style: const TextStyle(
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          ...unansweredQuestions
+                              .take(5)
+                              .map(
+                                (q) => Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 8,
+                                    top: 4,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '#${q['number']} ',
+                                        style: const TextStyle(
+                                          color: Colors.orange,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          q['text'],
+                                          style: TextStyle(
+                                            color: Colors.orange.shade700,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          if (unansweredQuestions.length > 5)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, top: 8),
+                              child: Text(
+                                '...és még ${unansweredQuestions.length - 5} további',
+                                style: TextStyle(
+                                  color: Colors.orange.shade600,
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
+                  const Text('Biztosan be szeretnéd adni a dolgozatot?'),
                 ],
-                const Text('Biztosan be szeretnéd adni a dolgozatot?'),
-              ],
+              ),
             ),
             actions: [
               TextButton(
@@ -2113,7 +2170,6 @@ class _TestTakingPageState extends State<TestTakingPage>
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(ctx);
                   _submitTest();
                 },
                 style: ElevatedButton.styleFrom(
@@ -2137,80 +2193,153 @@ class _TestTakingPageState extends State<TestTakingPage>
     );
   }
 
-  Future<void> _submitTest() async {
-    final token = context.read<UserProvider>().token;
-    if (token == null) return;
+  // Robust submit (fire-and-forget navigation)
+  void _submitTest({bool forced = false}) {
+    if (!mounted || _isSubmitting) return;
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-
-    // Prepare answers
-    final List<Map<String, dynamic>> answers = [];
-    _userAnswers.forEach((index, value) {
-      if (index < _questions.length) {
-        final q = _questions[index];
-        final qId = q['id'];
-
-        // Skip structural elements just in case, though they shouldn't be in _userAnswers
-        if (q['type'] == 'text_block' || q['type'] == 'divider') return;
-
-        answers.add({
-          'block_id': qId,
-          'answer_text': jsonEncode(
-            value,
-          ), // Send as JSON string for flexibility
-        });
-      }
+    setState(() {
+      _isSubmitting = true;
     });
+    try {
+      _countdownTimer?.cancel();
+    } catch (_) {}
+    try {
+      _statusPollingTimer?.cancel();
+    } catch (_) {}
 
-    final submissionData = {'quiz_id': widget.quiz['id'], 'answers': answers};
+    // 1. Safe cleanup - ignoring all errors, sequentializing to prevent Win32 hang
+    try {
+      if (widget.anticheat) {
+        try {
+          _disableScreenshotProtection();
+        } catch (_) {}
+        if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+          try {
+            _restoreVolume();
+          } catch (_) {}
+        }
+        try {
+          _cleanupDesktopKeyboardProtection();
+        } catch (_) {}
+        try {
+          _cleanupDesktopScreenProtection();
+        } catch (_) {}
+      }
+      if (widget.kiosk) {
+        _exitFullscreen().catchError((_) => null);
+      }
+      if (!kIsWeb) {
+        WakelockPlus.disable().catchError((_) => null);
+      }
+    } catch (_) {}
 
     try {
-      final response = await ApiService().submitQuiz(token, submissionData);
+      _reportEvent('TEST_FINISH', 'A diák leadta/befejezte a tesztet.');
 
-      // Close loading
-      if (mounted) Navigator.pop(context);
+      // 2. Format Answers
+      final token = context.read<UserProvider>().token;
+      if (token != null) {
+        final formattedAnswers = <Map<String, dynamic>>[];
+        _userAnswers.forEach((key, value) {
+          try {
+            final int blockId = key;
+            final Map<String, dynamic> q = _questions.firstWhere(
+              (element) => element['id'] == blockId,
+              orElse: () => {},
+            );
+            if (q.isEmpty || value == null) return;
 
-      if (response != null) {
-        // Success
-        await _exitFullscreen();
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (c) => GroupPage(
-                group:
-                    widget.quiz['group_obj'] ??
-                    widget
-                        .groupName, // Hopefully group object is passed or we fetch it
-                onTestExpired: (g) {},
-              ),
-            ),
-            (route) => false,
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Hiba a beadás során. Próbáld újra!')),
-          );
-        }
+            final String type = q['type'] ?? '';
+
+            if (type == 'single') {
+              formattedAnswers.add({
+                'block_id': blockId,
+                'option_id': value as int,
+                'answer_text': '',
+              });
+            } else if (type == 'multiple') {
+              final selectedIds = (value as List).cast<int>();
+              for (var id in selectedIds) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'option_id': id,
+                  'answer_text': '',
+                });
+              }
+            } else if (type == 'text' || type == 'range') {
+              formattedAnswers.add({
+                'block_id': blockId,
+                'answer_text': value.toString(),
+                'option_id': null,
+              });
+            } else if (type == 'matching') {
+              final userMap = (value as Map);
+              userMap.forEach((leftId, userString) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'option_id': leftId,
+                  'answer_text': userString,
+                });
+              });
+            } else if (type == 'ordering') {
+              final orderedItems = (value as List);
+              for (var item in orderedItems) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'option_id': item['id'],
+                  'answer_text': '',
+                });
+              }
+            } else if (type == 'gap_fill') {
+              final gapsMap = (value as Map);
+              final sortedKeys = gapsMap.keys.toList()
+                ..sort(
+                  (a, b) => int.parse(
+                    a.toString(),
+                  ).compareTo(int.parse(b.toString())),
+                );
+              for (var key in sortedKeys) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'answer_text': gapsMap[key],
+                  'option_id': null,
+                });
+              }
+            } else if (type == 'sentence_ordering') {
+              final words = (value as List).cast<String>();
+              for (var word in words) {
+                formattedAnswers.add({
+                  'block_id': blockId,
+                  'answer_text': word,
+                });
+              }
+            }
+          } catch (_) {}
+        });
+
+        final submissionData = {
+          'quiz_id': widget.quiz['id'],
+          'answers': formattedAnswers,
+        };
+
+        // Fire-and-forget API call
+        ApiService().submitQuiz(token, submissionData).catchError((_) => null);
       }
-    } catch (e) {
-      if (mounted) Navigator.pop(context); // Close loading
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hálózati hiba: $e')));
-      }
-    }
+    } catch (_) {}
+
+    // 3. FORCE Guaranteed Navigation to AuthGate
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (c) => const AuthGate()),
+        (route) => false,
+      );
+    });
   }
 
   Widget _buildQuestionCard(Map<String, dynamic> question, int index) {
     final theme = Theme.of(context);
+    final screenWidth = MediaQuery.of(context).size.width;
     final primaryColor = theme.primaryColor;
     final type = question['type'];
 
@@ -2329,26 +2458,156 @@ class _TestTakingPageState extends State<TestTakingPage>
                     ),
                     if (question['image_url'] != null) ...[
                       const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _selectedImageUrl = question['image_url'];
-                            _notepadTabIndex = 2; // Kép tab
-                            _isNotepadExpanded = true;
-                          });
-                        },
-                        icon: const Icon(Icons.image_outlined, size: 18),
-                        label: const Text('Kép megjelenítése'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: primaryColor,
-                          side: BorderSide(
-                            color: primaryColor.withOpacity(0.5),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                      if (screenWidth < 1000)
+                        // MOBILE: Show inline with InteractiveViewer
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Csatolt kép:',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                             GestureDetector(
+                               onTap: () => _showFullScreenImage(
+                                 question['image_url'],
+                                 question['subtext']?.toString(),
+                               ),
+                               child: ClipRRect(
+                                 borderRadius: BorderRadius.circular(12),
+                                 child: Container(
+                                   constraints: const BoxConstraints(
+                                     maxHeight: 300,
+                                   ),
+                                   decoration: BoxDecoration(
+                                     color: theme.dividerColor.withOpacity(0.05),
+                                     border: Border.all(
+                                       color: theme.dividerColor.withOpacity(0.2),
+                                     ),
+                                   ),
+                                   child: Stack(
+                                     children: [
+                                       InteractiveViewer(
+                                         minScale: 1.0,
+                                         maxScale: 4.0,
+                                         child: Image.network(
+                                           question['image_url'],
+                                           fit: BoxFit.contain,
+                                           loadingBuilder: (context, child, loadingProgress) {
+                                             if (loadingProgress == null) return child;
+                                             return SizedBox(
+                                               height: 100,
+                                               width: double.infinity,
+                                               child: Center(
+                                                 child: CircularProgressIndicator(
+                                                   value:
+                                                       loadingProgress
+                                                               .expectedTotalBytes !=
+                                                           null
+                                                       ? loadingProgress
+                                                                 .cumulativeBytesLoaded /
+                                                             loadingProgress
+                                                                 .expectedTotalBytes!
+                                                       : null,
+                                                 ),
+                                               ),
+                                             );
+                                           },
+                                           errorBuilder:
+                                               (context, error, stackTrace) =>
+                                                   const Center(
+                                                     child: Icon(Icons.error_outline),
+                                                   ),
+                                         ),
+                                       ),
+                                       Positioned(
+                                         right: 8,
+                                         bottom: 8,
+                                         child: Container(
+                                           padding: const EdgeInsets.all(4),
+                                           decoration: BoxDecoration(
+                                             color: Colors.black.withOpacity(0.5),
+                                             shape: BoxShape.circle,
+                                           ),
+                                           child: const Icon(
+                                             Icons.fullscreen,
+                                             color: Colors.white,
+                                             size: 20,
+                                           ),
+                                         ),
+                                       ),
+                                     ],
+                                   ),
+                                 ),
+                               ),
+                             ),
+                            const Text(
+                              'Kattints a nagyításhoz, használd a kétujjas nagyítást.',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            if (question['subtext'] != null && question['subtext'].toString().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: theme.dividerColor.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.info_outline, size: 14, color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5)),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          question['subtext'].toString(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        )
+                      else
+                        // DESKTOP/LARGE: Keep the original Notepad display button
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _selectedImageUrl = question['image_url'];
+                              _selectedImageText = question['subtext']?.toString();
+                              _notepadTabIndex = 2; // Kép tab
+                              _isNotepadExpanded = true;
+                            });
+                          },
+                          icon: const Icon(Icons.image_outlined, size: 18),
+                          label: const Text('Kép megjelenítése'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: primaryColor,
+                            side: BorderSide(
+                              color: primaryColor.withOpacity(0.5),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                     const SizedBox(height: 24),
 
@@ -2392,7 +2651,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildTextBlock(Map<String, dynamic> question) {
-    final content = question['content'] ?? '';
+    final content = question['maintext']?.toString() ?? '';
     final theme = Theme.of(context);
 
     return Container(
@@ -2418,7 +2677,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   }
 
   Widget _buildDivider(Map<String, dynamic> question) {
-    final content = question['content'] ?? '';
+    final content = question['maintext']?.toString() ?? '';
     final theme = Theme.of(context);
 
     if (content.isEmpty) {
@@ -2521,6 +2780,10 @@ class _TestTakingPageState extends State<TestTakingPage>
       decoration: InputDecoration(
         hintText: 'Írd ide a választ...',
         hintStyle: TextStyle(color: Theme.of(context).hintColor),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 20,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Theme.of(context).dividerColor),
@@ -2533,7 +2796,7 @@ class _TestTakingPageState extends State<TestTakingPage>
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
             color: Theme.of(context).primaryColor,
-            width: 2,
+            width: 2.5,
           ),
         ),
         filled: true,
@@ -2588,44 +2851,54 @@ class _TestTakingPageState extends State<TestTakingPage>
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
             color: Theme.of(context).primaryColor,
-            width: 2,
+            width: 2.5,
           ),
         ),
         filled: true,
         fillColor: Theme.of(context).cardColor,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
+          horizontal: 20,
+          vertical: 20,
         ),
       ),
     );
   }
 
   Widget _buildMatching(Map<String, dynamic> question) {
-    // Structure of userAnswers: { left_text: right_text, ... }
-    final pairs = (question['pairs'] as List);
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Read from 'answers' (as backend sends answers, not pairs)
+    final List pairs = (question['answers'] as List?) ?? [];
+
+    // User answers map: { pair_id : user_text_input }
+    // We cast to Map<dynamic, dynamic> to handle potential int/string key issues safely
     final userMap = (_userAnswers[question['id']] as Map?) ?? {};
 
     return Column(
       children: pairs.map<Widget>((pair) {
-        final String leftTxt = pair['left'];
-        final String? selectedRight = userMap[leftTxt];
+        final String leftTxt = pair['text']?.toString() ?? '';
+        final int pairId = pair['id']; // We MUST use this ID as the key
+
+        // Retrieve answer using the ID, not the Text
+        final String? selectedRight = userMap[pairId];
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
           child: Row(
             children: [
               Expanded(
-                flex: 1,
+                flex: screenWidth < 600 ? 1 : 1,
                 child: Text(
                   leftTxt,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
                 ),
               ),
-              const Icon(Icons.arrow_right_alt, color: Colors.grey),
-              const SizedBox(width: 8),
+              const Icon(Icons.arrow_right_alt, color: Colors.grey, size: 24),
+              const SizedBox(width: 12),
               Expanded(
-                flex: 1,
+                flex: screenWidth < 600 ? 2 : 1,
                 child: TextField(
                   controller: TextEditingController(text: selectedRight)
                     ..selection = TextSelection.fromPosition(
@@ -2658,10 +2931,12 @@ class _TestTakingPageState extends State<TestTakingPage>
                           _userAnswers[question['id']] is! Map) {
                         _userAnswers[question['id']] = {};
                       }
-                      final newMap = Map<String, dynamic>.from(
+
+                      // CRITICAL FIX: Use pairId (int) as the key, NOT the text
+                      final newMap = Map<dynamic, dynamic>.from(
                         _userAnswers[question['id']],
                       );
-                      newMap[leftTxt] = val;
+                      newMap[pairId] = val;
                       _userAnswers[question['id']] = newMap;
                     });
                   },
@@ -2678,13 +2953,9 @@ class _TestTakingPageState extends State<TestTakingPage>
     // Initialize items if not yet in userAnswers
     List<dynamic> currentOrder;
     if (_userAnswers[question['id']] == null) {
-      currentOrder = List.from(question['items']);
+      currentOrder = List.from(question['answers']);
       if (currentOrder.length > 1) {
-        // Shuffle strictly until NO item is in its original place (Derangement)
-        // Complexity:
-        // - Random shuffle: ~36% chance of derangement for n >= 4.
-        // - We retry up to 20 times to be safe.
-        final original = List.from(question['items']);
+        final original = List.from(question['answers']);
         bool hasMatch = true;
         int attempts = 0;
 
@@ -2727,16 +2998,17 @@ class _TestTakingPageState extends State<TestTakingPage>
             key: ValueKey(currentOrder[i]['id']),
             index: i,
             child: Card(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              elevation: 2,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              elevation: 3,
+              shadowColor: Colors.black26,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               color: Theme.of(context).cardColor,
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8, // More padding for touch targets
+                  horizontal: 20,
+                  vertical: 12, // More padding for touch targets
                 ),
                 leading: Icon(
                   Icons.drag_indicator,
@@ -2864,7 +3136,7 @@ class _TestTakingPageState extends State<TestTakingPage>
                                 height: 60,
                                 alignment: Alignment.center,
                                 child: Text(
-                                  'Üres',
+                                  'Ăśres',
                                   style: TextStyle(
                                     color: theme.hintColor,
                                     fontStyle: FontStyle.italic,
@@ -3046,7 +3318,8 @@ class _TestTakingPageState extends State<TestTakingPage>
 
     // Initialize stable shuffled pool if not present
     if (!_shuffledOptions.containsKey(question['id'])) {
-      final words = List<String>.from(question['words']);
+      final answersList = question['answers'] as List? ?? [];
+      final words = answersList.map((a) => a['text'].toString()).toList();
       words.shuffle(); // Shuffle once
       _shuffledOptions[question['id']] = words;
     }
@@ -3077,9 +3350,22 @@ class _TestTakingPageState extends State<TestTakingPage>
           constraints: const BoxConstraints(minHeight: 60),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Theme.of(context).dividerColor),
+            border: Border.all(
+              color: constructed.isEmpty
+                  ? Theme.of(context).dividerColor
+                  : Theme.of(context).primaryColor.withOpacity(0.3),
+              width: 1.5,
+            ),
             borderRadius: BorderRadius.circular(12),
-            color: Theme.of(context).cardColor.withOpacity(0.5),
+            color: Theme.of(context).cardColor.withOpacity(0.8),
+            boxShadow: [
+              if (constructed.isNotEmpty)
+                BoxShadow(
+                  color: Theme.of(context).primaryColor.withOpacity(0.05),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+            ],
           ),
           child: constructed.isEmpty
               ? Center(
@@ -3092,8 +3378,8 @@ class _TestTakingPageState extends State<TestTakingPage>
                   ),
                 )
               : Wrap(
-                  spacing: 0,
-                  runSpacing: 8,
+                  spacing: 4,
+                  runSpacing: 10,
                   children: [
                     // Each word is draggable and is also a drop target for reordering
                     for (int i = 0; i < constructed.length; i++)
@@ -3197,12 +3483,18 @@ class _TestTakingPageState extends State<TestTakingPage>
         const SizedBox(height: 24),
         // Word Bank
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 12,
+          runSpacing: 12,
           children: available.map((word) {
             return ActionChip(
               label: Text(word),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              labelStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
               backgroundColor: Theme.of(context).cardColor,
+              elevation: 1,
               side: BorderSide(color: Theme.of(context).dividerColor),
               onPressed: () {
                 setState(() {
@@ -3221,7 +3513,7 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildGapFill(Map<String, dynamic> question) {
     // Text: "Aaa {1} bbb {2}."
     // Normalize whitespace: replace newlines and multiple spaces with single space
-    final text = (question['text'] as String)
+    final text = (question['gap_text'] as String)
         .replaceAll('\n', ' ')
         .replaceAll('\r', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -3250,7 +3542,7 @@ class _TestTakingPageState extends State<TestTakingPage>
 
       parts.add(
         SizedBox(
-          width: 120, // Fixed width for inline input
+          width: 140, // Increased width for better visibility
           child: TextField(
             controller: TextEditingController(text: currentAnswer)
               ..selection = TextSelection.fromPosition(
@@ -3314,5 +3606,110 @@ class _TestTakingPageState extends State<TestTakingPage>
   Widget _buildWatermarkOverlay() {
     // Watermark disabled
     return const SizedBox.shrink();
+  }
+
+  void _showFullScreenImage(String imageUrl, [String? optionalText]) {
+    showGeneralDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      barrierDismissible: true,
+      barrierLabel: 'Bezárás',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, a1, a2) {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 10.0,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            value:
+                                loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Center(
+                            child: Icon(Icons.error_outline,
+                                color: Colors.white, size: 48),
+                          ),
+                    ),
+                  ),
+                ),
+              ),
+              if (optionalText != null && optionalText.isNotEmpty)
+                ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 20,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        border: const Border(
+                          top: BorderSide(color: Colors.white24),
+                        ),
+                      ),
+                      child: SafeArea(
+                        top: false,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: Color.fromARGB(255, 255, 0, 0),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: SelectableText(
+                                optionalText,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  height: 1.5,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 0.2,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
