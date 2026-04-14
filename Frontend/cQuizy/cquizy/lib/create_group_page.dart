@@ -21,7 +21,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   final _groupNameController = TextEditingController();
 
   Color _selectedColor = const Color(0xFFE57373); // Default red
-  int _protectionLevel = 1; // 0=Nyitott, 1=Védett, 2=Zárolt
   bool _isCreating = false;
 
   // HSL color picker state
@@ -33,7 +32,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   // Tutorial GlobalKeys
   final GlobalKey _groupNameKey = GlobalKey();
   final GlobalKey _colorPickerKey = GlobalKey();
-  final GlobalKey _protectionSliderKey = GlobalKey();
   final GlobalKey _previewKey = GlobalKey();
   final GlobalKey _createButtonKey = GlobalKey();
 
@@ -275,11 +273,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           _buildColorPicker(theme),
 
           const SizedBox(height: 32),
-
-          // Settings
-          _buildSectionLabel('BEÁLLÍTÁSOK', theme),
-          const SizedBox(height: 16),
-          _buildProtectionSlider(theme),
 
           const SizedBox(height: 48),
 
@@ -678,198 +671,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     return luminance > 0.5 ? Colors.black : Colors.white;
   }
 
-  Widget _buildProtectionSlider(ThemeData theme) {
-    final labels = ['Nyitott', 'Védett', 'Zárolt'];
-    final icons = [
-      Icons.lock_open_rounded,
-      Icons.shield_rounded,
-      Icons.lock_rounded,
-    ];
-    final colors = [Colors.green, Colors.orange, Colors.red];
-    final descriptions = [
-      'Nincs védelem - házi feladat, gyakorlás',
-      'Csalásmegelőzés - screenshot, hangerő, fókusz figyelés',
-      'Teljes zárolás - kiosk mód + csalásmegelőzés',
-    ];
-
-    return Container(
-      key: _protectionSliderKey,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Label row with icons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(3, (index) {
-              final isSelected = _protectionLevel == index;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _protectionLevel = index),
-                  child: Column(
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? colors[index].withOpacity(0.2)
-                              : Colors.transparent,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected
-                                ? colors[index]
-                                : theme.dividerColor,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: Icon(
-                          icons[index],
-                          color: isSelected
-                              ? colors[index]
-                              : theme.iconTheme.color?.withOpacity(0.5),
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        labels[index],
-                        style: TextStyle(
-                          color: isSelected
-                              ? colors[index]
-                              : theme.textTheme.bodyMedium?.color?.withOpacity(
-                                  0.6,
-                                ),
-                          fontSize: 12,
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 16),
-          // Slider
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: colors[_protectionLevel],
-              inactiveTrackColor: theme.dividerColor,
-              thumbColor: colors[_protectionLevel],
-              overlayColor: colors[_protectionLevel].withOpacity(0.2),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
-              trackHeight: 6,
-            ),
-            child: Slider(
-              value: _protectionLevel.toDouble(),
-              min: 0,
-              max: 2,
-              divisions: 2,
-              onChanged: (value) =>
-                  setState(() => _protectionLevel = value.toInt()),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Description
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colors[_protectionLevel].withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  color: colors[_protectionLevel],
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    descriptions[_protectionLevel],
-                    style: TextStyle(
-                      color: theme.textTheme.bodyMedium?.color,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingTile({
-    required ThemeData theme,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    required IconData icon,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor, width: 1),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: theme.primaryColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: theme.primaryColor, size: 24),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: theme.textTheme.bodyLarge?.color,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-            fontSize: 13,
-          ),
-        ),
-        trailing: Switch(
-          value: value,
-          activeColor: theme.primaryColor,
-          onChanged: onChanged,
-          thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
-            if (states.contains(WidgetState.selected)) {
-              return Colors.white;
-            }
-            return theme.colorScheme.outline;
-          }),
-          trackColor: WidgetStateProperty.resolveWith<Color>((states) {
-            if (states.contains(WidgetState.selected)) {
-              return theme.primaryColor;
-            }
-            return theme.colorScheme.surfaceContainerHighest;
-          }),
-          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-        ),
-      ),
-    );
-  }
-
   Widget _buildPreview(ThemeData theme, String teacherName) {
     final groupName = _groupNameController.text.trim().isEmpty
         ? 'Csoport Neve'
@@ -910,12 +711,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                 Icons.calendar_today,
                 'Létrehozva: ${_formatDate(DateTime.now())}',
               ),
-              if (_protectionLevel >= 2)
-                _buildInfoBadge(theme, Icons.lock, 'Zárolt mód'),
-              if (_protectionLevel >= 1 && _protectionLevel < 2)
-                _buildInfoBadge(theme, Icons.shield, 'Védett mód'),
-              if (_protectionLevel == 0)
-                _buildInfoBadge(theme, Icons.lock_open, 'Nyitott mód'),
             ],
           ),
         ],
@@ -1020,41 +815,6 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   const SizedBox(height: 10),
                   Text(
                     "Válassz egy színt a csoportnak! Használhatsz előre definiált színeket, vagy alkoss sajátot az egyedi HSL (Árnyalat, Telítettség, Világosság) csúszkákkal.",
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-
-    // 3. Protection Level Slider
-    targets.add(
-      TargetFocus(
-        identify: "protection_slider",
-        keyTarget: _protectionSliderKey,
-        alignSkip: Alignment.topLeft,
-        contents: [
-          TargetContent(
-            align: ContentAlign.bottom,
-            builder: (context, controller) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Védelmi Szint",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    "Állítsd be a csoport védelmi szintjét:\n• Nyitott: Nincs védelem, ideális házi feladathoz\n• Védett: Csalásmegelőzés (screenshot blokkolás, fókusz figyelés)\n• Zárolt: Teljes zárolás kiosk móddal + minden védelemmel",
                     style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ],
