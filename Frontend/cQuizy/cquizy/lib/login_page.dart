@@ -10,6 +10,8 @@ import 'package:wave/wave.dart';
 import 'package:zxcvbn/zxcvbn.dart';
 import 'api_service.dart'; // Importáljuk az API szolgáltatást
 import 'utils/avatar_manager.dart';
+import 'services/email_service.dart';
+import 'dart:async';
 
 // Jelszóerősség-szintek definiálása
 enum PasswordStrength { none, weak, medium, strong }
@@ -43,7 +45,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   bool isLoginView = true;
   final _loginFormKey = GlobalKey<FormBuilderState>();
   final List<GlobalKey<FormBuilderState>> _formKeys = List.generate(
-    5,
+    6, // Megnövelve 6-ra az ellenőrző kód miatt
     (_) => GlobalKey<FormBuilderState>(),
   );
   final _pageController = PageController();
@@ -63,6 +65,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   final Map<String, dynamic> _registrationData = {};
   Set<String> _weakPasswords = {};
+
+  // Email ellenőrzés állapotváltozói
+  String _generatedCode = '';
+  final TextEditingController _verificationController = TextEditingController();
 
   @override
   void initState() {
@@ -145,7 +151,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             content: Text('Sikeres regisztráció! Most már bejelentkezhetsz.'),
           ),
         );
-        setState(() => isLoginView = true);
+        setState(() {
+          isLoginView = true;
+          _generatedCode = '';
+          _verificationController.clear();
+        });
         _resetRegistrationState();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -156,6 +166,63 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           ),
         );
       }
+    }
+  }
+
+  void _startVerification() async {
+    final email = _registrationData['email'];
+    if (email == null || email.isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final code = EmailService.generateVerificationCode();
+    
+    // Logó betöltése az emailhez
+    Uint8List? logoBytes;
+    try {
+      final ByteData data = await rootBundle.load('assets/logo/logo_2.png');
+      logoBytes = data.buffer.asUint8List();
+    } catch (e) {
+      debugPrint("Hiba a logó betöltésekor az emailhez: $e");
+    }
+
+    final success = await EmailService.sendVerificationCode(email, code, logoBytes: logoBytes);
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (success) {
+        setState(() => _generatedCode = code);
+        await _pageController.nextPage(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOutCubic,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hiba az ellenőrző kód elküldésekor. Kérlek próbáld újra!'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _handleVerifyCode() {
+    final input = _verificationController.text.trim().toUpperCase();
+    if (input == _generatedCode) {
+      _handleRegister();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hibás ellenőrző kód!'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
     }
   }
 
@@ -729,6 +796,44 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         _formKeys[4],
         step5Fields,
       ),
+      _buildStep(
+        "Ellenőrző kód",
+        "Elküldtünk egy 6 karakteres kódot a megadott e-mail címre.",
+        _formKeys[5],
+        [
+          Padding(
+            padding: fieldPadding,
+            child: FormBuilderTextField(
+              name: 'verification_code',
+              controller: _verificationController,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 24,
+                letterSpacing: 8,
+                fontWeight: FontWeight.bold,
+              ),
+              decoration: decoration.copyWith(
+                hintText: 'A1B2C3',
+                counterText: '',
+              ),
+              maxLength: 6,
+              inputFormatters: [
+                UpperCaseTextFormatter(),
+              ],
+              onSubmitted: (_) => _handleVerifyCode(),
+            ),
+          ),
+          const SizedBox(height: 24),
+          TextButton(
+            onPressed: _isLoading ? null : _startVerification,
+            child: Text(
+              'Kód újraküldése',
+              style: TextStyle(color: theme.primaryColor),
+            ),
+          ),
+        ],
+      ),
     ];
 
     return Container(
@@ -802,11 +907,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   onPressed: _isPageTransitioning || _isLoading
                       ? null
                       : (_currentPage == pages.length - 1)
-                      ? _handleRegister
+                      ? _handleVerifyCode
                       : (_currentPage == pages.length - 2)
-                      ? (_isRegisterButtonEnabled ? _nextPage : null)
+                      ? _startVerification
+                      : (_currentPage == 3 && !_isRegisterButtonEnabled)
+                      ? null
                       : _nextPage,
-                  child: _isLoading && _currentPage == pages.length - 1
+                  child: _isLoading
                       ? SizedBox(
                           height: 20,
                           width: 20,
@@ -817,6 +924,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                         )
                       : Text(
                           _currentPage == pages.length - 1
+                              ? 'Ellenőrzés'
+                              : _currentPage == pages.length - 2
                               ? 'Regisztráció'
                               : 'Tovább',
                         ),
@@ -1094,6 +1203,17 @@ class PasswordRequirements extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
     );
   }
 }
