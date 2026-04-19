@@ -11,6 +11,7 @@ import 'package:zxcvbn/zxcvbn.dart';
 import 'api_service.dart'; // Importáljuk az API szolgáltatást
 import 'utils/avatar_manager.dart';
 import 'services/email_service.dart';
+import 'email_config.dart';
 import 'dart:async';
 
 // Jelszóerősség-szintek definiálása
@@ -171,7 +172,20 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   void _startVerification() async {
     final email = _registrationData['email'];
+    final firstName = _registrationData['firstName'];
     if (email == null || email.isEmpty) return;
+
+    // Cooldown check
+    final remainingCooldown = EmailService.getRemainingCooldown();
+    if (remainingCooldown > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Kérlek várj $remainingCooldown másodpercet az új kód kéréséig.'),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -188,7 +202,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       debugPrint("Hiba a logó betöltésekor az emailhez: $e");
     }
 
-    final success = await EmailService.sendVerificationCode(email, code, logoBytes: logoBytes);
+    final success = await EmailService.sendVerificationCode(email, code, firstName: firstName, logoBytes: logoBytes);
 
     if (mounted) {
       setState(() {
@@ -202,9 +216,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           curve: Curves.easeInOutCubic,
         );
       } else {
+        // More specific error message based on common failure cases
+        String errorMsg = 'Hiba az ellenőrző kód elküldésekor. Kérlek próbáld újra!';
+        if (EmailConfig.senderEmail.isEmpty || EmailConfig.appPassword.isEmpty) {
+          errorMsg = 'Rendszerhiba: Nincs beállítva az e-mail küldő szolgáltatás.';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Hiba az ellenőrző kód elküldésekor. Kérlek próbáld újra!'),
+          SnackBar(
+            content: Text(errorMsg),
             backgroundColor: Colors.redAccent,
           ),
         );

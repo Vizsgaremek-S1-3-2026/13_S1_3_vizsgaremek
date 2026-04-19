@@ -3,7 +3,7 @@
 class EmailTemplate {
   static const String subject = 'cQuizy - Email Cím Megerősítése';
 
-  static String getHtmlBody(String code) {
+  static String getHtmlBody(String code, String name) {
     return '''
 <!DOCTYPE html>
 <html>
@@ -132,19 +132,19 @@ class EmailTemplate {
     <div class="logo-container">
       <img src="cid:logo@cquizy.app" alt="cQuizy Logo" class="logo-img">
     </div>
-
+ 
     <div class="main-content">
-      <div class="greeting">Kedves Felhasználó!</div>
+      <div class="greeting">Kedves $name!</div>
       
       <div class="description">
         Köszönjük, hogy csatlakoztál a <span class="highlight">cQuizy</span> közösségéhez!<br><br>
         A <span class="highlight">cQuizy</span> egy innovatív oktatási alkalmazás, amely látványos és egyszerű felületet biztosít a digitális számonkérésekhez, ezzel megkönnyítve a tanárok és diákok mindennapjait.
       </div>
-
+ 
       <div class="code-box">
         $code
       </div>
-
+ 
       <div class="features-container">
         <table class="feature-table">
           <tr>
@@ -167,7 +167,7 @@ class EmailTemplate {
         </table>
       </div>
     </div>
-
+ 
     <div class="footer">
       <div>&copy; 2026 <span style="font-weight: bold; color: #777;">cQuizy</span> Projekt. Minden jog fenntartva.</div>
       <div class="footer-links">
@@ -180,17 +180,17 @@ class EmailTemplate {
 </html>
 ''';
   }
-
-  static String getTextBody(String code) {
+ 
+  static String getTextBody(String code, String name) {
     return '''
-Üdvözlünk a cQuizy közösségében!
-
+Üdvözlünk, $name a cQuizy közösségében!
+ 
 Köszönjük, hogy csatlakoztál hozzánk! A cQuizy egy innovatív oktatási alkalmazás, amely megkönnyíti a tanárok és diákok mindennapjait.
-
+ 
 A regisztrációs kódod: $code
-
+ 
 Hitelesítsd magad az alkalmazásban a regisztráció befejezéséhez.
-
+ 
 Üdvözlettel:
 cQuizy Team
 ''';
