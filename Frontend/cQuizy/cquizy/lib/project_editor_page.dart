@@ -9,7 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
-import 'theme.dart';
 
 class ProjectEditorPage extends StatefulWidget {
   final int projectId;

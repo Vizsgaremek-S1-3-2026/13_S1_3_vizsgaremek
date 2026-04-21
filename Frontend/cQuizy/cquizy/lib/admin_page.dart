@@ -10,6 +10,7 @@ import 'grading_view.dart';
 import 'package:provider/provider.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
+import 'utils/avatar_manager.dart';
 
 const double kAdminDesktopBreakpoint = 700.0;
 
@@ -227,8 +228,7 @@ class _AdminPageState extends State<AdminPage> {
               0,
           'maxScore': 100, // Should come from quiz details
           'grade': sub['grade_value']?.toString() ?? sub['grade']?.toString(),
-          'profilePicture':
-              sub['user_avatar'] ?? 'https://i.pravatar.cc/150?u=$userId',
+          'profilePicture': AvatarManager.getAvatarUrl(sub['user_avatar']?.toString() ?? sub['pfp_url']?.toString()),
           'submission_id': sub['id'],
           'user_id': sub['user_id'],
         };
@@ -272,8 +272,7 @@ class _AdminPageState extends State<AdminPage> {
             'score': 0,
             'maxScore': 100,
             'grade': null,
-            'profilePicture':
-                userObj['pfp_url'] ?? 'https://i.pravatar.cc/150?u=$uid',
+            'profilePicture': AvatarManager.getAvatarUrl(userObj['pfp_url']?.toString()),
             'user_id': userObj['id'],
             // 'email' not in the provided JSON sample, omitting or empty
             'email': '',
@@ -294,7 +293,7 @@ class _AdminPageState extends State<AdminPage> {
               'score': 0,
               'maxScore': 100,
               'grade': null,
-              'profilePicture': 'https://i.pravatar.cc/150?u=$uid',
+              'profilePicture': AvatarManager.getAvatarUrl(student['pfp_url']?.toString()),
               'user_id': student['id'],
               'email': '',
             };
@@ -1569,7 +1568,7 @@ class _AdminPageState extends State<AdminPage> {
                   leading: CircleAvatar(
                     backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
                     backgroundImage: profilePic != null && profilePic.isNotEmpty
-                        ? NetworkImage(profilePic)
+                        ? NetworkImage(AvatarManager.getAvatarUrl(profilePic) ?? profilePic)
                         : null,
                     child: profilePic == null || profilePic.isEmpty
                         ? Text(
@@ -1908,7 +1907,9 @@ class _AdminPageState extends State<AdminPage> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         leading: CircleAvatar(
-          backgroundImage: NetworkImage(member['profilePicture']),
+          backgroundImage: member['profilePicture'] != null 
+              ? NetworkImage(AvatarManager.getAvatarUrl(member['profilePicture']) ?? member['profilePicture'])
+              : null,
           onBackgroundImageError: (_, __) {},
           child: Text(member['name'][0]),
         ),
@@ -2549,7 +2550,9 @@ class _AdminPageState extends State<AdminPage> {
                   ),
                   child: CircleAvatar(
                     radius: 30,
-                    backgroundImage: NetworkImage(member['profilePicture']),
+                    backgroundImage: member['profilePicture'] != null
+                        ? NetworkImage(AvatarManager.getAvatarUrl(member['profilePicture']) ?? member['profilePicture'])
+                        : null,
                     backgroundColor: theme.colorScheme.surfaceContainerHighest,
                   ),
                 ),

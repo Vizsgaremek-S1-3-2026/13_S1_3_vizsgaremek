@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'api_service.dart';
 import 'providers/user_provider.dart';
+import 'utils/avatar_manager.dart';
 
 class GradingView extends StatefulWidget {
   final Map<String, dynamic> student;
@@ -490,6 +491,25 @@ class _GradingViewState extends State<GradingView> {
                       tooltip: 'Vissza',
                     ),
                     const SizedBox(width: 8),
+                    // Profile Picture
+                    CircleAvatar(
+                      backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
+                      backgroundImage: (AvatarManager.getAvatarUrl(widget.student['pfp_url']?.toString()) ?? 
+                                        AvatarManager.getAvatarUrl(widget.student['profilePicture']?.toString())) != null
+                          ? NetworkImage((AvatarManager.getAvatarUrl(widget.student['pfp_url']?.toString()) ?? 
+                                          AvatarManager.getAvatarUrl(widget.student['profilePicture']?.toString()))!)
+                          : null,
+                      child: (AvatarManager.getAvatarUrl(widget.student['pfp_url']?.toString()) ?? 
+                              AvatarManager.getAvatarUrl(widget.student['profilePicture']?.toString())) == null
+                          ? Text(
+                              (widget.student['name']?.toString() ?? 
+                               widget.student['username']?.toString() ?? 
+                               'D')[0].toUpperCase(),
+                              style: TextStyle(color: theme.primaryColor),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

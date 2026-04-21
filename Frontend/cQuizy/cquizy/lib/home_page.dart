@@ -13,7 +13,6 @@ import 'providers/user_provider.dart';
 import 'projects_page.dart';
 import 'create_project_dialog.dart';
 import 'create_quiz_dialog.dart';
-import 'theme.dart';
 import 'admin_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
@@ -149,7 +148,6 @@ class _HomePageState extends State<HomePage>
           final initialGroups = groupsData
               .map((json) {
                 try {
-                  final isAdmin = json['rank'] == 'ADMIN';
                   final groupId = json['id'];
 
                   // Carry over existing state to prevent flickering

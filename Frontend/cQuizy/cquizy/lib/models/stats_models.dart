@@ -1,6 +1,5 @@
 // lib/models/stats_models.dart
 
-import 'package:intl/intl.dart';
 import '../utils/avatar_manager.dart';
 
 class AdminGroupOverviewSchema {
