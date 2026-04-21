@@ -3684,22 +3684,21 @@ class _GroupPageState extends State<GroupPage> {
                   }
                 : null,
             leading: CircleAvatar(
-              backgroundColor: Colors.white,
-              child: (AvatarManager.getAvatarUrl(pfpUrl) == null ||
-                      AvatarManager.getAvatarUrl(pfpUrl)!.isEmpty)
-                  ? Icon(
-                      isAdmin ? Icons.star : Icons.person,
-                      color: Colors.white,
-                    )
-                  : ClipOval(
-                      child: Padding(
-                        padding: const EdgeInsets.all(4.0),
-                        child: Image.network(
-                          AvatarManager.getAvatarUrl(pfpUrl)!,
-                          fit: BoxFit.contain,
-                        ),
+              backgroundColor: isAdmin 
+                  ? Colors.amber.withValues(alpha: 0.2) 
+                  : theme.primaryColor.withValues(alpha: 0.1),
+              backgroundImage: AvatarManager.getAvatarUrl(pfpUrl) != null
+                  ? NetworkImage(AvatarManager.getAvatarUrl(pfpUrl)!)
+                  : null,
+              child: AvatarManager.getAvatarUrl(pfpUrl) == null
+                  ? Text(
+                      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        color: isAdmin ? Colors.amber.shade800 : theme.primaryColor,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ),
+                    )
+                  : null,
             ),
             title: Text(
               displayName,
