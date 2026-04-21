@@ -316,6 +316,7 @@ class GradeUpdateSchema(Schema):
 class StudentBasicSchema(Schema):
     id: int
     username: str
+    pfp_url: Optional[str] = None
 
 class QuizStatusOutSchema(Schema):
     writing: List[StudentBasicSchema]

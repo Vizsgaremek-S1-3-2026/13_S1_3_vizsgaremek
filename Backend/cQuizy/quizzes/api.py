@@ -769,7 +769,11 @@ def get_quiz_status(request, quiz_id: int):
     idle = []
 
     for member in members:
-        user_data = {"id": member.user.id, "username": member.user.username}
+        user_data = {
+            "id": member.user.id, 
+            "username": member.user.username,
+            "pfp_url": member.user.pfp_url
+        }
         user_id = member.user.id
 
         if user_id in finished_ids:
